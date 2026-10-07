@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Бар «Мечты» — барный гид</title>
+<meta name="description" content="Барный гид бара «Мечты»: коктейли, премиксы, настойки и полуфабрикаты — состав, крепость, аллергены и хранение. Для команды — техкарты, калькулятор, заявки и ревизия.">
+<!-- превью ссылки в Telegram, WhatsApp, ВКонтакте -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Бар «Мечты»">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:url" content="https://mechty-bar.netlify.app/">
+<meta property="og:title" content="Бар «Мечты» — барный гид">
+<meta property="og:description" content="Коктейли, премиксы и настойки бара: состав, крепость, аллергены. Для команды — техкарты, заявки и ревизия.">
+<meta property="og:image" content="https://mechty-bar.netlify.app/og.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Бар «Мечты» — барный гид: молния и коктейли бара">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<script src="vendor/qrcode.js" defer></script>
+<script>
+/* Анимации GSAP — включены для всех. ?fx=0 — выключить на этом устройстве, ?fx=1 — включить обратно. */
+(function () {
+  let on = false;
+  try {
+    const q = new URLSearchParams(location.search).get("fx");
+    if (q !== null) localStorage.setItem("mechty-fx", q === "0" ? "0" : "1");
+    on = localStorage.getItem("mechty-fx") !== "0";
+  } catch (e) { on = true; }
+  if (!on || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const root = document.documentElement;
+  root.classList.add("fx-pre");
+  setTimeout(() => root.classList.remove("fx-pre"), 3000);       // если что-то не загрузилось — просто показать страницу
+  const load = src => new Promise(ok => { const s = document.createElement("script"); s.src = src; s.onload = s.onerror = ok; document.head.appendChild(s); });
+  addEventListener("DOMContentLoaded", () => load("vendor/gsap.min.js").then(() => load("vendor/ScrollTrigger.min.js")).then(() => load("fx.js")));
+})();
+</script>
+<meta name="theme-color" content="#0E1014">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Бар Мечты">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<nav class="topbar" aria-label="Разделы">
+  <div class="topbar-in">
+    <a class="tab" id="tabBar" href="#" aria-current="page">Бар «Мечты»</a>
+    <a class="tab" id="tabBt" href="#bartenders">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+      Бартендерам
+    </a>
+  </div>
+</nav>
+
+<!-- ── Карта заготовок (открыта всем) ─────────────────────────── -->
+<main class="wrap" id="viewBar">
+  <header>
+    <p class="mark">Бар «Мечты»</p>
+    <h1>Коктейльная<br>карта</h1>
+    <p class="lede">Коктейли, премиксы, настойки и полуфабрикаты собственного производства: состав, крепость, аллергены и условия хранения.</p>
+
+    <dl class="meta">
+      <div>
+        <dt>Даты партии</dt>
+        <dd>Указаны на ярлыке каждой ёмкости</dd>
+      </div>
+      <div>
+        <dt>Крепость</dt>
+        <dd>Расчётная, без льда и газированных компонентов</dd>
+      </div>
+    </dl>
+  </header>
+
+  <div class="controls">
+    <input id="q" type="search" placeholder="Поиск по названию или ингредиенту" autocomplete="off" aria-label="Поиск по названию или ингредиенту">
+    <div class="chips" id="chips" role="group" aria-label="Фильтр по разделам"></div>
+  </div>
+
+  <div id="out"></div>
+
+  <footer>
+    <span>Ответственный за производство — <b>Куклин</b></span>
+    <span>Технологические карты хранятся на производстве</span>
+  </footer>
+</main>
+
+<!-- ── Раздел бартендеров (после входа) ───────────────────────── -->
+<main class="wrap narrow" id="viewBt" hidden>
+  <header>
+    <p class="mark">Бар «Мечты» · бартендерам</p>
+    <div class="modes sect" id="sect" role="group" aria-label="Раздел">
+      <button type="button" data-s="ttk"  aria-pressed="true">Технологическая карта</button>
+      <button type="button" data-s="calc" aria-pressed="false">Калькулятор</button>
+      <button type="button" data-s="order" aria-pressed="false">Заявка</button>
+      <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
+      <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
+    </div>
+    <h1 id="btTitle">Технологическая<br>карта</h1>
+    <p class="lede" id="btLede">Граммовки, посуда, метод и украшение для каждого напитка и заготовки.</p>
+  </header>
+
+  <div class="whoami">
+    <span>Вы вошли: <b id="meName"></b> · <span id="meMail"></span></span>
+    <button type="button" class="link" id="logout">Выйти</button>
+  </div>
+
+  <div id="secTtk">
+    <input id="tq" class="tq" type="search" placeholder="Поиск по названию или ингредиенту" autocomplete="off" aria-label="Поиск по технологической карте">
+    <div id="tres"></div>
+  </div>
+
+  <div id="secCalc" hidden>
+    <div class="block">
+      <p class="label">Позиция</p>
+      <select id="pos" aria-label="Позиция"></select>
+    </div>
+
+    <div class="block">
+      <p class="label">Считать от</p>
+      <div class="modes" id="modes" role="group" aria-label="Способ расчёта">
+        <button type="button" data-m="vol"   aria-pressed="true">Объёма</button>
+        <button type="button" data-m="por"   aria-pressed="false">Порций</button>
+        <button type="button" data-m="coef"  aria-pressed="false">Коэффициента</button>
+        <button type="button" data-m="stock" aria-pressed="false">Остатка</button>
+      </div>
+    </div>
+
+    <div class="block" id="stockBlock" hidden>
+      <p class="label">Какого ингредиента</p>
+      <select id="ing" aria-label="Ингредиент"></select>
+    </div>
+
+    <div class="block">
+      <p class="label" id="valLabel">Нужный объём</p>
+      <div class="row">
+        <input id="val" type="number" inputmode="decimal" min="0" step="any" value="3" aria-labelledby="valLabel">
+        <span class="unit" id="valUnit">литров</span>
+      </div>
+      <div class="quick" id="quick"></div>
+    </div>
+
+    <div class="opts">
+      <div>
+        <p class="label">Разлить</p>
+        <div class="modes" id="cont" role="group" aria-label="Количество мерников">
+          <button type="button" data-c="1" aria-pressed="true">В 1 мерник</button>
+          <button type="button" data-c="2" aria-pressed="false">В 2 мерника</button>
+        </div>
+      </div>
+      <div>
+        <p class="label">Точность</p>
+        <label class="toggle"><input type="checkbox" id="round" checked> Округлять</label>
+      </div>
+    </div>
+
+    <div class="result" id="res"></div>
+    <div class="warn" id="resNote"></div>
+  </div>
+
+  <div id="secLab" hidden>
+    <div class="block">
+      <p class="label">Позиция</p>
+      <select id="lpos" aria-label="Позиция для этикетки"></select>
+    </div>
+    <p class="rule" id="linfo" style="margin:12px 0 0"></p>
+    <div id="lsize" hidden></div>
+    <div class="result tcard labs">
+      <div class="tname"><h2 class="h3">Лицевая</h2></div>
+      <div class="lprev"><canvas id="lfront"></canvas></div>
+      <div class="otools"><button type="button" class="link" data-l="front">Поделиться / сохранить</button></div>
+    </div>
+    <div class="result tcard labs">
+      <div class="tname"><h2 class="h3">Оборотная</h2></div>
+      <div class="lprev"><canvas id="lback"></canvas></div>
+      <div class="otools"><button type="button" class="link" data-l="back">Поделиться / сохранить</button></div>
+    </div>
+    <div class="result tcard labs">
+      <div class="tname"><h2 class="h3">Ссылка на позицию</h2></div>
+      <p class="oempty"><span id="llink"></span></p>
+      <div class="otools"><button type="button" class="link" id="lcopy">Скопировать ссылку</button></div>
+    </div>
+    <p class="rule" style="margin-top:14px">QR-код и ссылка ведут на позицию в открытой коктейльной карте. В приложении Niimbot: «Поделиться» → Niimbot, или сохраните картинку и вставьте её в шаблон как изображение.</p>
+  </div>
+
+  <div id="secRev" hidden>
+    <div class="result tcard osum">
+      <div class="tname"><em id="rqueue"></em><h2 class="h3" id="rtitle">Ревизия</h2></div>
+      <p class="oempty" id="rinfo" aria-live="polite">Загружаем…</p>
+      <div class="otools">
+        <button type="button" class="link" id="rstart">Начать ревизию</button>
+        <button type="button" class="link" id="rreload">Обновить</button>
+        <button type="button" class="link" id="rclose" hidden>Завершить</button>
+      </div>
+    </div>
+    <div class="warn" id="rwarn" role="status"></div>
+    <div id="rbody" hidden>
+      <div class="block">
+        <p class="label">Зона</p>
+        <div class="modes zones" id="rzone" role="group" aria-label="Зона"></div>
+      </div>
+      <div class="result tcard"><ul class="rlist" id="rlist"></ul></div>
+    </div>
+  </div>
+
+  <div id="secOrder" hidden>
+    <div class="modes" id="okind" role="group" aria-label="Вид заявки">
+      <button type="button" data-o="prep" aria-pressed="true">Заявка заготовщиков</button>
+      <button type="button" data-o="gen"  aria-pressed="false">Общая заявка</button>
+    </div>
+    <div class="result tcard osum">
+      <div class="tname"><em id="ocount"></em><h2 class="h3" id="otitle">К заказу</h2></div>
+      <div id="osum"></div>
+      <div class="otools">
+        <button type="button" class="link" id="ocopy">Скопировать заявку</button>
+        <button type="button" class="link" id="oreset">Отменить выбранное</button>
+      </div>
+    </div>
+    <div id="olist"></div>
+  </div>
+
+  <div class="block">
+    <p class="label">Журнал входов <span class="scope" id="logScope"></span>
+      <button type="button" class="link" id="refresh">Обновить</button>
+    </p>
+    <ol class="log" id="log"></ol>
+    <button type="button" class="link more" id="logMore" hidden></button>
+    <div class="warn" id="logWarn" role="status"></div>
+  </div>
+
+  <footer>
+    <span>Состав, сроки и аллергены — в <a class="link" href="#">коктейльной карте</a></span>
+    <span>Вход сохраняется на этом устройстве до «Выйти»</span>
+  </footer>
+</main>
+
+<dialog id="login" aria-labelledby="loginTitle">
+  <form id="gform" method="dialog" autocomplete="on" novalidate>
+    <h2 id="loginTitle">Бартендерам</h2>
+    <p class="sub">Вход для сотрудников бара. Каждый вход записывается в журнал.</p>
+
+    <label class="label" for="who">Фамилия</label>
+    <input id="who" name="family-name" type="text" autocomplete="family-name" autocapitalize="words" maxlength="60" placeholder="Фамилия сотрудника" required>
+
+    <label class="label" for="mail">Электронная почта</label>
+    <input id="mail" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" placeholder="name@example.ru" required>
+
+    <label class="label" for="pw">Пароль</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" maxlength="200" placeholder="Пароль бартендера" required>
+
+    <p class="gmsg" id="gmsg" role="status" aria-live="polite"></p>
+    <div class="btns">
+      <button type="submit" id="go">Войти</button>
+      <button type="button" class="ghost" id="cancel">Отмена</button>
+    </div>
+    <p class="ghint">Фамилия, почта и время входа передаются в журнал бара.</p>
+  </form>
+</dialog>
+
+<script src="js/core.js" defer></script>
+<script src="js/data.js" defer></script>
+<script src="js/card.js" defer></script>
+<script src="js/auth.js" defer></script>
+<script src="js/ttk.js" defer></script>
+<script src="js/labels.js" defer></script>
+<script src="js/rev.js" defer></script>
+<script src="js/order.js" defer></script>
+<script src="js/calc.js" defer></script>
+<script src="js/swipe.js" defer></script>
+
+</body>
+</html>
