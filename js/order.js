@@ -57,7 +57,7 @@ function drawSum(){
   $("osum").innerHTML = n
     ? groups.map(g => '<div class="osub">' + esc(g.g) + '</div><ul class="olist">' +
         g.items.map(x => '<li><div class="row1' + (qty[x] ? ' has-q' : '') + '"><span>' + esc(x) + '</span>' +
-          '<input type="text" class="oq" inputmode="text" enterkeyhint="done" autocomplete="off" maxlength="24"' +
+          '<input type="text" class="oq" inputmode="text" enterkeyhint="done" autocomplete="off" maxlength="16"' +
           ' placeholder="кол-во" value="' + esc(qty[x] || "") + '" data-n="' + esc(x) + '" aria-label="Количество: ' + esc(x) + '">' +
           '<button type="button" class="x" data-n="' + esc(x) + '" aria-label="Убрать: ' + esc(x) + '">×</button></div></li>').join("") +
         '</ul>').join("")
