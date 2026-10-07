@@ -192,11 +192,22 @@ function revPositions(ts) {
 const unitOf = n => PCS.some(w => n.toLowerCase().indexOf(w) >= 0) ? "шт" : "л";
 
 /* Строка позиции на листе зон (с 4-й строки); нет — дописывается. */
+/* Новый лист в Таблицах — 26 столбцов и 1000 строк; писать за край нельзя, поэтому сначала расширяем. */
+function ensureCols(sh, last) {
+  const max = sh.getMaxColumns();
+  if (last > max) sh.insertColumnsAfter(max, last - max);
+}
+function ensureRows(sh, last) {
+  const max = sh.getMaxRows();
+  if (last > max) sh.insertRowsAfter(max, last - max);
+}
+
 function zoneRow(zs, name) {
   const last = Math.max(zs.getLastRow(), 3);
   const names = last > 3 ? zs.getRange(4, 1, last - 3, 1).getValues().map(r => String(r[0]).trim()) : [];
   const i = names.indexOf(name);
   if (i >= 0) return i + 4;
+  ensureRows(zs, last + 1);
   zs.getRange(last + 1, 1).setValue(name);
   return last + 1;
 }
@@ -214,12 +225,14 @@ function revStart(name) {
   const date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
 
   const tc = ts.getLastColumn() + 1;
+  ensureCols(ts, tc);
   ts.getRange(1, tc, 2, 1).setNumberFormat("@").setValues([[date], [name]]);
 
   revPositions(ts).forEach(x => zoneRow(zs, x.n));
   const zc = Math.max(zs.getLastColumn(), 1) + 1;
   /* дата и фамилия — один раз, объединённой ячейкой над пятью зонами */
   const n = ZONES.length, blank = ZONES.slice(1).map(() => "");
+  ensureCols(zs, zc + n - 1);
   zs.getRange(1, zc, 3, n).setNumberFormat("@")
     .setValues([[date].concat(blank), [name].concat(blank), ZONES.slice()])
     .setHorizontalAlignment("center");
@@ -354,6 +367,22 @@ function mrevOpen() {
   catch (e) { return null; }
 }
 
+/* Столбец открытой ревизии — по заголовку (строки 5–6: фамилия, дата): если в листе вставили
+   или удалили столбцы, ищем его заново, а не пишем в чужой. Не нашли — null. */
+function mrevCol(sh, open) {
+  const last = sh.getLastColumn();
+  if (last < 4) return null;
+  const h = sh.getRange(5, 1, 2, last).getDisplayValues();
+  const is = c => String(h[0][c - 1]).trim() === open.name && String(h[1][c - 1]).trim() === open.date;
+  if (open.col <= last && is(open.col)) return open.col;
+  for (let c = last; c >= 4; c--) if (is(c)) {
+    open.col = c;
+    PropertiesService.getScriptProperties().setProperty("MREV_OPEN", JSON.stringify(open));
+    return c;
+  }
+  return null;
+}
+
 /* строки листа: разделы (h), подразделы (s) и позиции (i) — по порядку */
 function mrevRows(sh) {
   const last = sh.getLastRow();
@@ -370,7 +399,12 @@ function mrevRows(sh) {
 }
 
 function mrevState() {
-  const sh = mrevSheet(), open = mrevOpen(), rows = mrevRows(sh);
+  const sh = mrevSheet(), rows = mrevRows(sh);
+  let open = mrevOpen();
+  if (open && !mrevCol(sh, open)) {                 // столбец ревизии удалили из листа — ревизия закрыта
+    PropertiesService.getScriptProperties().deleteProperty("MREV_OPEN");
+    open = null;
+  }
   const lastCol = sh.getLastColumn(), lastRow = Math.max(sh.getLastRow(), 7);
   const col = c => c >= 4 ? sh.getRange(7, c, lastRow - 6, 1).getValues().map(r => r[0]) : [];
   const head = c => { const h = sh.getRange(5, c, 2, 1).getDisplayValues(); return { name: h[0][0], date: h[1][0] }; };
@@ -397,6 +431,7 @@ function mrevStart(name) {
   const started = new Date();
   const date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
   const col = Math.max(sh.getLastColumn(), 3) + 1;
+  ensureCols(sh, col);
   sh.getRange(5, col, 2, 1).setNumberFormat("@").setValues([[name], [date]]).setFontWeight("bold").setHorizontalAlignment("center");
   sh.getRange(3, col).setValue(date);
   PropertiesService.getScriptProperties().setProperty("MREV_OPEN",
@@ -406,25 +441,36 @@ function mrevStart(name) {
 
 function mrevAdd(p) {
   const open = mrevOpen();
-  if (!open) return { error: "closed" };
-  if (p.rk && p.rk !== open.key) return { error: "closed" };
   const id = String(p.id || "").slice(0, 64), name = String(p.pos || "").trim(), v = num(p.v);
   if (!id || !name || !v || Math.abs(v) > 100000) return { error: "bad" };
-  const sh = mrevSheet();
-  /* строка — по номеру, проверяем название; если строки сдвинули — ищем по названию */
+  const sh = mrevSheet(), cache = CacheService.getScriptCache();
+  /* повтор уже записанного (ответ потерялся) — сразу «ок», до любых проверок */
+  const seen = cache.get("mrev:" + id);
+  if (seen) return { ok: true, add: { row: parseInt(seen, 10), pos: name, v: null } };   // итог подтянется при сверке
+  if (!open) return { error: "closed" };
+  if (p.rk && p.rk !== open.key) return { error: "closed" };
+  const col = mrevCol(sh, open);
+  if (!col) return { error: "closed" };
+  /* строка — по номеру с проверкой названия; если строки сдвинули — по названию,
+     а при одинаковых названиях (Мандарин) — по разделу и ближайшая к прежнему номеру */
   let row = parseInt(p.row, 10);
   if (!(row >= 7) || String(sh.getRange(row, 2).getDisplayValue()).trim() !== name) {
-    const hit = mrevRows(sh).filter(x => x.t === "i" && x.n === name);
-    if (hit.length !== 1) return { error: "position" };
-    row = hit[0].r;
+    let sec = "";
+    const hit = mrevRows(sh).filter(x => {
+      if (x.t !== "i") { sec = x.n; return false; }
+      x.sec = sec;
+      return x.n === name;
+    });
+    const same = p.sec ? hit.filter(x => x.sec === p.sec) : [];
+    const pool = same.length ? same : hit;
+    if (!pool.length) return { error: "position" };
+    pool.sort((a, b) => Math.abs(a.r - (row || 0)) - Math.abs(b.r - (row || 0)));
+    row = pool[0].r;
   }
-  const cell = sh.getRange(row, open.col);
-  const cache = CacheService.getScriptCache();
-  if (!cache.get("mrev:" + id)) {
-    cell.setValue(round3(num(cell.getValue()) + v));
-    revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), "Месячная · " + open.date + " · " + open.name, "—", name, v, id]);
-    cache.put("mrev:" + id, "1", 21600);
-  }
+  const cell = sh.getRange(row, col);
+  cell.setValue(round3(num(cell.getValue()) + v));
+  revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), "Месячная · " + open.date + " · " + open.name, "—", name, v, id]);
+  cache.put("mrev:" + id, String(row), 21600);
   return { ok: true, add: { row: row, pos: name, v: round3(num(cell.getValue())) } };
 }
 
