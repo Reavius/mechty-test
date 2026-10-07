@@ -58,6 +58,8 @@ ok(items.length > 0 && new Set(ids).size === ids.length, `id позиций ун
 ok(items.every(i => i.n && Array.isArray(i.c) && i.c.length), "у каждой позиции есть название и состав");
 const leak = items.filter(i => i.c.some(x => /\d\s*(мл|гр?|кг|л|шт)(?![а-яё])/i.test(x)));
 ok(!leak.length, "в открытой карте нет граммовок" + (leak.length ? ": " + leak.map(i => i.n).join(", ") : ""));
+const plainBad = items.filter(i => !Array.isArray(i.s) || !i.s.length || i.s.some(x => /[«»"A-Za-z]|п\/ф|с\/м/.test(x)));
+ok(!plainBad.length, "состав для гостей — без марок (поле s)" + (plainBad.length ? ": " + plainBad.map(i => i.n).join(", ") : ""));
 const noImg = items.filter(i => i.img && !has(i.img));
 ok(!noImg.length, "фото открытой карты на месте" + (noImg.length ? ": " + noImg.map(i => i.img).join(", ") : ""));
 
@@ -94,6 +96,9 @@ if (process.env.MECHTY_PASSWORD && B) {
     ok(K.every(t => !t.img || has(t.img)), `фото техкарт на месте (${K.length} карт)`);
     const R = P.r.flatMap(g => g.items).map(r => r.id);
     const lost = items.filter(i => i.rid && !R.includes(i.rid)).concat(K.filter(t => t.c && !R.includes(t.c)));
+    const RI = P.r.flatMap(g => g.items);
+    ok(RI.every(r => r.out > 0 && r.i.every(x => x[1] > 0) && (r.basis !== "por" || Math.abs(r.i.filter(x => x[2] === "мл").reduce((a, x) => a + x[1], 0) - r.out) < 1e-6 || r.i.some(x => x[2] !== "мл"))),
+      `рецептуры калькулятора целы (${RI.length})`);
     ok(!lost.length, "ссылки карты и техкарт на рецептуры целы" + (lost.length ? ": " + lost.map(i => i.n).join(", ") : ""));
   } catch (e) { ok(false, "шифровка открывается паролем: " + e.message); }
 } else console.log("· без MECHTY_PASSWORD шифровка не открывается — проверена только её форма");

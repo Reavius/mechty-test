@@ -1,6 +1,6 @@
 /* Этикетки Niimbot 50×30. */
 /* ════════════ Этикетки ════════════
-   Рисуются на canvas чёрным по белому — для термопринтера (Niimbot). Состав — только
+   Рисуются на canvas чёрным по белому — для термопринтера (Niimbot). Состав — полный (c),
    из открытой коктейльной карты, QR ведёт на позицию в ней. Украшения — labels/*.png. */
 const LSIZES = [[50, 30]];                         // принтер бара — 50×30 мм
 const LPX = 16;                                    // точек на мм (≈ 400 dpi, с запасом)
@@ -91,6 +91,48 @@ function lglyph(ctx, kind, x, y, s){
   ctx.restore();
 }
 
+/* Длинное название — в две строки, разрез по пробелу ближе к середине. */
+function lsplit(name){
+  const w = String(name).split(" ");
+  if (w.length < 2) return [name];
+  let best = null;
+  for (let i = 1; i < w.length; i++){
+    const a = w.slice(0, i).join(" "), b = w.slice(i).join(" "), d = Math.abs(a.length - b.length);
+    if (!best || d < best.d) best = {d, l: [a, b]};
+  }
+  return best.l;
+}
+/* размер, при котором влезают все строки */
+const lfitAll = (ctx, lines, max, size, weight) => Math.min(...lines.map(t => lfit(ctx, t, max, size, weight)));
+
+/* Самый крупный шрифт, при котором все строки влезают в колонку по высоте;
+   длинная строка переносится по словам (с отступом под текст), а не сжимается. */
+function lwrap(ctx, rows, width, height, maxS){
+  for (let s = Math.floor(maxS); s >= 14; s--){
+    const ind = s * 1.15, w = width - ind, lines = [];
+    let y = 0, ok = true;
+    for (const [glyph, text, wt] of rows){
+      ctx.font = wt + " " + s + 'px "PT Serif", Georgia, serif';
+      let cur = "", first = true;
+      for (const word of String(text).split(/ +/)){          // неразрывный пробел держит слова вместе
+        const t = cur ? cur + " " + word : word;
+        if (ctx.measureText(t).width <= w){ cur = t; continue; }
+        if (!cur){ ok = false; break; }                     // одно слово не влезает — шрифт меньше
+        lines.push({t: cur, y, w: wt, glyph: first ? glyph : ""}); first = false;
+        y += s * 1.02; cur = word;
+        if (ctx.measureText(cur).width > w){ ok = false; break; }
+      }
+      if (!ok) break;
+      lines.push({t: cur, y, w: wt, glyph: first ? glyph : ""});
+      y += s * 1.17;
+    }
+    const h = y - s * .17;
+    if (ok && h <= height) return {s, ind, lines, h};
+  }
+  const s = 14;
+  return {s, ind: s * 1.15, lines: rows.map((r, i) => ({t: r[1], y: i * s * 1.17, w: r[2], glyph: r[0]})), h: rows.length * s * 1.17};
+}
+
 function lcanvas(id, W, H){
   const c = $(id); c.width = W; c.height = H;
   const ctx = c.getContext("2d");
@@ -106,11 +148,9 @@ async function labDraw(){
   try { localStorage.setItem("mechty-lpos", it.id); } catch (e) {}
   const [mw, mh] = LSIZES[lsize], W = mw * LPX, H = mh * LPX;
   try { await document.fonts.load('700 40px "PT Serif"'); await document.fonts.load('400 40px "PT Serif"'); } catch (e) {}
-  const [vine, corner, icon] = await Promise.all([limg("vine"), limg("corner"), LICON[it.id] ? limg(LICON[it.id]) : null]);
+  const [vine, icon] = await Promise.all([limg("vine"), LICON[it.id] ? limg(LICON[it.id]) : null]);
 
-  /* Пропорции: одинаковые поля m со всех сторон, центрирование по осям,
-     золотое сечение φ — высота QR к высоте блока текста и размер шрифта к просвету. */
-  const PHI = 1.618, m = Math.min(W, H) * .07;
+  const m = Math.min(W, H) * .07;                           // поля лицевой
 
   /* ── лицевая ── */
   let ctx = lcanvas("lfront", W, H);
@@ -126,70 +166,72 @@ async function labDraw(){
     }
   }
   const gapY = H - 2 * lineY;                               // просвет между линиями
-  const fsMax = gapY / (PHI * PHI * 1.3);                 // единый размер: короткие названия не раздуваются
+  const fsMax = gapY / 2.15;                                // крупно: на печати 50×30 мелкий текст не читается
   ctx.font = "400 " + fsMax + 'px "PT Serif", Georgia, serif';
   const isz = /^i-/.test(LICON[it.id] || "") ? 1.25 : 1;   // контурные значки визуально мельче — чуть крупнее
   const iconH = icon ? fsMax * 1.05 * isz : 0, iconW = icon ? icon.width * iconH / icon.height : 0;
-  const gapX = icon ? fsMax * .3 : 0;
-  const fs = lfit(ctx, name, (W - 2 * m) * .88 - iconW - gapX, fsMax, 400);
-  const k = fs / fsMax, ih = iconH * k, iw = iconW * k, gx = gapX * k;
-  const tw = ctx.measureText(name).width, x0 = (W - tw - gx - iw) / 2;
-  ctx.fillText(name, x0, H / 2 + fs * .34);               // середина строчных букв — по центру этикетки
+  const gapX = icon ? fsMax * .25 : 0;
+  const room = (W - 2 * m) * .97 - iconW - gapX;
+  let lines = [name], fs = lfit(ctx, name, room, fsMax, 400);
+  if (fs < fsMax * .62 && lsplit(name).length === 2){        // длинное — в две строки, но крупнее
+    const two = lsplit(name), f2 = lfitAll(ctx, two, room, fsMax * .72, 400);
+    if (f2 > fs * 1.15){ lines = two; fs = f2; }
+  }
+  const k = Math.min(1, fs * (lines.length > 1 ? 1.7 : 1) / fsMax);   // значок — по высоте блока текста
+  const ih = iconH * k, iw = iconW * k, gx = gapX * k;
+  ctx.font = "400 " + fs + 'px "PT Serif", Georgia, serif';
+  const tw = Math.max(...lines.map(t => ctx.measureText(t).width)), x0 = (W - tw - gx - iw) / 2;
+  const lh = fs * 1.08, yc = H / 2 + fs * .34 - (lines.length - 1) * lh / 2;   // середина строчных — по центру
+  lines.forEach((t, i) => ctx.fillText(t, x0 + (tw - ctx.measureText(t).width) / 2, yc + i * lh));
   if (icon) ctx.drawImage(icon, x0 + tw + gx, H / 2 - ih / 2, iw, ih);
 
-  /* ── оборотная ── */
+  /* ── оборотная ──
+     Слева — состав столбиком, дата, срок, кто сделал: самым крупным шрифтом, какой влезает
+     (длинные строки переносятся по словам, а не мельчают). Справа — название и QR. */
   ctx = lcanvas("lback", W, H);
-  const cs = H * .15;
-  if (corner){
-    for (const flip of [false, true]){
-      ctx.save();
-      if (flip){ ctx.translate(W, H); ctx.rotate(Math.PI); }
-      ctx.drawImage(corner, W - m * .5 - cs, m * .5, cs, cs);
-      ctx.restore();
-    }
-  }
-  /* заголовок */
-  const th = H * .13;
-  ctx.font = "400 " + th + 'px "PT Serif", Georgia, serif';
-  const ti = icon ? th * 1.15 * isz : 0, tiw = icon ? icon.width * ti / icon.height : 0, tg = icon ? th * .25 : 0;
-  const tfs = lfit(ctx, name, W - 2 * (m * .5 + cs) - tiw - tg, th, 400);
-  const tk = tfs / th, ttw = ctx.measureText(name).width, tx = (W - ttw - tg * tk - tiw * tk) / 2;
-  const tBase = m + tfs * .78;
-  ctx.fillText(name, tx, tBase);
-  if (icon) ctx.drawImage(icon, tx + ttw + tg * tk, tBase - tfs * .36 - ti * tk / 2, tiw * tk, ti * tk);
+  const mb = H * .045;                                      // поля оборотной (~1,4 мм)
+  const qs = H * .43, colR = W - mb, qx = colR - qs;        // QR ≈ 13 мм — уверенно читается телефоном
 
-  /* тело: слева текст, справа QR; оба по центру одной горизонтали */
-  const bodyTop = tBase + tfs * .3 + m * .45, bodyBottom = H - m * .8, bodyH = bodyBottom - bodyTop;
-  const left = m * .5 + cs * 1.05, right = W - m;
-  const qs = bodyH / PHI * 1.12, qx = right - qs, qy = bodyTop + (bodyH - qs) / 2;
+  /* правая колонка: название (жирно), QR, кто сделал */
+  const d = new Date(), who = me ? me.name : "—";
+  let nl = [name], nfs = lfit(ctx, name, qs, H * .1, 700);
+  if (nfs < H * .075 && lsplit(name).length === 2){ nl = lsplit(name); nfs = lfitAll(ctx, nl, qs, H * .085, 700); }
+  const nlh = nfs * 1.05;
+  const wfs = lfit(ctx, who, qs - H * .09, H * .085, 400), wg = wfs * 1.1;
+  ctx.font = "400 " + wfs + 'px "PT Serif", Georgia, serif';
+  const ww = ctx.measureText(who).width;
+  const qTop = mb + nfs * 1.15 + (nl.length - 1) * nlh, qBot = H - mb - wfs * 1.3, qy = qTop + (qBot - qTop - qs) / 2;
+  ctx.font = "700 " + nfs + 'px "PT Serif", Georgia, serif';
+  nl.forEach((t, i) => ctx.fillText(t, qx + (qs - ctx.measureText(t).width) / 2, qy - nfs * .4 - (nl.length - 1 - i) * nlh));
+  ctx.font = "400 " + wfs + 'px "PT Serif", Georgia, serif';
+  const wx = qx + (qs - ww - wg) / 2, wy = qy + qs + wfs * 1.15;
+  lglyph(ctx, "who", wx, wy - wfs * .82, wfs * .82);
+  ctx.fillText(who, wx + wg, wy);
   if (window.qrcode){
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
     const n = q.getModuleCount(), cell = qs / n;
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
       if (q.isDark(r, c)) ctx.fillRect(Math.floor(qx + c * cell), Math.floor(qy + r * cell), Math.ceil(cell), Math.ceil(cell));
   }
+  const sepX = qx - H * .045;                               // тонкая черта между колонками
+  ctx.fillRect(sepX, mb, Math.max(2, H * .005), H - 2 * mb);
 
-  /* строки: состав столбиком, дата, годен до, кто сделал.
+  /* строки: состав столбиком, дата, годен до.
      Дата — всегда сегодняшняя, сделал — тот, кто вошёл: пересчитывается при каждом сохранении. */
-  const d = new Date(), who = me ? me.name : "—";
   const days = parseInt(g.srok, 10) || 0, till = new Date(d.getTime() + days * 864e5);
   const comp = (it.c || []).map(lshort);
-  const tail = [["clock", "Дата производства " + ldmy(d)], ["clock", "Годен до " + ldmy(till)], ["who", who]];
+  const rows = comp.map(t => ["pin", t, 400])
+    .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700]]);   // даты не разрываются
   $("linfo").innerHTML = "Дата производства — сегодня, <b>" + ldmy(d) + "</b>; годен до <b>" + ldmy(till) + "</b> (" + esc(g.srok) +
     "); сделал — <b>" + esc(who) + "</b>. При сохранении дата и фамилия подставляются заново.";
 
-  const rows = comp.map(t => ["pin", t]).concat(tail);
-  const colW = qx - m * .6 - left;
-  let size = Math.min(H * .08, bodyH / (rows.length * 1.15));
-  ctx.font = "400 " + size + 'px "PT Serif", Georgia, serif';
-  const need = Math.min(1, ...rows.map(r => (colW - size * 1.2) / ctx.measureText(r[1]).width));
-  if (need < 1) size *= need;                               // уменьшаем, а не искажаем
-  const step = size * 1.15, blockH = rows.length * step, y0 = bodyTop + (bodyH - blockH) / 2;
-  ctx.font = "400 " + size + 'px "PT Serif", Georgia, serif';
-  rows.forEach((r, i) => {
-    const y = y0 + i * step;
-    lglyph(ctx, r[0], left, y + step * .1, size * .85);
-    ctx.fillText(r[1], left + size * 1.2, y + size * .9);
+  const left = mb, colW = sepX - H * .04 - left, top = mb, avail = H - 2 * mb;
+  const lay = lwrap(ctx, rows, colW, avail, H * .14);
+  const y0 = top + (avail - lay.h) / 2;
+  lay.lines.forEach(L => {
+    ctx.font = L.w + " " + lay.s + 'px "PT Serif", Georgia, serif';
+    if (L.glyph) lglyph(ctx, L.glyph, left, y0 + L.y + lay.s * .12, lay.s * .82);
+    ctx.fillText(L.t, left + lay.ind, y0 + L.y + lay.s * .86);
   });
 
   $("llink").textContent = lurl(it.id);

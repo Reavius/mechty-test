@@ -36,6 +36,9 @@ await page.waitForSelector("#out article", { timeout: 10000 });
 const cards = await page.locator("#out article").count();
 ok(cards >= 30, `открытая карта: ${cards} позиций`);
 ok(await page.locator("#out img.cph").count() >= 10, "фото в карте");
+ok(await page.locator("#out .abv").count() === 0, "в карте нет крепости");
+const brands = await page.evaluate(() => [...document.querySelectorAll("#out article li")].map(li => li.textContent).filter(t => /[«»A-Za-z]|Беленьк|Барристер|Хопперс|Сарти|Оакхарт|Девис|Мартини/.test(t)));
+ok(!brands.length, "в составах карты нет марок" + (brands.length ? ": " + brands.slice(0, 5).join(", ") : ""));
 await page.fill("#q", "негрони");
 ok(await page.locator("#out article").count() >= 1 && await page.locator("#out article").count() < cards, "поиск по карте");
 await page.fill("#q", "");
@@ -66,8 +69,26 @@ if (PW) {
   }
   await page.click('[data-s="calc"]');
   ok((await page.textContent("#res")).trim().length > 0, "калькулятор считает");
+  await page.selectOption("#pos", "grapefruit").catch(() => {});
+  ok((await page.textContent("#res")).includes("Балтика"), "лимонад «Грейпфрут» в калькуляторе");
   await page.click('[data-s="order"]');
   ok(await page.locator("#olist input[type=checkbox]").count() > 10, "заявка");
+  // количество в заявке: отметить → вписать → в копии «позиция количество»
+  await page.click('#okind [data-o="gen"]');
+  const first = page.locator("#olist input[type=checkbox]").first();
+  const fname = await first.getAttribute("data-n");
+  await first.check();
+  await page.fill("#osum input.oq", "5 кг");
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+  await page.click("#ocopy");
+  const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+  ok(clip.includes("— " + fname + " 5 кг"), "количество попадает в копию заявки");
+  await page.reload(); await page.waitForSelector("#viewBt:not([hidden])", { timeout: 15000 });
+  await page.click('[data-s="order"]');
+  ok(await page.inputValue("#osum input.oq") === "5 кг", "количество сохраняется");
+  await page.click("#osum button.x");
+  ok(await page.locator("#osum input.oq").count() === 0, "позиция убирается из сводки");
+  await page.click('#okind [data-o="prep"]');
   await page.click('[data-s="lab"]'); await page.waitForTimeout(1200);
   ok(await page.evaluate(() => document.getElementById("lback").width > 100), "этикетки рисуются");
   await page.click('[data-s="rev"]'); await page.waitForTimeout(800);
