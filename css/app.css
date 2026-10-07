@@ -120,14 +120,10 @@ h3{
 }
 
 .cbody{display:flex;align-items:flex-end;gap:14px;flex:1}
-article ul{margin:0 0 15px;padding:0;list-style:none;flex:1;align-self:flex-start}
+/* состав — строкой, как в меню бара */
+.mcomp{margin:0 0 15px;flex:1;align-self:flex-start;font-size:15px;line-height:1.5;color:var(--fg)}
 .cph{flex:none;height:132px;width:auto;max-width:42%;object-fit:contain;margin:-6px 0 12px;
   filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
-article li{position:relative;padding-left:15px;margin:4px 0;font-size:14px;line-height:1.45}
-article li::before{
-  content:"";position:absolute;left:0;top:.62em;
-  width:4px;height:4px;border-radius:50%;background:var(--accent);opacity:.65;
-}
 article dl{
   margin:0;padding-top:13px;border-top:1px solid var(--line);
   display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:12.5px;
@@ -420,3 +416,20 @@ h2.h3{font-family:var(--display);font-size:25px;font-weight:600;margin:0;line-he
 footer a.link{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
 .rtoday{display:block;font-size:12px;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
 .rold{color:var(--flag)}
+
+/* месячная ревизия: поиск прилипает сверху, пока листаешь 236 позиций */
+#rkind{margin-bottom:14px}
+.msearch{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0 8px;margin-top:14px}
+.msearch input[type=search]{width:100%;font-size:16px}
+.mtools{display:flex;gap:8px;margin-top:8px;align-items:stretch}
+.mtools select{flex:1;min-width:0;font-size:15px}
+.mtodo{flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--line);border-radius:10px;
+  background:var(--surface);font-size:13.5px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
+.mtodo input{accent-color:var(--accent);width:17px;height:17px;margin:0}
+.mfound{margin:8px 2px 0;font-size:12.5px;color:var(--muted)}
+.mfound:empty{display:none}
+.msec{margin-top:22px}
+.msec .sechead{margin-bottom:8px}
+.msec .tcard{margin-top:0}
+.mgroup{margin:34px 0 -6px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.rrow.mnone .rtop b{color:var(--muted);font-weight:500}

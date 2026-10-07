@@ -27,7 +27,11 @@ const rev = { zones: Z5, open: { date: "05.10.2026", name: "Тест", key: "t1"
   items: [{ n: "Джин", u: "л", z: [1.5, 0, 0, 0, 0], t: 1.5, p: null }, { n: "Корона", u: "шт", z: [0, 3, 0, 0, 0], t: 3, p: 2 }] };
 await page.route("https://script.google.com/**", r => {
   const u = new URL(r.request().url()), cb = u.searchParams.get("callback");
-  const body = u.searchParams.has("rev") ? { ok: true, rev } : { ok: true, log: [{ t: Date.now(), n: "Тест" }] };
+  const mrev = { now: Date.now(), open: { date: "01.10.2026", name: "Тест", key: "m1" }, prev: null, rows: [
+    { r: 7, t: "h", n: "Виски" }, { r: 8, t: "i", n: "Джемесон", u: "литр", v: null, p: 2 },
+    { r: 9, t: "h", n: "Водка" }, { r: 10, t: "i", n: "Беленькая", u: "", v: 1, p: null }] };
+  const body = u.searchParams.has("rev") ? { ok: true, rev } : u.searchParams.has("mrev") ? { ok: true, mrev }
+    : { ok: true, log: [{ t: Date.now(), n: "Тест" }] };
   return r.fulfill({ contentType: "application/javascript", body: cb + "(" + JSON.stringify(body) + ")" });
 });
 
@@ -37,8 +41,10 @@ const cards = await page.locator("#out article").count();
 ok(cards >= 30, `открытая карта: ${cards} позиций`);
 ok(await page.locator("#out img.cph").count() >= 10, "фото в карте");
 ok(await page.locator("#out .abv").count() === 0, "в карте нет крепости");
-const brands = await page.evaluate(() => [...document.querySelectorAll("#out article li")].map(li => li.textContent).filter(t => /[«»A-Za-z]|Беленьк|Барристер|Хопперс|Сарти|Оакхарт|Девис|Мартини/.test(t)));
-ok(!brands.length, "в составах карты нет марок" + (brands.length ? ": " + brands.slice(0, 5).join(", ") : ""));
+const pantera = await page.textContent("#pantera .mcomp").catch(() => "");
+ok(pantera === "груша, сарти, содовая", "состав как в меню: " + pantera);
+const leaks = await page.evaluate(() => [...document.querySelectorAll("#out .mcomp")].map(p => p.textContent).filter(t => /«|п\/ф|с\/м|Беленьк|Барристер|Девис/.test(t)));
+ok(!leaks.length, "в составах карты нет внутренних названий" + (leaks.length ? ": " + leaks.slice(0, 5).join(", ") : ""));
 await page.fill("#q", "негрони");
 ok(await page.locator("#out article").count() >= 1 && await page.locator("#out article").count() < cards, "поиск по карте");
 await page.fill("#q", "");
@@ -93,6 +99,12 @@ if (PW) {
   ok(await page.evaluate(() => document.getElementById("lback").width > 100), "этикетки рисуются");
   await page.click('[data-s="rev"]'); await page.waitForTimeout(800);
   ok(await page.locator("#rlist li").count() > 0, "ревизия");
+  await page.click('#rkind [data-k="month"]'); await page.waitForTimeout(600);
+  ok(await page.locator("#mlist li.rrow").count() === 2, "месячная ревизия: позиции по разделам");
+  await page.fill("#mq", "виски");
+  ok(await page.locator("#mlist li.rrow").count() === 1, "месячная ревизия: поиск по разделу");
+  await page.fill("#mq", "");
+  await page.click('#rkind [data-k="day"]');
   ok(await page.locator("#log li").count() > 0, "журнал входов");
 }
 

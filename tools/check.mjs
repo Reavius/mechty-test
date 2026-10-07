@@ -58,8 +58,9 @@ ok(items.length > 0 && new Set(ids).size === ids.length, `id позиций ун
 ok(items.every(i => i.n && Array.isArray(i.c) && i.c.length), "у каждой позиции есть название и состав");
 const leak = items.filter(i => i.c.some(x => /\d\s*(мл|гр?|кг|л|шт)(?![а-яё])/i.test(x)));
 ok(!leak.length, "в открытой карте нет граммовок" + (leak.length ? ": " + leak.map(i => i.n).join(", ") : ""));
-const plainBad = items.filter(i => !Array.isArray(i.s) || !i.s.length || i.s.some(x => /[«»"A-Za-z]|п\/ф|с\/м/.test(x)));
-ok(!plainBad.length, "состав для гостей — без марок (поле s)" + (plainBad.length ? ": " + plainBad.map(i => i.n).join(", ") : ""));
+const MENU = JSON.parse(rd("tools/menu.json"));
+const menuBad = items.filter(i => !i.m || i.m !== MENU[i.id] || /п\/ф|с\/м|«/.test(i.m));
+ok(!menuBad.length, "состав для гостей — как в меню (tools/menu.json)" + (menuBad.length ? ": " + menuBad.map(i => i.n).join(", ") : ""));
 const noImg = items.filter(i => i.img && !has(i.img));
 ok(!noImg.length, "фото открытой карты на месте" + (noImg.length ? ": " + noImg.map(i => i.img).join(", ") : ""));
 

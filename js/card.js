@@ -2,13 +2,13 @@
 const TOTAL = data.reduce((a,g) => a + g.items.length, 0);
 let active = "all";
 
-/* состав для гостей — без марок (s); полный (c) — только на этикетках */
-const comp = it => it.s || it.c;
+/* состав для гостей — строкой, как в меню бара (m); полный (c) — только на этикетках */
+const comp = it => it.m || it.c.join(", ");
 
 function card(it, g){
   return '<article id="' + it.id + '">' +
     '<div class="chead"><h3>' + esc(it.n) + '</h3></div>' +
-    '<div class="cbody"><ul>' + comp(it).map(x => '<li>' + esc(x) + '</li>').join("") + '</ul>' +
+    '<div class="cbody"><p class="mcomp">' + esc(comp(it)) + '</p>' +
     (it.img ? '<img class="cph" src="' + esc(it.img) + '" alt="' + esc(it.n) + '"' + phwh(it.img) + ' loading="lazy" decoding="async">' : '') +
     '</div>' +
     '<dl>' +
@@ -20,7 +20,7 @@ function card(it, g){
 }
 
 function matches(it, f){
-  return !f || it.n.toLowerCase().includes(f) || comp(it).some(c => c.toLowerCase().includes(f));
+  return !f || it.n.toLowerCase().includes(f) || comp(it).toLowerCase().includes(f);
 }
 
 function drawCard(){
