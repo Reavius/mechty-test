@@ -8,7 +8,7 @@
 //
 // vault.json — {"r": [...рецептуры калькулятора], "k": [...технологические карты], "z": [...заявка заготовщиков],
 //   "zo": [...общая заявка], "pub": [...открытая карта заготовок]}. pub пишется в js/data.js открытым текстом,
-//   остальное — в шифровку. Состав для гостей (s, без марок) собирается по tools/plain.json. Состав карты (rid) и замесы техкарт (c) берутся из рецептур r, состав коктейлей карты (kid) — из техкарт k.
+//   остальное — в шифровку. Состав для гостей (m) — из tools/menu.json, как в меню бара. Состав карты (rid) и замесы техкарт (c) берутся из рецептур r, состав коктейлей карты (kid) — из техкарт k.
 // Файл с открытыми данными НЕ кладите в репозиторий.
 // Токен журнала живёт внутри шифровки. Без --token берётся токен текущей шифровки,
 // если пароль прежний, иначе создаётся новый — тогда в Apps Script нужно заменить
@@ -20,7 +20,7 @@ import { webcrypto as wc, randomBytes, createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const ITER = 600000;
-const PLAIN = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "plain.json"), "utf8"));
+const MENU = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "menu.json"), "utf8"));
 const PAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "js", "data.js");
 const LINE = /^const BLOB = .*;$/m;
 const PUB = /\/\* PUB:BEGIN \*\/\n[\s\S]*?\n\/\* PUB:END \*\//;
@@ -43,10 +43,10 @@ function fromRecipes(body){
     const r = it.rid && rec[it.rid], t = it.kid && tk[it.kid];
     if (r) it.c = r.i.map(x => x[0]);
     else if (t) it.c = t.i.map(x => x[0]);                 // коктейли при подаче — состав из техкарты, без граммовок
-    /* s — состав для гостей, без марок (tools/plain.json); c — полный, для этикеток */
-    const miss = it.c.filter(x => !PLAIN[x]);
-    if (miss.length) throw new Error("Нет простого названия в tools/plain.json: " + miss.join("; "));
-    it.s = [...new Set(it.c.map(x => PLAIN[x]))];
+    /* m — состав для гостей, как в меню бара (tools/menu.json); c — полный, для этикеток */
+    if (!MENU[it.id]) throw new Error("Нет состава для гостей в tools/menu.json: " + it.id + " (" + it.n + ")");
+    it.m = MENU[it.id];
+    delete it.s;
   }
   return body;
 }

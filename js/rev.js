@@ -243,7 +243,7 @@ window.addEventListener("online", () => { if (R) revFlush(); });
    (числа от других телефонов и время). Не мешаем, если человек вводит число. */
 const rtyping = () => [...document.querySelectorAll("#rlist input")].some(i => i.value || i === document.activeElement);
 function rtick(){
-  if (sect !== "rev" || !R || !REV || document.hidden || !navigator.onLine || rbusy) return;
+  if (sect !== "rev" || rkind !== "day" || !R || !REV || document.hidden || !navigator.onLine || rbusy) return;
   if (rjson(RQ, []).length || rtyping()) return;
   revLoad(true);
 }

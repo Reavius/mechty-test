@@ -102,6 +102,31 @@ function lsplit(name){
   }
   return best.l;
 }
+/* Текст блоком в несколько строк: перенос по пробелу и после дефиса. Самый крупный размер от maxS до minS,
+   при котором влезает не больше maxLines строк шириной width; не влезло — null. */
+function lblock(ctx, text, width, maxS, minS, maxLines, wt){
+  const tok = [];
+  String(text).split(/ +/).forEach((w, i, a) => {
+    const parts = w.split(/(?<=-)/);
+    parts.forEach((p2, k) => tok.push({t: p2, sp: k === parts.length - 1 && i < a.length - 1}));
+  });
+  for (let s = Math.floor(maxS); s >= minS; s--){
+    ctx.font = wt + " " + s + 'px "PT Serif", Georgia, serif';
+    const lines = [];
+    let cur = "", ok = true;
+    for (let i = 0; i < tok.length; i++){
+      const piece = tok[i].t;
+      const t = cur ? cur + (i && tok[i - 1].sp ? " " : "") + piece : piece;
+      if (ctx.measureText(t).width <= width){ cur = t; continue; }
+      if (!cur || ctx.measureText(piece).width > width){ ok = false; break; }
+      lines.push(cur); cur = piece;
+    }
+    if (!ok) continue;
+    if (cur) lines.push(cur);
+    if (lines.length <= maxLines) return {s, lines};
+  }
+  return null;
+}
 /* размер, при котором влезают все строки */
 const lfitAll = (ctx, lines, max, size, weight) => Math.min(...lines.map(t => lfit(ctx, t, max, size, weight)));
 
@@ -192,26 +217,35 @@ async function labDraw(){
   const mb = H * .045;                                      // поля оборотной (~1,4 мм)
   const qs = H * .43, colR = W - mb, qx = colR - qs;        // QR ≈ 13 мм — уверенно читается телефоном
 
-  /* правая колонка: название (жирно), QR, кто сделал */
+  /* правая колонка: название (жирно), QR, кто сделал. Длинное — в несколько строк (по пробелу и дефису),
+     не мельче нижнего предела; длинная фамилия, если не влезает, уходит строкой в левую колонку. */
   const d = new Date(), who = me ? me.name : "—";
-  let nl = [name], nfs = lfit(ctx, name, qs, H * .1, 700);
-  if (nfs < H * .075 && lsplit(name).length === 2){ nl = lsplit(name); nfs = lfitAll(ctx, nl, qs, H * .085, 700); }
-  const nlh = nfs * 1.05;
-  const wfs = lfit(ctx, who, qs - H * .09, H * .085, 400), wg = wfs * 1.1;
-  ctx.font = "400 " + wfs + 'px "PT Serif", Georgia, serif';
-  const ww = ctx.measureText(who).width;
-  const qTop = mb + nfs * 1.15 + (nl.length - 1) * nlh, qBot = H - mb - wfs * 1.3, qy = qTop + (qBot - qTop - qs) / 2;
-  ctx.font = "700 " + nfs + 'px "PT Serif", Georgia, serif';
-  nl.forEach((t, i) => ctx.fillText(t, qx + (qs - ctx.measureText(t).width) / 2, qy - nfs * .4 - (nl.length - 1 - i) * nlh));
-  ctx.font = "400 " + wfs + 'px "PT Serif", Georgia, serif';
-  const wx = qx + (qs - ww - wg) / 2, wy = qy + qs + wfs * 1.15;
-  lglyph(ctx, "who", wx, wy - wfs * .82, wfs * .82);
-  ctx.fillText(who, wx + wg, wy);
+  const rx = qx - H * .01, rw = qs + H * .02, gap = H * .025;
+  const nb = lblock(ctx, name, rw, H * .1, H * .068, 3, 700) || lblock(ctx, name, rw, H * .068, H * .045, 4, 700);
+  const wb = lblock(ctx, who, rw - H * .09, H * .085, H * .068, 2, 400);
+  const nameH = nb ? (nb.lines.length - 1) * nb.s * 1.04 + nb.s * .78 : 0;
+  const whoH = wb ? (wb.lines.length - 1) * wb.s * 1.06 + wb.s * .78 : 0;
+  const qsz = Math.max(H * .3, Math.min(qs, H - 2 * mb - nameH - whoH - 2 * gap));
+  const qTop = mb + nameH + gap, qBot = H - mb - whoH - (wb ? gap : 0);
+  const qy = qTop + Math.max(0, (qBot - qTop - qsz) / 2), qxx = rx + (rw - qsz) / 2;
+  if (nb){
+    ctx.font = "700 " + nb.s + 'px "PT Serif", Georgia, serif';
+    nb.lines.forEach((t, i) => ctx.fillText(t, rx + (rw - ctx.measureText(t).width) / 2, mb + nb.s * .78 + i * nb.s * 1.04));
+  }
+  if (wb){
+    ctx.font = "400 " + wb.s + 'px "PT Serif", Georgia, serif';
+    const wg = wb.s * 1.1, y1 = H - mb - (wb.lines.length - 1) * wb.s * 1.06;
+    wb.lines.forEach((t, i) => {
+      const tw = ctx.measureText(t).width, x = rx + (rw - tw - (i ? 0 : wg)) / 2;
+      if (!i) lglyph(ctx, "who", x, y1 - wb.s * .82, wb.s * .82);
+      ctx.fillText(t, x + (i ? 0 : wg), y1 + i * wb.s * 1.06);
+    });
+  }
   if (window.qrcode){
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
-    const n = q.getModuleCount(), cell = qs / n;
+    const n = q.getModuleCount(), cell = qsz / n;
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
-      if (q.isDark(r, c)) ctx.fillRect(Math.floor(qx + c * cell), Math.floor(qy + r * cell), Math.ceil(cell), Math.ceil(cell));
+      if (q.isDark(r, c)) ctx.fillRect(Math.floor(qxx + c * cell), Math.floor(qy + r * cell), Math.ceil(cell), Math.ceil(cell));
   }
   const sepX = qx - H * .045;                               // тонкая черта между колонками
   ctx.fillRect(sepX, mb, Math.max(2, H * .005), H - 2 * mb);
@@ -221,7 +255,8 @@ async function labDraw(){
   const days = parseInt(g.srok, 10) || 0, till = new Date(d.getTime() + days * 864e5);
   const comp = (it.c || []).map(lshort);
   const rows = comp.map(t => ["pin", t, 400])
-    .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700]]);   // даты не разрываются
+    .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700]])   // даты не разрываются
+    .concat(wb ? [] : [["who", who, 400]]);
   $("linfo").innerHTML = "Дата производства — сегодня, <b>" + ldmy(d) + "</b>; годен до <b>" + ldmy(till) + "</b> (" + esc(g.srok) +
     "); сделал — <b>" + esc(who) + "</b>. При сохранении дата и фамилия подставляются заново.";
 

@@ -193,6 +193,11 @@
   </div>
 
   <div id="secRev" hidden>
+    <div class="modes" id="rkind" role="group" aria-label="Вид ревизии">
+      <button type="button" data-k="day"   aria-pressed="true">Ежедневная</button>
+      <button type="button" data-k="month" aria-pressed="false">Месячная</button>
+    </div>
+    <div id="revDay">
     <div class="result tcard osum">
       <div class="tname"><em id="rqueue"></em><h2 class="h3" id="rtitle">Ревизия</h2></div>
       <p class="oempty" id="rinfo" aria-live="polite">Загружаем…</p>
@@ -209,6 +214,31 @@
         <div class="modes zones" id="rzone" role="group" aria-label="Зона"></div>
       </div>
       <div class="result tcard"><ul class="rlist" id="rlist"></ul></div>
+    </div>
+    </div>
+
+    <div id="revMonth" hidden>
+      <div class="result tcard osum">
+        <div class="tname"><em id="mqueue"></em><h2 class="h3" id="mtitle">Месячная ревизия</h2></div>
+        <p class="oempty" id="minfo" aria-live="polite">Загружаем…</p>
+        <div class="otools">
+          <button type="button" class="link" id="mstart">Начать ревизию</button>
+          <button type="button" class="link" id="mreload">Обновить</button>
+          <button type="button" class="link" id="mclose" hidden>Завершить</button>
+        </div>
+      </div>
+      <div class="warn" id="mwarn" role="status"></div>
+      <div id="mbody" hidden>
+        <div class="msearch" id="msearch">
+          <input id="mq" class="tq" type="search" placeholder="Поиск по позиции" autocomplete="off" enterkeyhint="search" aria-label="Поиск по позициям месячной ревизии">
+          <div class="mtools">
+            <select id="msec" aria-label="Раздел"></select>
+            <label class="mtodo"><input type="checkbox" id="mtodo"> Не посчитано</label>
+          </div>
+          <p class="mfound" id="mfound" aria-live="polite"></p>
+        </div>
+        <div id="mlist"></div>
+      </div>
     </div>
   </div>
 
@@ -273,6 +303,7 @@
 <script src="js/ttk.js" defer></script>
 <script src="js/labels.js" defer></script>
 <script src="js/rev.js" defer></script>
+<script src="js/mrev.js" defer></script>
 <script src="js/order.js" defer></script>
 <script src="js/calc.js" defer></script>
 <script src="js/swipe.js" defer></script>
