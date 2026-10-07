@@ -28,7 +28,9 @@ rkindShow();
 
 /* ── данные ── */
 const mnorm = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
-const mitems = () => MREVS ? MREVS.rows.filter(x => x.t === "i") : [];
+const mitems = () => { if (MREVS) msections(); return MREVS ? MREVS.rows.filter(x => x.t === "i") : []; };
+/* ключ позиции для истории и очереди: раздел + название — не меняется, если в листе сдвинули строки */
+const mkey = it => (it.sec || "") + "|" + it.n;
 
 /* строки листа → разделы; раздел без своих позиций (П/ф бар) — заголовок группы */
 function msections(){
@@ -73,14 +75,14 @@ function mApplyQueue(){
   if (!MREVS || !MREVS.open) return;
   for (const q of rjson(MQ, [])){
     if (q.rk !== MREVS.open.key) continue;
-    const it = mitems().find(x => x.r === q.row && x.n === q.pos);
+    const it = mitems().find(x => mkey(x) === q.k) || mitems().find(x => x.r === q.row && x.n === q.pos);
     if (it){ it.v = Math.round(((it.v || 0) + q.v) * 1000) / 1000; it.pend = true; }
   }
 }
 
 /* ── отрисовка ── */
 function mrow(it, hist){
-  const parts = hist[it.r] || [];
+  const parts = hist[mkey(it)] || [];
   const sub = [];
   if (parts.length) sub.push(parts.map(hl).join(" + ").replace(/\+ -/g, "− "));
   if (it.p != null) sub.push("прошлый: " + rfmt(it.p) + (it.u ? " " + it.u : ""));
@@ -166,13 +168,14 @@ function mrevAdd(row, v, undo, e){
 
   const all = rjson(MH, {});
   const h = all[r.open.key] = all[r.open.key] || {};
-  h[row] = h[row] || [];
-  undo ? h[row].pop() : h[row].push(e ? {v, e} : v);
+  const k = mkey(it);
+  h[k] = h[k] || [];
+  undo ? h[k].pop() : h[k].push(e ? {v, e} : v);
   for (const key of Object.keys(all)) if (key !== r.open.key) delete all[key];
   rsave(MH, all);
 
   const q = rjson(MQ, []);
-  q.push({id: rid(), rk: r.open.key, row, pos: it.n, v});
+  q.push({id: rid(), rk: r.open.key, row, k, sec: it.sec || "", pos: it.n, v});
   rsave(MQ, q);
   mpatch(it); mrevDraw(false);
   mFlush();
@@ -188,14 +191,14 @@ async function mFlush(){
       const q = rjson(MQ, []);
       if (!q.length) break;
       const a = q[0];
-      const d = await api({mrev:"add", id:a.id, rk:a.rk, row:String(a.row), pos:a.pos, v:String(a.v), rn: me ? me.name : ""});
+      const d = await api({mrev:"add", id:a.id, rk:a.rk, row:String(a.row), sec:a.sec || "", pos:a.pos, v:String(a.v), rn: me ? me.name : ""});
       if (d.error === "net" || d.error === "denied") break;
       rsave(MQ, rjson(MQ, []).filter(x => x.id !== a.id));
       if (!d.ok){ bad = true; $("mwarn").textContent = a.pos + ": " + (d.error === "closed" ? "ревизия уже завершена — добавление не записано." : "не записано (" + d.error + ")."); continue; }
       if (d.add && MREVS && MREVS.open && MREVS.open.key === a.rk){
-        const left = rjson(MQ, []).filter(x => x.row === a.row);
-        const it = mitems().find(x => x.r === a.row) || mitems().find(x => x.r === d.add.row);
-        if (it && !left.length){ it.v = d.add.v; it.pend = false; mpatch(it); }
+        const it = mitems().find(x => x.r === d.add.row && x.n === a.pos) || mitems().find(x => a.k && mkey(x) === a.k);
+        const left = it ? rjson(MQ, []).filter(x => x.k ? x.k === mkey(it) : x.row === it.r) : [];
+        if (it && !left.length && d.add.v != null){ it.v = d.add.v; it.pend = false; mpatch(it); }
       }
     }
     if (MREVS){ rsave(MS, MREVS); mrevDraw(false); }
@@ -230,7 +233,7 @@ $("mlist").addEventListener("click", e => {
   const u = e.target.closest("button.undo");
   if (!u) return;
   const row = +u.closest("li").dataset.r, it = mitems().find(x => x.r === row);
-  const parts = ((rjson(MH, {})[MREVS.open.key] || {})[row]) || [];
+  const parts = it ? ((rjson(MH, {})[MREVS.open.key] || {})[mkey(it)]) || [] : [];
   if (!it || !parts.length) return;
   const last = parts[parts.length - 1];
   if (confirm("Отменить последнее добавление (" + hl(last) + (it.u ? " " + it.u : "") + ") — " + it.n + "?")) mrevAdd(row, -hv(last), true);
