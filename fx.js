@@ -87,15 +87,6 @@
   }
 
   /* ── карточки: всплывают каскадом при прокрутке, крепость досчитывается ── */
-  function countUp(el) {
-    const m = el.textContent.match(/(\d+)/);
-    if (!m || el.dataset.fx) return;
-    el.dataset.fx = 1;
-    const end = +m[1], pre = el.textContent.slice(0, m.index), post = el.textContent.slice(m.index + m[1].length);
-    const o = { v: 0 };
-    g.to(o, { v: end, duration: .9, ease: "power1.out", onUpdate: () => { el.textContent = pre + Math.round(o.v) + post; } });
-  }
-
   function animateCards(root) {
     const cards = $$("article:not([data-fx])", root);
     if (!cards.length) return;
@@ -107,8 +98,6 @@
       onEnter: batch => {
         g.to(batch, { opacity: 1, y: 0, duration: .6, ease: "power3.out", stagger: .08 });
         batch.forEach(c => {
-          const abv = c.querySelector(".abv:not(.na)");
-          if (abv) countUp(abv);
           const ph = c.querySelector(".cph");
           if (ph) g.from(ph, { opacity: 0, y: 24, scale: .92, duration: .8, ease: "power3.out", delay: .15 });
         });

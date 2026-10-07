@@ -15,6 +15,13 @@ function readNeed(){
 function writeNeed(set){
   try { localStorage.setItem(OKINDS[okind].key, JSON.stringify([...set])); } catch (e) {}
 }
+/* количество к каждой отмеченной позиции — свободным текстом: «5 кг», «2 шт», «300 г» */
+function readQty(){
+  try { return JSON.parse(localStorage.getItem(OKINDS[okind].key + "-q") || "{}") || {}; } catch (e) { return {}; }
+}
+function writeQty(q){
+  try { localStorage.setItem(OKINDS[okind].key + "-q", JSON.stringify(q)); } catch (e) {}
+}
 
 $("okind").addEventListener("click", e => {
   const b = e.target.closest("button");
@@ -43,13 +50,15 @@ function fillOrder(){
 
 /* сводка сверху: отмеченное, по группам */
 function drawSum(){
-  const need = readNeed();
+  const need = readNeed(), qty = readQty();
   const groups = OL().map(g => ({g:g.g, items:g.items.filter(n => need.has(n))})).filter(g => g.items.length);
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   $("ocount").textContent = n + " поз.";
   $("osum").innerHTML = n
     ? groups.map(g => '<div class="osub">' + esc(g.g) + '</div><ul class="olist">' +
-        g.items.map(x => '<li><div class="row1"><span>' + esc(x) + '</span>' +
+        g.items.map(x => '<li><div class="row1' + (qty[x] ? ' has-q' : '') + '"><span>' + esc(x) + '</span>' +
+          '<input type="text" class="oq" inputmode="text" enterkeyhint="done" autocomplete="off" maxlength="24"' +
+          ' placeholder="кол-во" value="' + esc(qty[x] || "") + '" data-n="' + esc(x) + '" aria-label="Количество: ' + esc(x) + '">' +
           '<button type="button" class="x" data-n="' + esc(x) + '" aria-label="Убрать: ' + esc(x) + '">×</button></div></li>').join("") +
         '</ul>').join("")
     : '<p class="oempty">Пока пусто. Отметьте галочкой в списке ниже то, что нужно заказать.</p>';
@@ -60,6 +69,7 @@ function setNeed(name, on){
   const need = readNeed();
   on ? need.add(name) : need.delete(name);
   writeNeed(need);
+  if (!on){ const q = readQty(); if (name in q){ delete q[name]; writeQty(q); } }
   const box = [...document.querySelectorAll("#olist input")].find(b => b.dataset.n === name);
   if (box){ box.checked = on; box.closest("li").classList.toggle("on", on); }
   drawSum();
@@ -74,20 +84,34 @@ $("osum").addEventListener("click", e => {
   if (b){ buzz(8); setNeed(b.dataset.n, false); }
 });
 
+/* количество сохраняется сразу, при вводе */
+$("osum").addEventListener("input", e => {
+  const inp = e.target.closest("input.oq");
+  if (!inp) return;
+  const q = readQty(), v = inp.value.replace(/\s+/g, " ").trim();
+  v ? q[inp.dataset.n] = v : delete q[inp.dataset.n];
+  writeQty(q);
+  inp.closest(".row1").classList.toggle("has-q", !!v);
+});
+$("osum").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.closest("input.oq")){ e.preventDefault(); e.target.blur(); }
+});
+
 $("oreset").addEventListener("click", () => {
   if (!confirm("Отменить все выбранные позиции?")) return;
   writeNeed(new Set());
+  writeQty({});
   fillOrder();
 });
 
 $("ocopy").addEventListener("click", async () => {
-  const need = readNeed();
+  const need = readNeed(), qty = readQty();
   const d = new Date();
   const lines = ["Заявка " + String(d.getDate()).padStart(2,"0") + "." +
     String(d.getMonth()+1).padStart(2,"0") + "." + d.getFullYear()];
   /* одним столбиком, без разделов */
   const items = OL().flatMap(g => g.items.filter(n => need.has(n)));
-  lines.push("", ...items.map(n => "— " + n));
+  lines.push("", ...items.map(n => "— " + n + (qty[n] ? " " + qty[n] : "")));
   const text = lines.join("\n");
   let ok = false;
   try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
