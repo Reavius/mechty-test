@@ -328,8 +328,8 @@ input[type="date"]{
 /* количество в сводке заявки: свободный текст — «5 кг», «2 шт», «300 г» */
 .olist .row1 span{flex:1;min-width:0;overflow-wrap:anywhere}
 .olist input.oq{
-  flex:none;width:96px;height:32px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:8px;
-  background:var(--surface-2);color:var(--fg);font:500 14px/1 var(--sans);text-align:right;
+  flex:0 1 128px;width:128px;min-width:96px;height:34px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface-2);color:var(--fg);font:500 16px/1 var(--sans);text-align:right;   /* 16px — iPhone не увеличивает страницу */
 }
 .olist input.oq::placeholder{color:var(--muted);opacity:.8}
 .olist input.oq:focus{outline:none;border-color:var(--accent)}
