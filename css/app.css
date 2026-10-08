@@ -461,3 +461,32 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .mnewf button[type=submit]:disabled{opacity:.5;cursor:default}
 .mend{margin-top:18px;border-top:0;justify-content:center}
 #mlist .empty .link{margin-left:4px}
+
+/* ── Списания ── */
+.wo{margin-top:14px}
+.wobody{padding:4px 16px 18px}
+.wo input,.wo select{width:100%;font-size:16px}
+.wo .label{display:block;margin:12px 0 6px}
+.wo .label small{text-transform:none;letter-spacing:0;font-weight:500}
+.wo2{display:grid;grid-template-columns:1.3fr 1fr;gap:10px}
+.wolab{margin-top:22px!important;display:flex!important;justify-content:space-between;align-items:center}
+.worows{list-style:none;margin:0;padding:0;counter-reset:wo}
+.worow{padding:10px 0;border-top:1px solid var(--line);counter-increment:wo;position:relative}
+.worow:first-child{border-top:0}
+.worow2{display:grid;grid-template-columns:80px 88px 1fr 40px;gap:6px;margin-top:6px}
+.worow .wox{padding:0;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);font:600 18px/1 var(--sans);cursor:pointer}
+.woadd{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px dashed var(--line);background:transparent;color:var(--accent);
+  font:700 14.5px var(--sans);cursor:pointer}
+.wowho #woName{background:transparent;color:var(--muted);border-style:dashed}
+.wosig{position:relative;border-radius:12px;overflow:hidden;background:#fff;border:1px solid var(--line)}
+.wosig canvas{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair}
+.wosighint{position:absolute;inset:auto 0 14px 0;text-align:center;font-size:13px;color:#9a9a9a;pointer-events:none}
+.wosig::after{content:"";position:absolute;left:16px;right:16px;bottom:40px;border-bottom:1px dashed #c8c8c8;pointer-events:none}
+.wogo{width:100%;margin-top:16px;font-family:var(--sans);font-size:16px;font-weight:700;padding:14px 16px;border-radius:10px;cursor:pointer;
+  border:1px solid var(--accent);background:var(--accent);color:var(--bg)}
+.wogo:disabled{opacity:.6;cursor:default}
+#woDone .lprev img{display:block;width:100%;height:auto;border-radius:8px;background:#fff}
+#woHist{margin-top:22px}
+#woList .row1 span{min-width:0}
+#woList .link{flex:none;font-size:13.5px}
+.wopend{font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--flag);font-weight:700;flex:none}

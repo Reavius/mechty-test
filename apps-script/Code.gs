@@ -31,6 +31,8 @@ function doGet(e) {
     try { out = revision(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.mrev) {
     try { out = monthly(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.wo) {
+    try { out = writeoffs(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else {
     const name = clean(p.name, 60);
     const email = clean(p.email, 120).toLowerCase();
@@ -592,6 +594,105 @@ function mrevAdd(p, isNew) {
   const t = sh.getRange(row, tc).getValue();
   const cv = cell.getValue();
   return { ok: true, add: { row: row, pos: String(sh.getRange(row, 2).getDisplayValue()).trim(), v: cv === "" ? "" : round3(num(cv)), tot: t === "" ? null : round3(num(t)), isNew: isNew } };
+}
+
+/* ═════════════ Списания ═════════════
+   Акт о списании собирается на сайте: PDF создаётся на телефоне (скачать / поделиться) и присылается сюда (POST).
+   Файл — в папку «Бар Мечты — Списания» на Google Диске, каждая позиция — строкой в лист «Списания» таблицы ревизии.
+   Повтор с тем же id не дублируется (id хранится в листе). Нужен доступ к Диску: выполните checkWriteoff один раз. */
+const WO_FOLDER = "Бар Мечты — Списания";
+const WO_SHEET = "Списания";
+const WO_HEAD = ["Дата акта", "№", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Кто", "Файл", "Записано", "id"];
+
+function doPost(e) {
+  let p = {};
+  try { p = JSON.parse(e && e.postData ? e.postData.contents : "{}"); } catch (err) { return jsonOut({ error: "bad" }); }
+  if (!tokenOk(p.token)) return jsonOut({ error: "denied" });
+  try {
+    sheet();
+    if (p.wo === "save") return jsonOut(woSave(p));
+    return jsonOut({ error: "action" });
+  } catch (err) { return jsonOut({ error: String(err && err.message || err) }); }
+}
+function jsonOut(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+function woSheet() {
+  const ss = revBook();
+  let sh = ss.getSheetByName(WO_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(WO_SHEET);
+    sh.getRange(1, 1, 1, WO_HEAD.length).setValues([WO_HEAD]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function woFolder() {
+  const f = DriveApp.getFoldersByName(WO_FOLDER);
+  return f.hasNext() ? f.next() : DriveApp.createFolder(WO_FOLDER);
+}
+/* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
+function woFind(sh, id) {
+  const last = sh.getLastRow();
+  if (last < 2) return null;
+  const v = sh.getRange(2, 8, last - 1, 3).getValues();
+  for (let i = v.length - 1; i >= 0; i--) if (String(v[i][2]) === id) return String(v[i][0] || "");
+  return null;
+}
+
+function woSave(p) {
+  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), a = p.act || {};
+  const rows = (Array.isArray(a.rows) ? a.rows : []).slice(0, 200)
+    .map(r => [clean(r.n, 120), clean(r.u, 10), num(r.q), clean(r.why, 120)]).filter(r => r[0]);
+  const date = clean(a.date, 20), no = clean(a.no, 20), who = clean(a.who, 80);
+  if (!id || !rows.length || !/^\d{2}\.\d{2}\.\d{4}$/.test(date)) return { error: "bad" };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = woSheet(), seen = woFind(sh, id);
+    if (seen !== null) return { ok: true, url: seen, dup: true };
+    let url = "";
+    if (p.pdf) {
+      const name = "Акт списания " + date + (no ? " №" + no : "") + " — " + (who || "бар").replace(/\.+$/, "") + ".pdf";
+      const blob = Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), "application/pdf", name);
+      url = woFolder().createFile(blob).getUrl();
+    }
+    const stamp = new Date(), last = Math.max(sh.getLastRow(), 1);
+    ensureRows(sh, last + rows.length);
+    const n = rows.length, top = last + 1;
+    sh.getRange(top, 1, n, 4).setNumberFormat("@");                       // текст: дата, №, наименование, ед.
+    sh.getRange(top, 6, n, 5).setNumberFormat("@");                       // текст: причина, кто, файл, когда, id
+    sh.getRange(top, 1, n, WO_HEAD.length)                                // кол-во — числом, чтобы считать суммы
+      .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
+    return { ok: true, url: url };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* JSONP: wo=check — записан ли акт; wo=list — последние акты */
+function writeoffs(p) {
+  const sh = woSheet(), act = String(p.wo);
+  if (act === "check") { const u = woFind(sh, String(p.id || "")); return { ok: true, saved: u !== null, url: u || "" }; }
+  if (act === "list") {
+    const last = sh.getLastRow(), out = [], seen = {};
+    if (last >= 2) {
+      const v = sh.getRange(Math.max(2, last - 400), 1, Math.min(last - 1, 401), WO_HEAD.length).getDisplayValues();
+      for (let i = v.length - 1; i >= 0 && out.length < 15; i--) {
+        const r = v[i], id = r[9];
+        if (!id) continue;
+        if (seen[id]) { seen[id].n++; continue; }
+        seen[id] = { date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 1 };
+        out.push(seen[id]);
+      }
+    }
+    return { ok: true, acts: out };
+  }
+  return { error: "action" };
+}
+
+/* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску. */
+function checkWriteoff() {
+  Logger.log("Папка: «" + woFolder().getName() + "», лист: «" + woSheet().getName() + "». Всё в порядке.");
 }
 
 /* Бланк бара: [строка, тип (h — раздел, s — подраздел, i — позиция), A, B, C, жирный] */

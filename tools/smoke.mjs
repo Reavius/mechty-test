@@ -108,6 +108,8 @@ if (PW) {
   await page.fill("#mq", "");
   await page.click('#rkind [data-k="day"]');
   ok(await page.locator("#log li").count() > 0, "журнал входов");
+  await page.click('[data-s="wo"]'); await page.waitForTimeout(300);
+  ok(await page.inputValue("#woName") === "Тест" && await page.locator("#woRows .worow").count() >= 1, "списания: форма акта");
 }
 
 ok(errs.length === 0, "без ошибок в консоли" + (errs.length ? ": " + errs.join(" | ") : ""));
