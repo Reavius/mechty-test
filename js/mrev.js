@@ -65,9 +65,15 @@ async function mrevLoad(quiet){
   const d = await api({mrev:"state"});
   if (d.ok && d.mrev && "block" in d.mrev){
     rsync(d.mrev);
+    const old = MREVS;
     MREVS = d.mrev; mcached = false;
-    rsave(MS, MREVS);
-    mApplyQueue(); mrevDraw(true); mFlush();
+    rsave(MS, MREVS);                                       // в копии на устройстве — только данные таблицы, без очереди
+    mApplyQueue();
+    /* тихая сверка: если список тот же — обновляем только изменившиеся строки (ввод и клавиатура не сбиваются) */
+    if (quiet && old && msame(old, MREVS)){ mrevDraw(false); mpatchChanged(old); }
+    else if (quiet && mtyping()){ mrevDraw(false); mpatchChanged(old); }
+    else mrevDraw(true);
+    mFlush();
   } else if (quiet){
     $("mqueue").textContent = "нет связи";
   } else {
@@ -76,6 +82,26 @@ async function mrevLoad(quiet){
       : d.error === "net" ? "Таблица не отвечает." + (MREVS ? " Показана сохранённая копия — добавления отправятся, когда появится связь." : "")
       : "Ошибка таблицы: " + (d.error || "нет ответа") + ".";
   }
+}
+
+/* тот же набор строк и столбцов — можно обновить точечно */
+function msame(a, b){
+  if (!a || !b || !a.block || !b.block || a.block.open !== b.block.open || a.block.cols.length !== b.block.cols.length) return false;
+  if (a.block.cols.some((c, i) => c.id !== b.block.cols[i].id || c.open !== b.block.cols[i].open)) return false;
+  return a.rows.length === b.rows.length && a.rows.every((x, i) => x.r === b.rows[i].r && x.n === b.rows[i].n);
+}
+function mpatchChanged(old){
+  const prev = {};
+  if (old) old.rows.forEach(x => { if (x.t === "i") prev[x.r + "|" + x.n] = JSON.stringify([x.tot, x.c, x.p, x.pend]); });
+  mitems().forEach(x => { if (prev[x.r + "|" + x.n] !== JSON.stringify([x.tot, x.c, x.p, x.pend])) mpatch(x); });
+}
+/* копия на устройстве: подтверждённое сервером добавление — в неё же (чтобы без связи не потерять и не задвоить) */
+function msnap(row, pos, ci, v, tot){
+  const sn = rjson(MS, null);
+  const x = sn && sn.rows && sn.rows.find(y => y.r === row && y.n === pos);
+  if (!x || !x.c) return;
+  x.c[ci] = v; if (tot !== undefined) x.tot = tot;
+  rsave(MS, sn);
 }
 
 /* неотправленные добавления — поверх данных с сервера (в свой столбец и в итог) */
@@ -185,7 +211,7 @@ function mpatch(it){
 /* ── добавление в свой столбец ── */
 function mrevAdd(row, v, undo, e){
   const mine = mmine(), mi = mmineIdx(), it = mitems().find(x => x.r === row);
-  if (!it || !mine || !isFinite(v) || !v) return;
+  if (!it || !mine || !isFinite(v)) return;                 // 0 можно: «посчитано, ноль»
   it.c[mi] = mround((it.c[mi] || 0) + v); it.tot = mround((it.tot || 0) + v); it.pend = true;
   buzz(undo ? 8 : 14);
 
@@ -194,11 +220,13 @@ function mrevAdd(row, v, undo, e){
   const k = mkey(it);
   h[k] = h[k] || [];
   undo ? h[k].pop() : h[k].push(e ? {v, e} : v);
+  const clr = undo && !h[k].length;                         // отменили всё своё — ячейка снова пустая
+  if (clr && it.c[mi] === 0){ it.c[mi] = null; if (!it.c.some(x => x != null)) it.tot = null; }
   for (const key of Object.keys(all)) if (key !== hk) delete all[key];
   rsave(MH, all);
 
   const q = rjson(MQ, []);
-  q.push({id: rid(), cid: mine.id, row, k, sec: it.sec || "", pos: it.n, v});
+  q.push({id: rid(), cid: mine.id, row, k, sec: it.sec || "", pos: it.n, v, clr: clr ? 1 : 0});
   rsave(MQ, q);
   mpatch(it); mrevDraw(false);
   mFlush();
@@ -214,20 +242,43 @@ async function mFlush(){
       const q = rjson(MQ, []);
       if (!q.length) break;
       const a = q[0];
-      const d = await api({mrev:"add", id:a.id, cid:a.cid, row:String(a.row), sec:a.sec || "", pos:a.pos, v:String(a.v), rn: me ? me.name : ""});
+      const d = await api({mrev:"add", id:a.id, cid:a.cid, row:String(a.row), sec:a.sec || "", pos:a.pos, v:String(a.v), clr: a.clr ? "1" : "", rn: me ? me.name : ""});
       if (d.error === "net" || d.error === "denied") break;
+      const final = !d.ok && /^(closed|position|bad)$|^Это столбец/.test(String(d.error));
+      if (!d.ok && !final){                                  // таблица занята или временная ошибка — повторим позже
+        $("mwarn").textContent = "Таблица не ответила — добавления отправятся повторно.";
+        break;
+      }
       rsave(MQ, rjson(MQ, []).filter(x => x.id !== a.id));
-      if (!d.ok){ bad = true; $("mwarn").textContent = a.pos + ": " + (d.error === "closed" ? "ваш подсчёт уже завершён — добавление не записано." : "не записано (" + d.error + ")."); continue; }
+      if (!d.ok){
+        bad = true;
+        mhistDrop(a);
+        $("mwarn").textContent = a.pos + ": " + (d.error === "closed" ? "ваш подсчёт уже завершён — добавление не записано." : "не записано (" + d.error + ").");
+        continue;
+      }
+      $("mwarn").textContent = "";
       const b = mblock(), ci = b ? b.cols.findIndex(c => c.id === a.cid) : -1;
-      if (d.add && ci >= 0 && d.add.v != null){
+      if (d.add && ci >= 0 && d.add.v !== null && d.add.v !== undefined){
+        msnap(d.add.row, a.pos, ci, d.add.v === "" ? null : d.add.v, d.add.tot);
         const it = mitems().find(x => x.r === d.add.row && x.n === a.pos) || mitems().find(x => mkey(x) === a.k);
         const left = it ? rjson(MQ, []).filter(x => x.k === mkey(it)) : [];
-        if (it && !left.length){ it.c[ci] = d.add.v; if (d.add.tot != null) it.tot = d.add.tot; it.pend = false; mpatch(it); }
+        if (it && !left.length){ it.c[ci] = d.add.v === "" ? null : d.add.v; if (d.add.tot !== undefined) it.tot = d.add.tot; it.pend = false; mpatch(it); }
       }
     }
-    if (MREVS){ rsave(MS, MREVS); mrevDraw(false); }
+    if (MREVS) mrevDraw(false);
   } finally { mbusy = false; }
   if (bad) mrevLoad(true);                                 // не записалось — сверяемся с таблицей
+}
+
+/* не записалось окончательно — убрать из истории отмены (иначе «↶» вычтет то, чего нет) */
+function mhistDrop(a){
+  const all = rjson(MH, {}), h = all[mhk()];
+  if (!h || !a.k) return;
+  const parts = h[a.k] = h[a.k] || [];
+  if (a.v > 0 || (a.v === 0 && !a.clr)){
+    for (let i = parts.length - 1; i >= 0; i--) if (hv(parts[i]) === a.v){ parts.splice(i, 1); break; }
+  } else parts.push(-a.v);                                   // не прошла отмена — вернуть запись
+  rsave(MH, all);
 }
 
 /* ── новая позиция: наименование, количество, ед. изм. → вниз ревизии ── */
@@ -264,7 +315,7 @@ $("mlist").addEventListener("submit", e => {
   e.preventDefault();
   const li = e.target.closest("li"), inp = e.target.querySelector("input");
   const c = rcalc(inp.value);
-  if (!isFinite(c.v) || !c.v){ inp.focus(); return; }
+  if (!isFinite(c.v)){ inp.focus(); return; }               // «0» — тоже ответ: позиции нет
   mrevAdd(+li.dataset.r, c.v, false, c.e);
   inp.value = ""; li.querySelector(".rprev").textContent = "";
   inp.focus();
@@ -288,7 +339,7 @@ $("mlist").addEventListener("click", e => {
   const parts = it ? (rjson(MH, {})[mhk()] || {})[mkey(it)] || [] : [];
   if (!it || !parts.length) return;
   const last = parts[parts.length - 1];
-  if (confirm("Отменить последнее добавление (" + hl(last) + (it.u ? " " + it.u : "") + ") — " + it.n + "?")) mrevAdd(row, -hv(last), true);
+  if (confirm("Отменить последнее добавление (" + hl(last) + (it.u ? " " + it.u : "") + ") — " + it.n + "?")) mrevAdd(row, -hv(last) || 0, true);
 });
 $("mlist").addEventListener("input", e => {
   const inp = e.target.closest(".rin input");

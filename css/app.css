@@ -424,7 +424,10 @@ footer a.link{text-decoration:underline;text-underline-offset:3px;text-decoratio
 
 /* месячная ревизия: поиск прилипает сверху, пока листаешь 236 позиций */
 #rkind{margin-bottom:14px}
-.msearch{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0 8px;margin-top:14px}
+.msearch{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding:12px 0 8px;margin-top:14px}
+/* поле ввода в строке не прячется под прилипшим поиском */
+#mlist .rrow{scroll-margin-top:190px}
+html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .msearch input[type=search]{width:100%;font-size:16px}
 .mtools{display:flex;gap:8px;margin-top:8px;align-items:stretch}
 .mtools select{flex:1;min-width:0;font-size:15px}

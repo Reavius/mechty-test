@@ -512,7 +512,7 @@ function mrevEnd() {
    в свой открытый столбец. Новая — вниз, в раздел «Новые позиции»; такое название уже есть — прибавляем к нему. */
 function mrevAdd(p, isNew) {
   const id = String(p.id || "").slice(0, 64), name = clean(p.pos, 80), v = num(p.v);
-  if (!id || !name || !isFinite(v) || (!isNew && !v) || Math.abs(v) > 100000) return { error: "bad" };
+  if (!id || !name || !isFinite(v) || Math.abs(v) > 100000) return { error: "bad" };   // 0 — «посчитано, ноль»
   const sh = mrevSheet(), cache = CacheService.getScriptCache();
   const seen = cache.get("mrev:" + id);
   if (seen) return { ok: true, add: { row: parseInt(seen, 10), pos: name, v: null } };   // повтор — итог подтянется при сверке
@@ -549,11 +549,13 @@ function mrevAdd(p, isNew) {
   }
   const cell = sh.getRange(row, col);
   if (v || cell.getValue() === "") cell.setValue(round3(num(cell.getValue()) + v));
+  if (p.clr && num(cell.getValue()) === 0) cell.setValue("");          // отменили всё — снова «не посчитано»
   revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), b.title + " · " + c.name + " " + c.date, isNew ? "новая" : "—", name, v, id]);
   cache.put("mrev:" + id, String(row), 21600);
   SpreadsheetApp.flush();
   const t = sh.getRange(row, tc).getValue();
-  return { ok: true, add: { row: row, pos: name, v: round3(num(cell.getValue())), tot: t === "" ? null : round3(num(t)), isNew: isNew } };
+  const cv = cell.getValue();
+  return { ok: true, add: { row: row, pos: name, v: cv === "" ? "" : round3(num(cv)), tot: t === "" ? null : round3(num(t)), isNew: isNew } };
 }
 
 /* Бланк бара: [строка, тип (h — раздел, s — подраздел, i — позиция), A, B, C, жирный] */
