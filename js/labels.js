@@ -153,6 +153,7 @@ function lshift(ctx, W, H){
   const d = ctx.getImageData(0, 0, W, H).data;
   let x0 = W;
   for (let y = 0; y < H; y++) for (let x = 0; x < x0; x++) if (d[(y * W + x) * 4] < 160){ x0 = x; break; }
+  x0 -= x0 & 1;                                              // на чётное: QR остаётся ровно по точкам принтера (2 пикселя = 1 точка)
   if (x0 <= 0 || x0 >= W) return;
   const img = ctx.getImageData(x0, 0, W - x0, H);
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.putImageData(img, 0, 0); ctx.fillStyle = "#000";

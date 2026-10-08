@@ -17,7 +17,7 @@ const REV_ZONES = "По зонам";                // по колонке на 
 const REV_LOG = "Ревизия журнал";            // каждое добавление отдельной строкой
 const ZONES = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда"];
 const TZ = "GMT+5";                                                 // время Астаны — для дат ревизии
-const PCS = ["корона", "ред булл", "рэд булл", "red bull", "байкал"];
+const PCS = ["корона", "ред булл", "рэд булл", "red bull", "байкал"];   // считаются в штуках
 const MREV = "Месячная ревизия";                                    // лист месячной ревизии (в таблице ревизии)                      // позиции в штуках (по вхождению в название); остальные — литры
 
 function doGet(e) {
@@ -741,6 +741,9 @@ function woSave(p) {
   try {
     const sh = woSheet(kind, true);
     try { woMigrate(kind, sh); } catch (e) {}                              // перенос старого листа не мешает сохранить акт
+    /* строки, перенесённые из заметки, — списаны этим актом (и при повторе: отметка могла не записаться) */
+    const nids = (Array.isArray(a.rows) ? a.rows : []).map(r => String(r && r.nid || "").replace(/[^\w-]/g, "")).filter(Boolean);
+    if (nids.length) wnDone(nids, WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " · " + (who || "") + " · " + id, id);
     const seen = woFind(sh, id);
     if (seen !== null) return { ok: true, url: seen, dup: true };
     let url = "";
@@ -756,9 +759,6 @@ function woSave(p) {
     sh.getRange(top, 6, n, 5).setNumberFormat("@");                       // текст: причина, кто, файл, когда, id
     sh.getRange(top, 1, n, WO_HEAD.length)                                // кол-во — числом, чтобы считать суммы
       .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
-    /* строки, перенесённые из заметки, — списаны этим актом */
-    const nids = (Array.isArray(a.rows) ? a.rows : []).map(r => String(r && r.nid || "").replace(/[^\w-]/g, "")).filter(Boolean);
-    if (nids.length) { try { wnDone(nids, WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " · " + (who || "") + " · " + id); } catch (e) {} }
     SpreadsheetApp.flush();                                               // записать до снятия блокировки — повтор увидит id
     return { ok: true, url: url };
   } finally {
@@ -795,14 +795,16 @@ function writeoffs(p) {
 }
 
 /* ═════════════ Заметка к списанию ═════════════
-   Общий список «что списать» — видят все. Строку нельзя удалить. Перенос в акт закрепляет строку за барменом
-   на 24 часа (take): в заметке её больше не видно, в акте её нельзя изменить — только вернуть (back).
-   Окончательно строка уходит, когда создан и сохранён акт с ней (woSave → «Списано в акте»).
+   Общий список «что списать» — видят все. Строку нельзя удалить. Перенос в акт закрепляет строку за барменом и его
+   телефоном на 24 часа (take): в заметке её больше не видно, в акте её нельзя изменить — только вернуть (back).
+   Акт создан на телефоне — строка запечатана (seal: «в акте …, ждёт копии»): больше не возвращается, даже если копия
+   акта дойдёт до таблицы позже. Копия дошла (woSave) — «Акт … · кто · id»: списана окончательно.
    Не создал акт за 24 часа — строка сама возвращается в заметку и ждёт следующего акта.
+   Отметки прежних версий сайта в «Списано в акте» (без «Акт …») считаются закрытыми, как и были.
    История — лист «Заметка» в «Журнале списаний». Повтор add с тем же id ничего не задваивает. */
 const WN_SHEET = "Заметка";
-const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Взял в акт", "Когда взял", "Списано в акте"];
-const WN_HOLD = 24 * 3600e3;
+const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Взял в акт", "Когда взял", "Списано в акте", "Телефон"];
+const WN_HOLD = 24 * 3600e3, WN_V = 2;
 function wnSheet(create) {
   const log = woSheet("wo", create);
   if (!log) return null;
@@ -822,76 +824,107 @@ function wnTime(v) {
   const m = String(v || "").match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
   return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4] - 5, +m[5]) : 0;
 }
+const WN_SEAL = "в акте ";
 function wnRows(sh) {
   const last = sh ? sh.getLastRow() : 0, now = Date.now();
   return last < 2 ? [] : sh.getRange(2, 1, last - 1, WN_HEAD.length).getValues()
     .map((r, i) => {
       const x = { row: i + 2, id: String(r[0]), n: String(r[1]), u: String(r[2]), q: r[3], why: String(r[4]), who: String(r[5]),
-        at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]).slice(0, 5), took: String(r[7]), since: wnTime(r[8]), done: String(r[9]) };
-      x.held = !!x.took && !x.done && now - x.since < WN_HOLD;             // закреплена за барменом
+        at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]).slice(0, 5), took: String(r[7]), since: wnTime(r[8]),
+        done: String(r[9]), dev: String(r[10]) };
+      x.closed = !!x.done;                                                 // списана, запечатана в акте или закрыта прежней версией
+      x.held = !!x.took && !x.closed && now - x.since < WN_HOLD;           // закреплена за барменом
       return x;
     })
     .filter(x => x.id);
 }
 const wnItem = x => ({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, who: x.who, at: x.at });
-const wnOpen = rows => rows.filter(x => !x.done && !x.held).map(wnItem);
-const wnMine = (rows, who) => who ? rows.filter(x => x.held && x.took === who).map(x => Object.assign(wnItem(x), { until: x.since + WN_HOLD })) : [];
+const wnOpen = rows => rows.filter(x => !x.closed && !x.held).map(wnItem);
+const wnMine = (rows, who) => who ? rows.filter(x => x.held && x.took === who).map(x => Object.assign(wnItem(x), { until: x.since + WN_HOLD, dev: x.dev })) : [];
+const wnAns = (rows, who, more) => Object.assign({ ok: true, v: WN_V, items: wnOpen(rows), mine: wnMine(rows, who) }, more || {});
+const wnIds = v => String(v || "").split(",").map(x => x.replace(/[^\w-]/g, "").slice(0, 64)).filter(Boolean);
 
 function wnote(p) {
-  const act = String(p.wn), who = clean(p.rn, 60);
-  if (act === "list" || act === "got") { const rows = wnRows(wnSheet(false)); return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) }; }
-  if (act !== "add" && act !== "take" && act !== "back") return { error: "action" };
+  const act = String(p.wn), who = clean(p.rn, 60), dev = String(p.dev || "").replace(/[^\w-]/g, "").slice(0, 40);
+  if (act === "list") return wnAns(wnRows(wnSheet(false)), who);
+  if (["add", "take", "back", "seal", "got"].indexOf(act) < 0) return { error: "action" };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = wnSheet(true), rows = wnRows(sh);
-    const want = String(p.ids || "").split(",").filter(Boolean);
+    const sh = wnSheet(true), rows = wnRows(sh), want = wnIds(p.ids), now = new Date();
+    const stamp = Utilities.formatDate(now, TZ, "dd.MM.yyyy HH:mm");
     if (act === "add") {
       const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), n = clean(p.n, 120), q = num(p.q);
       if (!id || !n || !(q > 0)) return { error: "bad" };
       if (!rows.some(x => x.id === id)) {
-        const top = Math.max(sh.getLastRow(), 1) + 1, now = new Date();
+        const top = Math.max(sh.getLastRow(), 1) + 1;
         ensureRows(sh, top);
         sh.getRange(top, 1, 1, 3).setNumberFormat("@"); sh.getRange(top, 5, 1, 2).setNumberFormat("@");
         sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, now]]);
         SpreadsheetApp.flush();
-        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: Utilities.formatDate(now, TZ, "dd.MM"), took: "", since: 0, done: "", held: false });
+        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: stamp.slice(0, 5), took: "", since: 0, done: "", dev: "", closed: false, held: false });
       }
-      return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) };
+      return wnAns(rows, who);
     }
     if (!who || !want.length) return { error: "bad" };
+    const mine = x => want.indexOf(x.id) >= 0;
     if (act === "take") {
-      /* свободные (и вернувшиеся через 24 часа) — закрепить за барменом; уже его — оставить; чужие и списанные — мимо */
-      const now = new Date();
+      /* свободные (и вернувшиеся через 24 часа) — закрепить за барменом и телефоном; уже его — оставить; чужие и закрытые — мимо */
       rows.forEach(x => {
-        if (want.indexOf(x.id) < 0 || x.done || x.held) return;
+        if (!mine(x) || x.closed || x.held) return;
         sh.getRange(x.row, 8).setNumberFormat("@").setValue(who);
         sh.getRange(x.row, 9).setNumberFormat("dd.MM.yyyy HH:mm").setValue(now);
-        x.took = who; x.since = now.getTime(); x.held = true;
+        sh.getRange(x.row, 11).setNumberFormat("@").setValue(dev);
+        x.took = who; x.since = now.getTime(); x.dev = dev; x.held = true;
       });
       SpreadsheetApp.flush();
-      const mine = wnMine(rows, who);
-      return { ok: true, took: mine.filter(x => want.indexOf(x.id) >= 0), items: wnOpen(rows), mine: mine };
+      return wnAns(rows, who, { took: wnMine(rows, who).filter(mine) });
     }
-    /* back: бармен отменил перенос — строки снова в заметке */
+    if (act === "back") {                                                  // бармен отменил перенос — строки снова в заметке
+      rows.forEach(x => {
+        if (!mine(x) || !x.held || x.took !== who) return;
+        sh.getRange(x.row, 8, 1, 2).setValues([["", ""]]); sh.getRange(x.row, 11).setValue("");
+        x.took = ""; x.since = 0; x.dev = ""; x.held = false;
+      });
+      SpreadsheetApp.flush();
+      return wnAns(rows, who);
+    }
+    if (act === "seal") {
+      /* акт создан на телефоне: строки больше не возвращаются, даже если копия акта придёт позже */
+      const aid = String(p.act || "").replace(/[^\w-]/g, "").slice(0, 64), sealed = [], conflict = [];
+      if (!aid) return { error: "bad" };
+      rows.forEach(x => {
+        if (!mine(x)) return;
+        if (x.closed){ (x.done.indexOf(aid) >= 0 ? sealed : conflict).push(x.id); return; }
+        if (x.held && x.took !== who){ conflict.push(x.id); return; }
+        sh.getRange(x.row, 10).setNumberFormat("@").setValue(WN_SEAL + aid + " · " + who + " · " + stamp + " · ждёт копии на Диске");
+        x.done = WN_SEAL + aid; x.closed = true; x.held = false; sealed.push(x.id);
+      });
+      SpreadsheetApp.flush();
+      return wnAns(rows, who, { sealed: sealed, conflict: conflict });
+    }
+    /* got — от прежней версии сайта: строка дошла до её акта, значит закрыта (та версия не отмечала акты) */
     rows.forEach(x => {
-      if (want.indexOf(x.id) < 0 || !x.held || x.took !== who) return;
-      sh.getRange(x.row, 8, 1, 2).setValues([["", ""]]);
-      x.took = ""; x.since = 0; x.held = false;
+      if (!mine(x) || x.closed || x.took !== who) return;
+      sh.getRange(x.row, 10).setNumberFormat("@").setValue("дошло до акта (прежняя версия сайта) " + stamp);
+      x.closed = true; x.held = false;
     });
     SpreadsheetApp.flush();
-    return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) };
+    return wnAns(rows, who);
   } finally {
     lock.releaseLock();
   }
 }
-/* акт создан и сохранён — его строки из заметки списаны окончательно (вызывается из woSave под блокировкой) */
-function wnDone(ids, mark) {
+/* копия акта дошла — его строки из заметки списаны окончательно (из woSave, под блокировкой; повтор безопасен).
+   Строка уже списана другим актом — помечаем «⚠ также в акте …», чтобы двойное списание было видно в листе. */
+function wnDone(ids, mark, aid) {
   const sh = wnSheet(false);
   if (!sh || !ids.length) return;
   wnRows(sh).forEach(x => {
-    if (ids.indexOf(x.id) < 0 || x.done) return;
-    sh.getRange(x.row, 10).setNumberFormat("@").setValue(mark);
+    if (ids.indexOf(x.id) < 0) return;
+    if (x.done.indexOf(aid) >= 0 && x.done.indexOf(WN_SEAL) !== 0) return;          // уже отмечена этим актом
+    const other = /^Акт /.test(x.done) || (x.done.indexOf(WN_SEAL) === 0 && x.done.indexOf(aid) < 0);
+    sh.getRange(x.row, 10).setNumberFormat("@").setValue(other ? x.done + " ⚠ также в акте " + mark : mark);
   });
 }
 
