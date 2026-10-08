@@ -11,7 +11,7 @@ const TOKEN_SHA256 = "8d1a25d23a8211c88fcce095c4d60c492efda24cdfc96bd433a0037080
 const SHOW = 25;     // сколько последних входов отдавать сайту
 
 /* ── Ревизия ── */
-const REV_BOOK_ID = "";                      // ID таблицы ревизии из её адреса; пусто — эта же таблица
+const REV_BOOK_ID = "1OF063GZsdB_eyFRny0006R_y57nfhoZcJGyKcB-T7Ko";  // ID таблицы ревизии из её адреса; пусто — эта же таблица
 const REV_TOTAL = "Итог";                    // итог со всех зон; в столбце A — позиции с 3-й строки
 const REV_ZONES = "По зонам";                // по колонке на зону; создаётся сам, если его нет
 const REV_LOG = "Ревизия журнал";            // каждое добавление отдельной строкой
@@ -660,13 +660,21 @@ function woSheet(kind, create) {
   }
   return sh;
 }
-/* Раньше журнал вёлся листом «Списания» / «Проработки» в таблице ревизии. Его строки переносятся в журнал
-   (кроме уже перенесённых — по id), а сам лист удаляется. Чужой лист с таким же именем не трогаем. */
+/* Раньше журнал вёлся листом «Списания» / «Проработки» в таблице ревизии (а без REV_BOOK_ID — в таблице журнала входов).
+   Строки такого листа переносятся в журнал (кроме уже перенесённых — по id), а сам лист удаляется.
+   Смотрим обе таблицы. Чужой лист с таким же именем не трогаем. */
 function woMigrate(kind, sh) {
-  let book, old;
-  try { book = revBook(); old = book.getSheetByName(WO_KINDS[kind].sheet); } catch (e) { return ""; }
+  const books = [], ids = {};
+  [() => SpreadsheetApp.getActiveSpreadsheet(), revBook].forEach(f => {
+    try { const b = f(); if (b && !ids[b.getId()]) { ids[b.getId()] = 1; books.push(b); } } catch (e) {}
+  });
+  return books.map(b => woMigrateFrom(b, kind, sh)).filter(Boolean).join("; ");
+}
+function woMigrateFrom(book, kind, sh) {
+  const old = book.getSheetByName(WO_KINDS[kind].sheet);
   if (!old) return "";
-  const keep = "лист «" + old.getName() + "» в таблице ревизии не наш (другие столбцы) — оставлен как есть";
+  const where = " в таблице «" + book.getName() + "»";
+  const keep = "лист «" + old.getName() + "»" + where + " не наш (другие столбцы) — оставлен как есть";
   if (old.getMaxColumns() < WO_HEAD.length || old.getLastColumn() > WO_HEAD.length) return keep;
   const head = old.getRange(1, 1, 1, WO_HEAD.length).getDisplayValues()[0];
   if (head.join("|") !== WO_HEAD.join("|")) return keep;
@@ -686,9 +694,9 @@ function woMigrate(kind, sh) {
       SpreadsheetApp.flush();
     }
   }
-  if (book.getSheets().length < 2) return "строк перенесено: " + moved + "; лист «" + old.getName() + "» — единственный в таблице, не удалён";
+  if (book.getSheets().length < 2) return "строк перенесено: " + moved + "; лист «" + old.getName() + "»" + where + " — единственный, не удалён";
   book.deleteSheet(old);
-  return "лист «" + old.getName() + "» убран из таблицы ревизии" + (moved ? ", его строки (" + moved + ") — в журнале" : "");
+  return "лист «" + old.getName() + "» убран из таблицы «" + book.getName() + "»" + (moved ? ", его строки (" + moved + ") — в журнале" : "");
 }
 /* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
 function woFind(sh, id) {
