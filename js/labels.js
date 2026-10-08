@@ -221,7 +221,11 @@ async function labDraw(){
   const tk = tfs / th, ttw = ctx.measureText(name).width, tx = (W - ttw - tg * tk - tiw * tk) / 2;
   const tBase = mb + tfs * .82;
   ctx.fillText(name, tx, tBase);
-  if (icon) icon.draw(ctx, tx + ttw + tg * tk, tBase - tfs * .36 - ti * tk / 2, tiw * tk, ti * tk);
+  if (icon){                                                // значок — между верхним полем и началом текста
+    const lo = tBase + tfs * .3 - H * .01, ih2 = Math.min(ti * tk, lo - mb), iw2 = tiw * tk * ih2 / (ti * tk);
+    const iy = Math.min(lo - ih2, Math.max(mb, tBase - tfs * .36 - ih2 / 2));
+    icon.draw(ctx, tx + ttw + tg * tk + (tiw * tk - iw2) / 2, iy, iw2, ih2);
+  }
 
   /* QR — поменьше, клетки ровно по точкам термопринтера: 203 dpi = 8 точек/мм, клетка = 3 точки = 6 px холста */
   const bodyTop = tBase + tfs * .32, bodyBottom = H - mb;
