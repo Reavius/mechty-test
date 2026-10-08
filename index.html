@@ -220,11 +220,11 @@
     <div id="revMonth" hidden>
       <div class="result tcard osum">
         <div class="tname"><em id="mqueue"></em><h2 class="h3" id="mtitle">Месячная ревизия</h2></div>
-        <p class="oempty" id="minfo" aria-live="polite">Загружаем…</p>
+        <div class="oempty" id="minfo" aria-live="polite">Загружаем…</div>
         <div class="otools">
           <button type="button" class="link" id="mstart">Начать ревизию</button>
+          <button type="button" class="link" id="mfinish" hidden>Завершить мой подсчёт</button>
           <button type="button" class="link" id="mreload">Обновить</button>
-          <button type="button" class="link" id="mclose" hidden>Завершить</button>
         </div>
       </div>
       <div class="warn" id="mwarn" role="status"></div>
@@ -238,6 +238,28 @@
           <p class="mfound" id="mfound" aria-live="polite"></p>
         </div>
         <div id="mlist"></div>
+        <form class="result tcard mnew" id="mnew" hidden autocomplete="off">
+          <div class="tname"><h2 class="h3">Нет в списке?</h2></div>
+          <p class="oempty">Добавьте позицию — она встанет вниз ревизии, в «Новые позиции», и количество запишется в ваш столбец.</p>
+          <div class="mnewf">
+            <label class="label" for="mnn">Наименование</label>
+            <input id="mnn" type="text" maxlength="80" placeholder="Напр. Ликер ананас" autocapitalize="sentences" required>
+            <div class="mnew2">
+              <div>
+                <label class="label" for="mnq">Количество</label>
+                <input id="mnq" type="text" inputmode="decimal" maxlength="24" placeholder="Напр. 0,7 или 0,5×3">
+              </div>
+              <div>
+                <label class="label" for="mnu">Ед. изм.</label>
+                <input id="mnu" type="text" maxlength="12" list="mnul" placeholder="литр">
+                <datalist id="mnul"><option value="литр"><option value="шт"><option value="кг"><option value="бут"><option value="г"></datalist>
+              </div>
+            </div>
+            <p class="rprev" id="mnprev"></p>
+            <button type="submit" id="mnadd">Добавить в ревизию</button>
+          </div>
+        </form>
+        <div class="otools mend"><button type="button" class="link" id="mend">Закрыть ревизию для всех</button></div>
       </div>
     </div>
   </div>

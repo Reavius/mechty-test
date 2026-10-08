@@ -317,22 +317,31 @@ function revState() {
 
 /* ═════════════ Месячная ревизия ═════════════
    Лист «Месячная ревизия» в таблице ревизии — точь-в-точь бланк бара: столбец A — код или «к»,
-   B — наименование, C — ед. изм., разделы — объединёнными строками. Если листа нет, он создаётся
-   по шаблону MREV_ROWS. Дальше список правится прямо в листе: новая строка с названием в B —
-   новая позиция, строка с текстом только в A — новый раздел.
-   Каждая месячная ревизия — новый столбец: строка 5 — фамилия, строка 6 — дата.
+   B — наименование, C — ед. изм., разделы — объединёнными строками. Нет листа — создаётся по MREV_ROWS.
+   Список правится прямо в листе; позиции, которых нет, бармены добавляют с сайта — вниз, в раздел «Новые позиции».
+
+   Одна месячная ревизия идёт несколько дней и считается несколькими людьми параллельно:
+   первый её столбец — «Итог» (формула: сумма столбцов барменов справа; поправлять можно руками),
+   дальше — столбцы барменов по порядку: «Начать мой подсчёт» — новый столбец с фамилией и датой,
+   «Завершить» — столбец закрыт. У одного человека может быть несколько столбцов (разные дни).
+   Шапка столбца: строка 3 — название ревизии (у «Итога»), 4 — служебный id, 5 — фамилия или «Итог», 6 — дата.
+   Столбцы находятся по id в строке 4, поэтому вставка столбцов в лист ничего не ломает.
    Числа складываются здесь, под блокировкой; повтор с тем же id не прибавляется. */
+const MREV_NEW = "Новые позиции";
 
 function monthly(p) {
   sheet();                                   // закрепить лист журнала до создания новых листов
-  const act = String(p.mrev);
+  const act = String(p.mrev), rn = clean(p.rn, 60);
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     if (act === "state") return { ok: true, mrev: mrevState() };
-    if (act === "start") return { ok: true, mrev: mrevStart(clean(p.rn, 60)) };
-    if (act === "close") { PropertiesService.getScriptProperties().deleteProperty("MREV_OPEN"); return { ok: true, mrev: mrevState() }; }
-    if (act === "add") return mrevAdd(p);
+    if (act === "begin") return mrevBegin(rn);
+    if (act === "mine") return mrevMine(rn);
+    if (act === "finish") return mrevFinish(String(p.cid || ""), rn);
+    if (act === "end") return mrevEnd();
+    if (act === "add") return mrevAdd(p, false);
+    if (act === "new") return mrevAdd(p, true);
     return { error: "action" };
   } finally {
     lock.releaseLock();
@@ -362,25 +371,19 @@ function mrevSheet() {
   return sh;
 }
 
-function mrevOpen() {
-  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("MREV_OPEN") || "null"); }
-  catch (e) { return null; }
+const mprops = () => PropertiesService.getScriptProperties();
+function mrevBlock() {
+  try { return JSON.parse(mprops().getProperty("MREV_BLOCK") || "null"); } catch (e) { return null; }
 }
+const mrevSave = b => mprops().setProperty("MREV_BLOCK", JSON.stringify(b));
+const mnorm = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+function colA1(c) { let s = ""; for (; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + (c - 1) % 26) + s; return s; }
 
-/* Столбец открытой ревизии — по заголовку (строки 5–6: фамилия, дата): если в листе вставили
-   или удалили столбцы, ищем его заново, а не пишем в чужой. Не нашли — null. */
-function mrevCol(sh, open) {
-  const last = sh.getLastColumn();
-  if (last < 4) return null;
-  const h = sh.getRange(5, 1, 2, last).getDisplayValues();
-  const is = c => String(h[0][c - 1]).trim() === open.name && String(h[1][c - 1]).trim() === open.date;
-  if (open.col <= last && is(open.col)) return open.col;
-  for (let c = last; c >= 4; c--) if (is(c)) {
-    open.col = c;
-    PropertiesService.getScriptProperties().setProperty("MREV_OPEN", JSON.stringify(open));
-    return c;
-  }
-  return null;
+/* id столбцов (строка 4) → номер столбца */
+function mrevIds(sh) {
+  const last = sh.getLastColumn(), map = {};
+  if (last >= 4) sh.getRange(4, 1, 1, last).getDisplayValues()[0].forEach((v, i) => { if (v) map[String(v).trim()] = i + 1; });
+  return map;
 }
 
 /* строки листа: разделы (h), подразделы (s) и позиции (i) — по порядку */
@@ -398,80 +401,159 @@ function mrevRows(sh) {
   return out;
 }
 
+/* «Итог» — сумма столбцов барменов справа. Пока ревизия идёт — до конца строки (новые столбцы попадают сами),
+   при закрытии — фиксируется на её столбцах. Ячейки, которые поправили руками, не трогаем. */
+function totFormula(tc, r, lastCol) {
+  const a = colA1(tc + 1) + r + ":" + (lastCol ? colA1(lastCol) + r : r);
+  return "=IF(COUNT(" + a + "),SUM(" + a + "),\"\")";
+}
+const openTot = f => /^=IF\(COUNT\([A-Z]+\d+:\d+\),SUM\([A-Z]+\d+:\d+\),""\)$/i.test(String(f).replace(/[\s$]/g, ""));
+function mrevTotals(sh, tc, rows, lastCol) {
+  rows.filter(x => x.t === "i").forEach(x => {
+    const cell = sh.getRange(x.r, tc);
+    if (!lastCol || openTot(cell.getFormula())) cell.setFormula(totFormula(tc, x.r, lastCol));
+  });
+}
+
 function mrevState() {
-  const sh = mrevSheet(), rows = mrevRows(sh);
-  let open = mrevOpen();
-  if (open && !mrevCol(sh, open)) {                 // столбец ревизии удалили из листа — ревизия закрыта
-    PropertiesService.getScriptProperties().deleteProperty("MREV_OPEN");
-    open = null;
-  }
-  const lastCol = sh.getLastColumn(), lastRow = Math.max(sh.getLastRow(), 7);
-  const col = c => c >= 4 ? sh.getRange(7, c, lastRow - 6, 1).getValues().map(r => r[0]) : [];
-  const head = c => { const h = sh.getRange(5, c, 2, 1).getDisplayValues(); return { name: h[0][0], date: h[1][0] }; };
-  const pc = open ? open.col - 1 : lastCol;
-  const prev = pc >= 4 ? head(pc) : null, pv = pc >= 4 ? col(pc) : [];
-  const ov = open ? col(open.col) : [];
+  const sh = mrevSheet(), rows = mrevRows(sh), ids = mrevIds(sh);
+  if (mprops().getProperty("MREV_OPEN")) mprops().deleteProperty("MREV_OPEN");   // старая схема (до «Итога»)
+  const b = mrevBlock(), lastRow = Math.max(sh.getLastRow(), 7);
+  const colVals = c => c ? sh.getRange(7, c, lastRow - 6, 1).getValues().map(r => r[0]) : [];
+  const val = (arr, r) => { const v = arr[r - 7]; return v === "" || v == null ? null : num(v); };
+  const tv = b ? colVals(ids[b.total]) : [];
+  const cols = b ? b.cols.filter(c => ids[c.id]) : [];
+  const cv = cols.map(c => colVals(ids[c.id]));
+  const prevId = mprops().getProperty("MREV_PREV"), pv = prevId && ids[prevId] ? colVals(ids[prevId]) : [];
   rows.forEach(x => {
     if (x.t !== "i") return;
-    const o = ov[x.r - 7], q = pv[x.r - 7];
-    x.v = o === "" || o == null ? null : num(o);
-    x.p = q === "" || q == null ? null : num(q);
+    x.tot = val(tv, x.r);
+    x.c = cv.map(a => val(a, x.r));
+    x.p = val(pv, x.r);
   });
   return {
     now: Date.now(),
-    open: open ? { date: open.date, name: open.name, key: open.key, started: open.started || null } : null,
-    prev: prev && (prev.date || prev.name) ? prev : null,
+    block: b && ids[b.total] ? { title: b.title, date: b.date, open: b.open, started: b.started,
+      cols: cols.map(c => ({ id: c.id, name: c.name, date: c.date, open: c.open })) } : null,
+    prev: mprops().getProperty("MREV_PREV_TITLE") || null,
     rows: rows
   };
 }
 
-function mrevStart(name) {
-  if (!name) throw new Error("Нет фамилии");
-  const sh = mrevSheet();
-  const started = new Date();
-  const date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
+/* новый столбец справа: шапка в строках 3–6 */
+function mrevNewCol(sh, id, title, name, date) {
   const col = Math.max(sh.getLastColumn(), 3) + 1;
   ensureCols(sh, col);
-  sh.getRange(5, col, 2, 1).setNumberFormat("@").setValues([[name], [date]]).setFontWeight("bold").setHorizontalAlignment("center");
-  sh.getRange(3, col).setValue(date);
-  PropertiesService.getScriptProperties().setProperty("MREV_OPEN",
-    JSON.stringify({ col: col, date: date, name: name, started: started.getTime(), key: "m|" + date + "|" + name + "|" + col }));
-  return mrevState();
+  sh.getRange(3, col, 4, 1).setNumberFormat("@").setValues([[title], [id], [name], [date]]);
+  sh.getRange(5, col, 2, 1).setFontWeight("bold").setHorizontalAlignment("center");
+  sh.getRange(4, col).setFontColor("#9aa0a6").setFontSize(8);
+  return col;
 }
 
-function mrevAdd(p) {
-  const open = mrevOpen();
-  const id = String(p.id || "").slice(0, 64), name = String(p.pos || "").trim(), v = num(p.v);
-  if (!id || !name || !v || Math.abs(v) > 100000) return { error: "bad" };
+function mrevBegin(name) {
+  if (!name) return { error: "Нет фамилии" };
+  const sh = mrevSheet();
+  let b = mrevBlock();
+  if (b && b.open) return mrevMine(name);                 // ревизия уже идёт — просто свой столбец
+  const started = new Date(), date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
+  const months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+  const loc = new Date(started.getTime() + 5 * 3600000);   // время Астаны (TZ = GMT+5)
+  const key = "m" + started.getTime().toString(36);
+  b = { key: key, title: "Ревизия · " + months[loc.getUTCMonth()] + " " + loc.getUTCFullYear(), date: date, started: started.getTime(),
+        open: true, total: key + "-t", cols: [], n: 0 };
+  const tc = mrevNewCol(sh, b.total, b.title, "Итог", date);
+  sh.getRange(7, tc, Math.max(sh.getLastRow(), 7) - 6, 1).setFontWeight("bold");
+  mrevTotals(sh, tc, mrevRows(sh), 0);
+  mrevSave(b);
+  return mrevMine(name);
+}
+
+function mrevMine(name) {
+  if (!name) return { error: "Нет фамилии" };
+  const sh = mrevSheet(), b = mrevBlock();
+  if (!b || !b.open) return { error: "closed" };
+  const ids = mrevIds(sh);
+  const mine = b.cols.find(c => c.open && ids[c.id] && mnorm(c.name) === mnorm(name));
+  if (!mine) {
+    const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
+    const c = { id: b.key + "-" + (++b.n), name: name, date: date, open: true };
+    mrevNewCol(sh, c.id, "", name, date);
+    b.cols.push(c);
+    mrevSave(b);
+  }
+  return { ok: true, mrev: mrevState() };
+}
+
+function mrevFinish(cid, name) {
+  const b = mrevBlock(), c = b && b.cols.find(x => x.id === cid);
+  if (!c) return { error: "closed" };
+  if (name && mnorm(c.name) !== mnorm(name)) return { error: "Это столбец " + c.name };
+  c.open = false;
+  mrevSave(b);
+  return { ok: true, mrev: mrevState() };
+}
+
+function mrevEnd() {
+  const sh = mrevSheet(), b = mrevBlock();
+  if (!b || !b.open) return { ok: true, mrev: mrevState() };
+  const ids = mrevIds(sh), tc = ids[b.total];
+  if (tc) {
+    const last = Math.max(tc + 1, ...b.cols.map(c => ids[c.id] || 0));
+    mrevTotals(sh, tc, mrevRows(sh), last);               // «Итог» больше не тянет столбцы следующей ревизии
+  }
+  b.open = false; b.cols.forEach(c => { c.open = false; });
+  mrevSave(b);
+  mprops().setProperty("MREV_PREV", b.total);
+  mprops().setProperty("MREV_PREV_TITLE", b.title);
+  return { ok: true, mrev: mrevState() };
+}
+
+/* Добавление к позиции (add) или новая позиция (new: название, количество, ед. изм.) —
+   в свой открытый столбец. Новая — вниз, в раздел «Новые позиции»; такое название уже есть — прибавляем к нему. */
+function mrevAdd(p, isNew) {
+  const id = String(p.id || "").slice(0, 64), name = clean(p.pos, 80), v = num(p.v);
+  if (!id || !name || !isFinite(v) || (!isNew && !v) || Math.abs(v) > 100000) return { error: "bad" };
   const sh = mrevSheet(), cache = CacheService.getScriptCache();
-  /* повтор уже записанного (ответ потерялся) — сразу «ок», до любых проверок */
   const seen = cache.get("mrev:" + id);
-  if (seen) return { ok: true, add: { row: parseInt(seen, 10), pos: name, v: null } };   // итог подтянется при сверке
-  if (!open) return { error: "closed" };
-  if (p.rk && p.rk !== open.key) return { error: "closed" };
-  const col = mrevCol(sh, open);
-  if (!col) return { error: "closed" };
-  /* строка — по номеру с проверкой названия; если строки сдвинули — по названию,
-     а при одинаковых названиях (Мандарин) — по разделу и ближайшая к прежнему номеру */
-  let row = parseInt(p.row, 10);
-  if (!(row >= 7) || String(sh.getRange(row, 2).getDisplayValue()).trim() !== name) {
+  if (seen) return { ok: true, add: { row: parseInt(seen, 10), pos: name, v: null } };   // повтор — итог подтянется при сверке
+  const b = mrevBlock();
+  if (!b || !b.open) return { error: "closed" };
+  const c = b.cols.find(x => x.id === String(p.cid || ""));
+  if (!c || !c.open) return { error: "closed" };
+  const ids = mrevIds(sh), col = ids[c.id], tc = ids[b.total];
+  if (!col || !tc) return { error: "closed" };
+
+  let rows = mrevRows(sh), row = parseInt(p.row, 10);
+  if (isNew) {
+    const same = rows.filter(x => x.t === "i" && mnorm(x.n) === mnorm(name));
+    if (same.length) row = same[same.length - 1].r;
+    else {
+      let last = Math.max(sh.getLastRow(), 7);
+      if (!rows.some(x => x.t === "h" && x.n === MREV_NEW)) {
+        last++; ensureRows(sh, last);
+        sh.getRange(last, 1, 1, 3).merge().setValue(MREV_NEW).setFontWeight("bold");
+      }
+      row = last + 1; ensureRows(sh, row);
+      sh.getRange(row, 1, 1, 3).setNumberFormat("@").setValues([["", name, clean(p.unit, 12)]]);
+      sh.getRange(row, tc).setFormula(totFormula(tc, row, 0)).setFontWeight("bold");
+    }
+  } else if (!(row >= 7) || String(sh.getRange(row, 2).getDisplayValue()).trim() !== name) {
+    /* строки сдвинули — ищем по названию; одинаковые (Мандарин) — по разделу и ближайшей строке */
     let sec = "";
-    const hit = mrevRows(sh).filter(x => {
-      if (x.t !== "i") { sec = x.n; return false; }
-      x.sec = sec;
-      return x.n === name;
-    });
+    const hit = rows.filter(x => { if (x.t !== "i") { sec = x.n; return false; } x.sec = sec; return x.n === name; });
     const same = p.sec ? hit.filter(x => x.sec === p.sec) : [];
     const pool = same.length ? same : hit;
     if (!pool.length) return { error: "position" };
-    pool.sort((a, b) => Math.abs(a.r - (row || 0)) - Math.abs(b.r - (row || 0)));
+    pool.sort((a, z) => Math.abs(a.r - (row || 0)) - Math.abs(z.r - (row || 0)));
     row = pool[0].r;
   }
   const cell = sh.getRange(row, col);
-  cell.setValue(round3(num(cell.getValue()) + v));
-  revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), "Месячная · " + open.date + " · " + open.name, "—", name, v, id]);
+  if (v || cell.getValue() === "") cell.setValue(round3(num(cell.getValue()) + v));
+  revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), b.title + " · " + c.name + " " + c.date, isNew ? "новая" : "—", name, v, id]);
   cache.put("mrev:" + id, String(row), 21600);
-  return { ok: true, add: { row: row, pos: name, v: round3(num(cell.getValue())) } };
+  SpreadsheetApp.flush();
+  const t = sh.getRange(row, tc).getValue();
+  return { ok: true, add: { row: row, pos: name, v: round3(num(cell.getValue())), tot: t === "" ? null : round3(num(t)), isNew: isNew } };
 }
 
 /* Бланк бара: [строка, тип (h — раздел, s — подраздел, i — позиция), A, B, C, жирный] */
@@ -487,7 +569,7 @@ function checkRevision() {
   Logger.log("Лист «" + ts.getName() + "»: позиций " + revPositions(ts).length);
   Logger.log("Открытая ревизия: " + JSON.stringify(revOpen()));
   const ms = mrevSheet();
-  Logger.log("Лист «" + ms.getName() + "»: позиций " + mrevRows(ms).filter(x => x.t === "i").length + ", открытая месячная: " + JSON.stringify(mrevOpen()));
+  Logger.log("Лист «" + ms.getName() + "»: позиций " + mrevRows(ms).filter(x => x.t === "i").length + ", месячная ревизия: " + JSON.stringify(mrevBlock()));
   Logger.log("Всё в порядке.");
 }
 
