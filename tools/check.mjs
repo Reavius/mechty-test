@@ -95,7 +95,7 @@ if (process.env.MECHTY_PASSWORD && B) {
     ok(["r", "k", "z", "zo", "zn"].every(k => Array.isArray(P[k])) && P.t, "шифровка открывается паролем, все разделы на месте");
     /* в списках с галочками отметка хранится по названию — повтор названия внутри списка сломал бы её */
     const twice = ["z", "zo", "zn"].flatMap(k => { const n = P[k].flatMap(g => g.items); return n.filter((x, i) => n.indexOf(x) !== i).map(x => k + ": " + x); });
-    ok(!twice.length, "в заявках и списке «На зону» нет повторов" + (twice.length ? ": " + twice.join(", ") : ""));
+    ok(!twice.length, "в заявках и списке «Взять на бар» нет повторов" + (twice.length ? ": " + twice.join(", ") : ""));
     const K = P.k.flatMap(g => g.items);
     ok(K.every(t => !t.img || has(t.img)), `фото техкарт на месте (${K.length} карт)`);
     const R = P.r.flatMap(g => g.items).map(r => r.id);
