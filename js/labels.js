@@ -148,6 +148,15 @@ function lwrap(ctx, rows, width, height, maxS, gap){
   return {s, ind: s * 1.15, lines: rows.map((r, i) => ({t: r[1], y: i * s * gap, w: r[2], glyph: r[0]})), h: rows.length * s * gap};
 }
 
+/* принтер бара сдвигает печать вправо — рисунок прижимаем влево: узорчатый уголок касается левого края */
+function lshift(ctx, W, H){
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let x0 = W;
+  for (let y = 0; y < H; y++) for (let x = 0; x < x0; x++) if (d[(y * W + x) * 4] < 160){ x0 = x; break; }
+  if (x0 <= 0 || x0 >= W) return;
+  const img = ctx.getImageData(x0, 0, W - x0, H);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.putImageData(img, 0, 0); ctx.fillStyle = "#000";
+}
 function lcanvas(id, W, H){
   const c = $(id); c.width = W; c.height = H;
   const ctx = c.getContext("2d");
@@ -199,6 +208,7 @@ async function labDraw(){
   const lh = fs * 1.08, yc = H / 2 + fs * .34 - (lines.length - 1) * lh / 2;   // середина строчных — по центру
   lines.forEach((t, i) => ctx.fillText(t, x0 + (tw - ctx.measureText(t).width) / 2, yc + i * lh));
   if (icon) icon.draw(ctx, x0 + tw + gx, H / 2 - ih / 2, iw, ih);
+  lshift(ctx, W, H);
 
   /* ── оборотная ──
      Как на шаблоне бара: сверху название со значком, по углам узоры, слева — состав столбиком, даты и кто сделал,
@@ -259,6 +269,7 @@ async function labDraw(){
     if (L.glyph) lglyph(ctx, L.glyph, left, y0 + L.y + lay.s * .12, lay.s * .82);
     ctx.fillText(L.t, left + lay.ind, y0 + L.y + lay.s * .86);
   });
+  lshift(ctx, W, H);
 
   $("llink").textContent = lurl(it.id);
 }
