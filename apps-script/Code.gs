@@ -597,11 +597,16 @@ function mrevAdd(p, isNew) {
 }
 
 /* ═════════════ Списания ═════════════
-   Акт о списании собирается на сайте: PDF создаётся на телефоне (скачать / поделиться) и присылается сюда (POST).
-   Файл — в папку «Бар Мечты — Списания» на Google Диске, каждая позиция — строкой в лист «Списания» таблицы ревизии.
+   Акт о списании (и акт проработки) собирается на сайте: PDF создаётся на телефоне (скачать / поделиться) и присылается сюда (POST).
+   Файл — в папку «Бар Мечты — Списания» (проработка — «Бар Мечты — Проработки») на Google Диске,
+   каждая позиция — строкой в лист «Списания» («Проработки») таблицы ревизии.
    Повтор с тем же id не дублируется (id хранится в листе). Нужен доступ к Диску: выполните checkWriteoff один раз. */
-const WO_FOLDER = "Бар Мечты — Списания";
-const WO_SHEET = "Списания";
+/* два вида актов — одна форма, разные папки и листы; у проработки причина у всех позиций — «Проработка» */
+const WO_KINDS = {
+  wo: { folder: "Бар Мечты — Списания",  sheet: "Списания",   file: "Акт списания" },
+  pr: { folder: "Бар Мечты — Проработки", sheet: "Проработки", file: "Акт проработки" }
+};
+const woKind = k => WO_KINDS[k] ? k : "wo";
 const WO_HEAD = ["Дата акта", "№", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Кто", "Файл", "Записано", "id"];
 
 function doPost(e) {
@@ -616,19 +621,19 @@ function doPost(e) {
 }
 function jsonOut(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
-function woSheet() {
-  const ss = revBook();
-  let sh = ss.getSheetByName(WO_SHEET);
+function woSheet(kind) {
+  const ss = revBook(), name = WO_KINDS[woKind(kind)].sheet;
+  let sh = ss.getSheetByName(name);
   if (!sh) {
-    sh = ss.insertSheet(WO_SHEET);
+    sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, WO_HEAD.length).setValues([WO_HEAD]).setFontWeight("bold");
     sh.setFrozenRows(1);
   }
   return sh;
 }
-function woFolder() {
-  const f = DriveApp.getFoldersByName(WO_FOLDER);
-  return f.hasNext() ? f.next() : DriveApp.createFolder(WO_FOLDER);
+function woFolder(kind) {
+  const name = WO_KINDS[woKind(kind)].folder, f = DriveApp.getFoldersByName(name);
+  return f.hasNext() ? f.next() : DriveApp.createFolder(name);
 }
 /* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
 function woFind(sh, id) {
@@ -640,21 +645,21 @@ function woFind(sh, id) {
 }
 
 function woSave(p) {
-  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), a = p.act || {};
+  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), a = p.act || {}, kind = woKind(a.kind);
   const rows = (Array.isArray(a.rows) ? a.rows : []).slice(0, 200)
-    .map(r => [clean(r.n, 120), clean(r.u, 10), num(r.q), clean(r.why, 120)]).filter(r => r[0]);
+    .map(r => [clean(r.n, 120), clean(r.u, 10), num(r.q), kind === "pr" ? "Проработка" : clean(r.why, 120)]).filter(r => r[0]);
   const date = clean(a.date, 20), no = clean(a.no, 20), who = clean(a.who, 80);
   if (!id || !rows.length || !/^\d{2}\.\d{2}\.\d{4}$/.test(date)) return { error: "bad" };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = woSheet(), seen = woFind(sh, id);
+    const sh = woSheet(kind), seen = woFind(sh, id);
     if (seen !== null) return { ok: true, url: seen, dup: true };
     let url = "";
     if (p.pdf) {
-      const name = "Акт списания " + date + (no ? " №" + no : "") + " — " + (who || "бар").replace(/\.+$/, "") + ".pdf";
+      const name = WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " — " + (who || "бар").replace(/\.+$/, "") + ".pdf";
       const blob = Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), "application/pdf", name);
-      url = woFolder().createFile(blob).getUrl();
+      url = woFolder(kind).createFile(blob).getUrl();
     }
     const stamp = new Date(), last = Math.max(sh.getLastRow(), 1);
     ensureRows(sh, last + rows.length);
@@ -663,6 +668,7 @@ function woSave(p) {
     sh.getRange(top, 6, n, 5).setNumberFormat("@");                       // текст: причина, кто, файл, когда, id
     sh.getRange(top, 1, n, WO_HEAD.length)                                // кол-во — числом, чтобы считать суммы
       .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
+    SpreadsheetApp.flush();                                               // записать до снятия блокировки — повтор увидит id
     return { ok: true, url: url };
   } finally {
     lock.releaseLock();
@@ -671,16 +677,17 @@ function woSave(p) {
 
 /* JSONP: wo=check — записан ли акт; wo=list — последние акты */
 function writeoffs(p) {
-  const sh = woSheet(), act = String(p.wo);
+  const sh = woSheet(p.k), act = String(p.wo);
   if (act === "check") { const u = woFind(sh, String(p.id || "")); return { ok: true, saved: u !== null, url: u || "" }; }
   if (act === "list") {
     const last = sh.getLastRow(), out = [], seen = {};
     if (last >= 2) {
       const v = sh.getRange(Math.max(2, last - 400), 1, Math.min(last - 1, 401), WO_HEAD.length).getDisplayValues();
-      for (let i = v.length - 1; i >= 0 && out.length < 15; i--) {
+      for (let i = v.length - 1; i >= 0; i--) {                           // 15 актов, у последнего — все строки
         const r = v[i], id = r[9];
         if (!id) continue;
         if (seen[id]) { seen[id].n++; continue; }
+        if (out.length >= 15) break;
         seen[id] = { date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 1 };
         out.push(seen[id]);
       }
@@ -692,7 +699,8 @@ function writeoffs(p) {
 
 /* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску. */
 function checkWriteoff() {
-  Logger.log("Папка: «" + woFolder().getName() + "», лист: «" + woSheet().getName() + "». Всё в порядке.");
+  Object.keys(WO_KINDS).forEach(k => Logger.log("Папка: «" + woFolder(k).getName() + "», лист: «" + woSheet(k).getName() + "»."));
+  Logger.log("Всё в порядке.");
 }
 
 /* Бланк бара: [строка, тип (h — раздел, s — подраздел, i — позиция), A, B, C, жирный] */
