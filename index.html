@@ -210,6 +210,15 @@
         <ol class="worows" id="woRows"></ol>
         <button type="button" class="ghost woadd" id="woAdd">+ Добавить позицию</button>
         <p class="wonote" id="woMax" hidden>В акте не больше 25 позиций — остальное оформите следующим актом.</p>
+        <button type="button" class="ghost woadd wopasteopen" id="woPasteOpen">Вставить списком</button>
+        <div class="wopaste" id="woPaste" hidden>
+          <label class="label" for="woPasteT">Вставьте список — по позиции в строке</label>
+          <textarea id="woPasteT" rows="6" spellcheck="false" placeholder="Водка «Беленькая» — 170 мл&#10;Трипл Сек 195 мл&#10;40 мл Оакхарт&#10;Ягоды 330 гр — Порча"></textarea>
+          <input id="woPasteWhy" type="text" list="woWhy" maxlength="120" placeholder="Причина — для строк, где её нет" aria-label="Причина для строк без причины">
+          <ul class="womini wopasteprev" id="woPastePrev"></ul>
+          <button type="button" class="wogo" id="woPasteGo" disabled>Добавить в акт</button>
+          <button type="button" class="link wopastex" id="woPasteX">Закрыть</button>
+        </div>
 
         <p class="label wolab">Кто списывает</p>
         <div class="wo2 wowho">

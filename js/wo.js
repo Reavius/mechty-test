@@ -129,6 +129,83 @@ $("woRows").addEventListener("change", e => {
 $("woForm").addEventListener("input", woDraftSave);
 $("woForm").addEventListener("change", woDraftSave);
 
+/* ── вставка списком ──
+   Позиция на строке: «Водка Беленькая — 170 мл», «Трипл сек 30 + 30 мл», «40 мл окхарт», «Сок 0,5 л — Порча».
+   Количество — последнее число с единицей (иначе последнее число); слагаемые через «+» складываются.
+   Текст до количества — наименование, после — причина (если количество стоит первым — после него наименование).
+   Строки без числа (заголовки «Алко», «Безалко») пропускаются. */
+const WO_UNITS_RE = [[/^(мл|миллилитр)/i, "мл"], [/^(л|литр)/i, "л"], [/^(кг|килограмм)/i, "кг"], [/^(гр?|грамм)/i, "гр"], [/^(шт|штук)/i, "шт"]];
+const woUnitNorm = u => { for (const [re, v] of WO_UNITS_RE) if (u && re.test(u)) return v; return ""; };
+function woParseLine(raw){
+  const line = String(raw).replace(/[\u2705\u2714\u2611\u2713\ufe0f]/g, " ").replace(/\*\*|__/g, "").replace(/\s+/g, " ").trim();
+  if (!line) return null;
+  const U = "миллилитр[а-яё]*|литр[а-яё]*|килограмм[а-яё]*|грамм[а-яё]*|штук[а-яё]*|мл|кг|гр|шт|л|г";
+  /* число или сумма «20 + 30», единица — после суммы или у слагаемых («120мл + 90»); не часть слова или другого числа */
+  const re = new RegExp("(\\d+(?:[.,]\\d+)?(?:\\s*(?:" + U + ")?\\s*\\+\\s*\\d+(?:[.,]\\d+)?)*)\\s*(" + U + ")?(?![а-яёa-z\\d])\\.?", "gi");
+  const ms = [...line.matchAll(re)].filter(m => !m.index || !/[а-яёa-z\d.,]/i.test(line[m.index - 1]));
+  if (!ms.length) return {skip: line};
+  const unitIn = m => m[2] || (m[1].match(new RegExp("(" + U + ")", "i")) || [])[1] || "";
+  const withU = ms.filter(unitIn), m = withU.length ? withU[withU.length - 1] : ms[ms.length - 1];
+  const tidy = t => t.replace(/^\s*\d+[.)]\s+/, "").replace(/^[\s\-\u2013\u2014\u2022*\u00b7:;,.(]+|[\s\-\u2013\u2014\u2022*\u00b7:;,(]+$/g, "").replace(/^(.*[^(]*)\)$/, (a, b) => b.includes("(") ? a : b).trim();
+  const before = tidy(line.slice(0, m.index)), after = tidy(line.slice(m.index + m[0].length));
+  if (!unitIn(m) && after) return {skip: line};                 // «Алко — 16 позиций»: число без единицы посреди текста — не количество
+  const q = Math.round(m[1].split("+").reduce((a, x) => a + (parseFloat(x.replace(",", ".")) || 0), 0) * 1000) / 1000;
+  let n = before, why = after;
+  if (!n){                                                     // «40 мл окхарт — Порча»: после количества — наименование, через тире — причина
+    const k = after.search(/\s[\u2014\u2013-]\s|;|\(/);
+    n = tidy(k < 0 ? after : after.slice(0, k)); why = k < 0 ? "" : tidy(after.slice(k));
+  }
+  if (!n || !(q > 0) || /^(итого|всего)(?![а-яё])/i.test(n)) return {skip: line};
+  n = n.charAt(0).toUpperCase() + n.slice(1);
+  return {n: n.slice(0, 120), q, u: woUnitNorm(unitIn(m)) || woUnitOf[n] || "", why: why.slice(0, 120)};
+}
+function woPasteRows(){
+  const rows = [], skip = [], fill = $("woPasteWhy").value.replace(/\s+/g, " ").trim();
+  for (const l of $("woPasteT").value.split(/\r?\n/)){
+    const r = woParseLine(l);
+    if (!r) continue;
+    if (r.skip){ skip.push(r.skip); continue; }
+    r.why = wkind === "pr" ? WO_PR : (r.why || fill);
+    r.src = l;
+    rows.push(r);
+  }
+  return {rows, skip};
+}
+function woPasteDraw(){
+  const {rows, skip} = woPasteRows();
+  $("woPasteWhy").hidden = wkind === "pr";
+  $("woPastePrev").innerHTML = rows.map(r => '<li><span>' + esc(r.n) + '</span><b>' + esc(wq(r.q)) + " " + (r.u ? esc(r.u) : '<i class="wopasteq">ед.?</i>') + '</b>' +
+      '<em>' + (r.why ? esc(r.why) : '<i class="wopasteq">причина?</i>') + '</em></li>').join("") +
+    skip.map(t => '<li class="wopasteskip"><span>пропущено: ' + esc(t) + '</span></li>').join("");
+  const free = Math.max(0, WO_MAX - woRowsData().filter(r => r.n || r.q || (wkind === "wo" && r.why)).length);
+  $("woPasteGo").disabled = !rows.length || !free;
+  $("woPasteGo").textContent = !rows.length ? "Добавить в акт" : !free ? "В акте уже " + WO_MAX + " позиций" :
+    "Добавить в акт: " + Math.min(rows.length, free) + " поз." + (rows.length > free ? " (ещё " + (rows.length - free) + " не войдут)" : "");
+}
+$("woPasteOpen").addEventListener("click", () => {
+  $("woPaste").hidden = !$("woPaste").hidden;
+  if (!$("woPaste").hidden){ woPasteDraw(); $("woPasteT").focus(); }
+});
+$("woPasteX").addEventListener("click", () => { $("woPaste").hidden = true; });
+$("woPasteT").addEventListener("input", woPasteDraw);
+$("woPasteWhy").addEventListener("input", woPasteDraw);
+$("woPasteGo").addEventListener("click", () => {
+  const {rows} = woPasteRows();
+  [...document.querySelectorAll("#woRows .worow")].forEach(li => {   // пустые строки формы — убрать
+    if (![".won", ".woq", ".woy"].some(s => { const x = li.querySelector(s); return x && x.value && x.value.trim(); })) li.remove();
+  });
+  const free = Math.max(0, WO_MAX - $("woRows").children.length), put = rows.slice(0, free), rest = rows.slice(free);
+  $("woRows").insertAdjacentHTML("beforeend", put.map(r => woRow({n: r.n, q: wq(r.q), u: r.u, why: r.why})).join(""));
+  if (!$("woRows").children.length) $("woRows").innerHTML = woRow({});
+  woCap(); woDraftSave(); buzz(14);
+  $("woPasteT").value = rest.map(r => r.src).join("\n");             // что не вошло — остаётся в поле
+  const miss = put.filter(r => !r.u || !r.why).length;
+  $("woWarn").textContent = "Добавлено: " + put.length + " поз." + (rest.length ? " Не вошло " + rest.length + " — в акте не больше " + WO_MAX + ": они остались в поле, вставите в следующий акт." : "") +
+    (miss ? " Проверьте единицу и причину у " + miss + " поз." : "");
+  if (!rest.length) $("woPaste").hidden = true;
+  woPasteDraw();
+});
+
 /* ── подпись пальцем ──
    Штрихи хранятся точками: при повороте телефона поле меняет ширину, и подпись перерисовывается
    без растяжения (если не влезает — уменьшается целиком, пропорционально). */

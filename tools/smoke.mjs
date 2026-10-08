@@ -123,6 +123,11 @@ if (PW) {
   await page.click('[data-s="wo"]'); await page.waitForTimeout(300);
   ok(await page.inputValue("#woName") === "Тест" && await page.locator("#woRows .worow").count() >= 1, "списания: форма акта");
   ok(await page.isVisible("#wnBox") && await page.locator("#wnList li").count() >= 1 && await page.isDisabled("#wnMove"), "списания: заметка к списанию");
+  await page.click("#woPasteOpen");
+  await page.fill("#woPasteT", "Алко\n- Водка Беленькая — 170 мл\nКлавис 20 + 30мл\n40 мл окхарт — Порча");
+  await page.click("#woPasteGo");
+  const pasted = await page.evaluate(() => woRowsData().filter(r => r.n).map(r => [r.n, r.q, r.u, r.why].join("|")).join(";"));
+  ok(pasted === "Водка Беленькая|170|мл|;Клавис|50|мл|;Окхарт|40|мл|Порча", "списания: вставка списком" + (pasted === "Водка Беленькая|170|мл|;Клавис|50|мл|;Окхарт|40|мл|Порча" ? "" : ": " + pasted));
   await page.click('#wokind [data-k="pr"]'); await page.waitForTimeout(200);
   ok(await page.textContent("#woTitle") === "Акт проработки" && await page.textContent("#woRows .woy") === "Проработка", "списания: акт проработки");
   await page.click('#wokind [data-k="wo"]');

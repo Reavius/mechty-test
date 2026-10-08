@@ -488,6 +488,17 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
   .worow2 .wox{grid-column:3;grid-row:1}
   .worow2 .wofix{min-height:34px}
 }
+.wopasteopen{margin-top:8px;color:var(--muted)}
+.wopaste{margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:12px}
+.wopaste .label{margin-top:0!important}
+.wopaste textarea{display:block;width:100%;min-height:130px;font:16px/1.4 var(--sans);padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+  background:transparent;color:var(--fg);resize:vertical;box-sizing:border-box}
+.wopaste input{margin-top:8px}
+.wopasteprev{padding:6px 0 0}
+.wopasteprev li.wopasteskip{display:block;color:var(--muted);font-size:12.5px}
+.wopasteq{font-style:normal;color:var(--flag)}
+.wopaste .wogo{margin-top:10px}
+.wopastex{display:block;margin:10px auto 0}
 .wowho #woName{background:transparent;color:var(--muted);border-style:dashed}
 .wosig{position:relative;border-radius:12px;overflow:hidden;background:#fff;border:1px solid var(--line)}
 .wosig canvas{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair}
