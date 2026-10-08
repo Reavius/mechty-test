@@ -15,6 +15,19 @@ const LIMG = {};
 let lsize = 0, labReady = false;
 try { lsize = Math.min(+localStorage.getItem("mechty-lsize") || 0, LSIZES.length - 1); } catch (e) {}
 
+/* узор или значок: векторный (js/lart.js) — чёткий при любом размере; нет — картинка labels/*.png */
+async function lart(name){
+  if (!name) return null;
+  const v = typeof LART !== "undefined" && LART[name];
+  if (v){
+    const p = new Path2D(v.d), rule = typeof LART_FILL !== "undefined" ? LART_FILL : "nonzero";
+    return {width: v.w, height: v.h, draw: (ctx, x, y, w, h) => {
+      ctx.save(); ctx.translate(x, y); ctx.scale(w / v.w, h / v.h); ctx.fill(p, rule); ctx.restore(); }};
+  }
+  const im = await limg(name);
+  return im ? {width: im.width, height: im.height, draw: (ctx, x, y, w, h) => ctx.drawImage(im, x, y, w, h)} : null;
+}
+
 function limg(name){
   if (!LIMG[name]) LIMG[name] = new Promise(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = "labels/" + name + ".png"; });
   return LIMG[name];
@@ -36,7 +49,8 @@ function lshort(n){
     .replace(/^Пюре концентрированное /, "Пюре ")
     .replace(/^Вино «.+» /, "Вино ")
     .replace(/ п\/ф$/, "")
-    .replace(/[«»]/g, "");
+    .replace(/[«»]/g, "")
+    .replace(/(\d) %/g, "$1\u00a0%");                       // «6 %» не разрывается
 }
 
 const lall = () => data.filter(g => !g.nolabel).flatMap(g => g.items.map(it => ({it, g})));
@@ -102,37 +116,13 @@ function lsplit(name){
   }
   return best.l;
 }
-/* Текст блоком в несколько строк: перенос по пробелу и после дефиса. Самый крупный размер от maxS до minS,
-   при котором влезает не больше maxLines строк шириной width; не влезло — null. */
-function lblock(ctx, text, width, maxS, minS, maxLines, wt){
-  const tok = [];
-  String(text).split(/ +/).forEach((w, i, a) => {
-    const parts = w.split(/(?<=-)/);
-    parts.forEach((p2, k) => tok.push({t: p2, sp: k === parts.length - 1 && i < a.length - 1}));
-  });
-  for (let s = Math.floor(maxS); s >= minS; s--){
-    ctx.font = wt + " " + s + 'px "PT Serif", Georgia, serif';
-    const lines = [];
-    let cur = "", ok = true;
-    for (let i = 0; i < tok.length; i++){
-      const piece = tok[i].t;
-      const t = cur ? cur + (i && tok[i - 1].sp ? " " : "") + piece : piece;
-      if (ctx.measureText(t).width <= width){ cur = t; continue; }
-      if (!cur || ctx.measureText(piece).width > width){ ok = false; break; }
-      lines.push(cur); cur = piece;
-    }
-    if (!ok) continue;
-    if (cur) lines.push(cur);
-    if (lines.length <= maxLines) return {s, lines};
-  }
-  return null;
-}
 /* размер, при котором влезают все строки */
 const lfitAll = (ctx, lines, max, size, weight) => Math.min(...lines.map(t => lfit(ctx, t, max, size, weight)));
 
 /* Самый крупный шрифт, при котором все строки влезают в колонку по высоте;
    длинная строка переносится по словам (с отступом под текст), а не сжимается. */
-function lwrap(ctx, rows, width, height, maxS){
+function lwrap(ctx, rows, width, height, maxS, gap){
+  gap = gap || 1.17;
   for (let s = Math.floor(maxS); s >= 14; s--){
     const ind = s * 1.15, w = width - ind, lines = [];
     let y = 0, ok = true;
@@ -149,13 +139,13 @@ function lwrap(ctx, rows, width, height, maxS){
       }
       if (!ok) break;
       lines.push({t: cur, y, w: wt, glyph: first ? glyph : ""});
-      y += s * 1.17;
+      y += s * gap;
     }
-    const h = y - s * .17;
+    const h = y - s * (gap - 1);
     if (ok && h <= height) return {s, ind, lines, h};
   }
   const s = 14;
-  return {s, ind: s * 1.15, lines: rows.map((r, i) => ({t: r[1], y: i * s * 1.17, w: r[2], glyph: r[0]})), h: rows.length * s * 1.17};
+  return {s, ind: s * 1.15, lines: rows.map((r, i) => ({t: r[1], y: i * s * gap, w: r[2], glyph: r[0]})), h: rows.length * s * gap};
 }
 
 function lcanvas(id, W, H){
@@ -173,7 +163,7 @@ async function labDraw(){
   try { localStorage.setItem("mechty-lpos", it.id); } catch (e) {}
   const [mw, mh] = LSIZES[lsize], W = mw * LPX, H = mh * LPX;
   try { await document.fonts.load('700 40px "PT Serif"'); await document.fonts.load('400 40px "PT Serif"'); } catch (e) {}
-  const [vine, icon] = await Promise.all([limg("vine"), LICON[it.id] ? limg(LICON[it.id]) : null]);
+  const [vine, corner, icon] = await Promise.all([lart("vine"), lart("corner"), lart(LICON[it.id])]);
 
   const m = Math.min(W, H) * .07;                           // поля лицевой
 
@@ -185,7 +175,7 @@ async function labDraw(){
     for (const flip of [false, true]){
       ctx.save();
       if (flip){ ctx.translate(W, H); ctx.rotate(Math.PI); }
-      ctx.drawImage(vine, m, m, vw, vh);
+      vine.draw(ctx, m, m, vw, vh);
       ctx.fillRect(m + vw - 2, lineY - lw / 2, W - 2 * m - vw + 2, lw);
       ctx.restore();
     }
@@ -208,61 +198,58 @@ async function labDraw(){
   const tw = Math.max(...lines.map(t => ctx.measureText(t).width)), x0 = (W - tw - gx - iw) / 2;
   const lh = fs * 1.08, yc = H / 2 + fs * .34 - (lines.length - 1) * lh / 2;   // середина строчных — по центру
   lines.forEach((t, i) => ctx.fillText(t, x0 + (tw - ctx.measureText(t).width) / 2, yc + i * lh));
-  if (icon) ctx.drawImage(icon, x0 + tw + gx, H / 2 - ih / 2, iw, ih);
+  if (icon) icon.draw(ctx, x0 + tw + gx, H / 2 - ih / 2, iw, ih);
 
   /* ── оборотная ──
-     Слева — состав столбиком, дата, срок, кто сделал: самым крупным шрифтом, какой влезает
-     (длинные строки переносятся по словам, а не мельчают). Справа — название и QR. */
+     Как на шаблоне бара: сверху название со значком, по углам узоры, слева — состав столбиком, даты и кто сделал,
+     справа — QR. Текст — самым крупным шрифтом, какой влезает в своё поле (длинные строки переносятся, а не мельчают). */
   ctx = lcanvas("lback", W, H);
-  const mb = H * .045;                                      // поля оборотной (~1,4 мм)
-  const qs = H * .43, colR = W - mb, qx = colR - qs;        // QR ≈ 13 мм — уверенно читается телефоном
+  const mb = m * .5, cs = H * .15;
+  if (corner){
+    for (const flip of [false, true]){
+      ctx.save();
+      if (flip){ ctx.translate(W, H); ctx.rotate(Math.PI); }
+      corner.draw(ctx, W - mb - cs, mb, cs, cs);
+      ctx.restore();
+    }
+  }
+  /* заголовок */
+  const th = H * .13;
+  ctx.font = "400 " + th + 'px "PT Serif", Georgia, serif';
+  const ti = icon ? th * 1.15 * isz : 0, tiw = icon ? icon.width * ti / icon.height : 0, tg = icon ? th * .25 : 0;
+  const tfs = lfit(ctx, name, W - 2 * (mb + cs) - tiw - tg, th, 400);
+  const tk = tfs / th, ttw = ctx.measureText(name).width, tx = (W - ttw - tg * tk - tiw * tk) / 2;
+  const tBase = mb + tfs * .82;
+  ctx.fillText(name, tx, tBase);
+  if (icon) icon.draw(ctx, tx + ttw + tg * tk, tBase - tfs * .36 - ti * tk / 2, tiw * tk, ti * tk);
 
-  /* правая колонка: название (жирно), QR, кто сделал. Длинное — в несколько строк (по пробелу и дефису),
-     не мельче нижнего предела; длинная фамилия, если не влезает, уходит строкой в левую колонку. */
-  const d = new Date(), who = me ? me.name : "—";
-  const rx = qx - H * .01, rw = qs + H * .02, gap = H * .025;
-  const nb = lblock(ctx, name, rw, H * .1, H * .068, 3, 700) || lblock(ctx, name, rw, H * .068, H * .045, 4, 700);
-  const wb = lblock(ctx, who, rw - H * .09, H * .085, H * .068, 2, 400);
-  const nameH = nb ? (nb.lines.length - 1) * nb.s * 1.04 + nb.s * .78 : 0;
-  const whoH = wb ? (wb.lines.length - 1) * wb.s * 1.06 + wb.s * .78 : 0;
-  const qsz = Math.max(H * .3, Math.min(qs, H - 2 * mb - nameH - whoH - 2 * gap));
-  const qTop = mb + nameH + gap, qBot = H - mb - whoH - (wb ? gap : 0);
-  const qy = qTop + Math.max(0, (qBot - qTop - qsz) / 2), qxx = rx + (rw - qsz) / 2;
-  if (nb){
-    ctx.font = "700 " + nb.s + 'px "PT Serif", Georgia, serif';
-    nb.lines.forEach((t, i) => ctx.fillText(t, rx + (rw - ctx.measureText(t).width) / 2, mb + nb.s * .78 + i * nb.s * 1.04));
-  }
-  if (wb){
-    ctx.font = "400 " + wb.s + 'px "PT Serif", Georgia, serif';
-    const wg = wb.s * 1.1, y1 = H - mb - (wb.lines.length - 1) * wb.s * 1.06;
-    wb.lines.forEach((t, i) => {
-      const tw = ctx.measureText(t).width, x = rx + (rw - tw - (i ? 0 : wg)) / 2;
-      if (!i) lglyph(ctx, "who", x, y1 - wb.s * .82, wb.s * .82);
-      ctx.fillText(t, x + (i ? 0 : wg), y1 + i * wb.s * 1.06);
-    });
-  }
+  /* QR — поменьше, клетки ровно по точкам термопринтера: 203 dpi = 8 точек/мм, клетка = 3 точки = 6 px холста */
+  const bodyTop = tBase + tfs * .32, bodyBottom = H - mb;
+  let qx = W - mb, qsz = 0, qy = 0;
   if (window.qrcode){
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
-    const n = q.getModuleCount(), cell = qsz / n;
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
-      if (q.isDark(r, c)) ctx.fillRect(Math.floor(qxx + c * cell), Math.floor(qy + r * cell), Math.ceil(cell), Math.ceil(cell));
+    const n = q.getModuleCount(), cell = Math.max(2, Math.round(LPX * 3 / 8));
+    qsz = n * cell; qx = W - mb - H * .02 - qsz; qy = Math.round(bodyTop + (bodyBottom - bodyTop - qsz) / 2);
+    qx = Math.round(qx);
+    ctx.beginPath();
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) ctx.rect(qx + c * cell, qy + r * cell, cell, cell);
+    ctx.fill();
   }
-  const sepX = qx - H * .045;                               // тонкая черта между колонками
-  ctx.fillRect(sepX, mb, Math.max(2, H * .005), H - 2 * mb);
 
-  /* строки: состав столбиком, дата, годен до.
+  /* строки: состав столбиком, дата, годен до, кто сделал.
      Дата — всегда сегодняшняя, сделал — тот, кто вошёл: пересчитывается при каждом сохранении. */
+  const d = new Date(), who = me ? me.name : "—";
   const days = parseInt(g.srok, 10) || 0, till = new Date(d.getTime() + days * 864e5);
   const comp = (it.c || []).map(lshort);
   const rows = comp.map(t => ["pin", t, 400])
-    .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700]])   // даты не разрываются
-    .concat(wb ? [] : [["who", who, 400]]);
+    .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700], ["who", who, 400]]);
   $("linfo").innerHTML = "Дата производства — сегодня, <b>" + ldmy(d) + "</b>; годен до <b>" + ldmy(till) + "</b> (" + esc(g.srok) +
     "); сделал — <b>" + esc(who) + "</b>. При сохранении дата и фамилия подставляются заново.";
 
-  const left = mb, colW = sepX - H * .04 - left, top = mb, avail = H - 2 * mb;
-  const lay = lwrap(ctx, rows, colW, avail, H * .14);
-  const y0 = top + (avail - lay.h) / 2;
+  /* поле текста: от уголка слева до QR справа, от заголовка до низа */
+  const left = mb + cs * 1.12, colW = qx - H * .04 - left, top = bodyTop, avail = bodyBottom - bodyTop;   // правее уголка
+  const lay = lwrap(ctx, rows, colW, avail, H * .12, rows.length > 8 ? 1.07 : 1.17);
+  const y0 = top + Math.max(0, (avail - lay.h) / 2);
   lay.lines.forEach(L => {
     ctx.font = L.w + " " + lay.s + 'px "PT Serif", Georgia, serif';
     if (L.glyph) lglyph(ctx, L.glyph, left, y0 + L.y + lay.s * .12, lay.s * .82);
