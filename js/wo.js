@@ -226,7 +226,7 @@ async function woPages(act, sig){
   line(rx, ry + 10, rx + 240); ctx.font = WF(400, fs); ctx.fillText("/", rx + 250, ry); line(rx + 275, ry + 10, rx + 500); ctx.fillText("/", rx + 505, ry);
   ry += 62; ctx.fillText(wlong(act.date), rx, ry);
   /* название акта */
-  y = M + 280; ctx.font = WF(700, 50); let t = "А К Т   о списании"; ctx.fillText(t, (W - ctx.measureText(t).width) / 2, y);
+  y = M + 280; ctx.font = WF(700, 50); let t = act.kind === "pr" ? "А К Т   проработки" : "А К Т   о списании"; ctx.fillText(t, (W - ctx.measureText(t).width) / 2, y);
   y += 58; ctx.font = WF(400, fs); t = "от " + wlong(act.date); ctx.fillText(t, (W - ctx.measureText(t).width) / 2, y);
   ctx.fillText("№ " + (act.no || ""), R - 230, y); if (!act.no) line(R - 190, y + 10, R);
   y += 46;
