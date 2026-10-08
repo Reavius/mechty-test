@@ -71,7 +71,7 @@ if (PW) {
   await page.waitForSelector("#viewBt:not([hidden])", { timeout: 15000 });
   ok(true, "вход по паролю");
   ok(await page.locator("#tres .tcard").count() >= 30, `технологическая карта: ${await page.locator("#tres .tcard").count()}`);
-  for (const s of ["calc", "order", "rev", "lab", "ttk"]) {
+  for (const s of ["calc", "order", "zone", "rev", "lab", "ttk"]) {
     await page.click(`[data-s="${s}"]`); await page.waitForTimeout(400);
   }
   await page.click('[data-s="calc"]');
@@ -96,6 +96,18 @@ if (PW) {
   await page.click("#osum button.x");
   ok(await page.locator("#osum input.oq").count() === 0, "позиция убирается из сводки");
   await page.click('#okind [data-o="prep"]');
+  // «Взять на бар»: отметить → количество только числом → в копии по разделам
+  await page.click('[data-s="zone"]');
+  ok(await page.locator("#zlist input[type=checkbox]").count() > 50, "взять на бар: список по разделам");
+  const zf = page.locator("#zlist input[type=checkbox]").first(), zname = await zf.getAttribute("data-n");
+  await zf.check();
+  await page.fill("#zsum input.oq", "2шт");
+  ok(await page.inputValue("#zsum input.oq") === "2", "взять на бар: количество — числом");
+  await page.click("#zcopy");
+  const zclip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+  ok(/^Взять на бар \d\d\.\d\d\.\d{4}\n\n[^\n]+\n— /.test(zclip) && zclip.includes("— " + zname + " 2"), "взять на бар: копия по разделам с количеством");
+  await page.click("#zsum button.x");
+  ok(await page.locator("#zsum input.oq").count() === 0 && await page.locator("#olist input:checked").count() === 0, "взять на бар: отметка убирается, заявку не трогает");
   await page.click('[data-s="lab"]'); await page.waitForTimeout(1200);
   ok(await page.evaluate(() => document.getElementById("lback").width > 100), "этикетки рисуются");
   await page.click('[data-s="rev"]'); await page.waitForTimeout(800);

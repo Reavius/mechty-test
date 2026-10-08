@@ -2,7 +2,7 @@
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbxqrh3LqmPif6Uoaelm1XdXEBLC3eUpOPc3vSutbCfElQRu3CtzouDTyvz4O9hsayBu/exec";
 const WHO = "mechty-who";              // фамилия и почта для подстановки в форму (без пароля)
 
-let R = null, ALL = [], K = [], KALL = [], Z = [], ZO = [], TOKEN = "", me = null;
+let R = null, ALL = [], K = [], KALL = [], Z = [], ZO = [], ZN = [], TOKEN = "", me = null;
 let logged = false, calcReady = false, shared = null, logState = "idle";
 let fails = 0, waitUntil = 0;
 
@@ -144,12 +144,14 @@ function enter(p, name, email){
   K = Array.isArray(p.k) ? p.k : []; KALL = K.flatMap(g => g.items);
   Z = Array.isArray(p.z) ? p.z : [];
   ZO = Array.isArray(p.zo) ? p.zo : [];
+  ZN = Array.isArray(p.zn) ? p.zn : [];
   me = {name, email};
   $("meName").textContent = name;
   $("meMail").textContent = email;
   fill();
   fillTtk();
   fillOrder();
+  fillZone();
   setSect(sect);
   if (!calcReady){ start(); calcReady = true; }
   showView("bt");
@@ -229,8 +231,8 @@ $("gform").addEventListener("submit", async e => {
 
 $("logout").addEventListener("click", async () => {
   await dropSession();
-  R = null; ALL = []; K = []; KALL = []; Z = []; ZO = []; TOKEN = ""; me = null; shared = null; logged = false; logState = "idle";
-  $("res").innerHTML = ""; $("tres").innerHTML = ""; $("olist").innerHTML = ""; $("log").innerHTML = "";
+  R = null; ALL = []; K = []; KALL = []; Z = []; ZO = []; ZN = []; TOKEN = ""; me = null; shared = null; logged = false; logState = "idle";
+  $("res").innerHTML = ""; $("tres").innerHTML = ""; $("olist").innerHTML = ""; $("zlist").innerHTML = ""; $("log").innerHTML = "";
   if (typeof woLeave === "function") woLeave();                // подпись и акты прежнего бармена не остаются на форме
   leaveBt();
 });

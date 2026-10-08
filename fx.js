@@ -177,7 +177,7 @@
   /* ── «Бартендерам»: плавная смена разделов, переворот этикеток, цифры ревизии ── */
   const sect = $("#sect");
   if (sect) sect.addEventListener("click", () => requestAnimationFrame(() => {
-    const vis = ["#secTtk", "#secCalc", "#secOrder", "#secRev", "#secLab"].map(s => $(s)).find(el => el && !el.hidden);
+    const vis = ["#secTtk", "#secCalc", "#secOrder", "#secZone", "#secRev", "#secLab", "#secWo"].map(s => $(s)).find(el => el && !el.hidden);
     if (vis) g.fromTo(vis, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: .3, ease: "power2.out" });
     g.fromTo("#btTitle", { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: .3 });
   }));
@@ -196,11 +196,10 @@
     }, 0);
   }, true);
 
-  const olist = $("#olist");
-  if (olist) olist.addEventListener("change", e => {
+  ["#olist", "#zlist"].map(s => $(s)).forEach(list => list && list.addEventListener("change", e => {
     const box = e.target.closest("input[type=checkbox]");
     if (box && box.checked) g.fromTo(box, { scale: .6 }, { scale: 1, duration: .35, ease: "back.out(3)" });
-  });
+  }));
 
   /* ── старт ── */
   const onBar = !location.hash || location.hash === "#" || !/^#bartenders/.test(location.hash);

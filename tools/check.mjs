@@ -92,7 +92,10 @@ if (process.env.MECHTY_PASSWORD && B) {
     const base = await wc.subtle.importKey("raw", new TextEncoder().encode(process.env.MECHTY_PASSWORD), "PBKDF2", false, ["deriveKey"]);
     const key = await wc.subtle.deriveKey({ name: "PBKDF2", salt: u(B.s), iterations: B.n, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
     const P = JSON.parse(new TextDecoder().decode(await wc.subtle.decrypt({ name: "AES-GCM", iv: u(B.i) }, key, u(B.c))));
-    ok(["r", "k", "z", "zo"].every(k => Array.isArray(P[k])) && P.t, "шифровка открывается паролем, все разделы на месте");
+    ok(["r", "k", "z", "zo", "zn"].every(k => Array.isArray(P[k])) && P.t, "шифровка открывается паролем, все разделы на месте");
+    /* в списках с галочками отметка хранится по названию — повтор названия внутри списка сломал бы её */
+    const twice = ["z", "zo", "zn"].flatMap(k => { const n = P[k].flatMap(g => g.items); return n.filter((x, i) => n.indexOf(x) !== i).map(x => k + ": " + x); });
+    ok(!twice.length, "в заявках и списке «Взять на бар» нет повторов" + (twice.length ? ": " + twice.join(", ") : ""));
     const K = P.k.flatMap(g => g.items);
     ok(K.every(t => !t.img || has(t.img)), `фото техкарт на месте (${K.length} карт)`);
     const R = P.r.flatMap(g => g.items).map(r => r.id);

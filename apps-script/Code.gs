@@ -11,7 +11,7 @@ const TOKEN_SHA256 = "8d1a25d23a8211c88fcce095c4d60c492efda24cdfc96bd433a0037080
 const SHOW = 25;     // сколько последних входов отдавать сайту
 
 /* ── Ревизия ── */
-const REV_BOOK_ID = "";                      // ID таблицы ревизии из её адреса; пусто — эта же таблица
+const REV_BOOK_ID = "1OF063GZsdB_eyFRny0006R_y57nfhoZcJGyKcB-T7Ko";  // ID таблицы ревизии из её адреса; пусто — эта же таблица
 const REV_TOTAL = "Итог";                    // итог со всех зон; в столбце A — позиции с 3-й строки
 const REV_ZONES = "По зонам";                // по колонке на зону; создаётся сам, если его нет
 const REV_LOG = "Ревизия журнал";            // каждое добавление отдельной строкой
@@ -597,14 +597,14 @@ function mrevAdd(p, isNew) {
 }
 
 /* ═════════════ Списания ═════════════
-   Акт о списании (и акт проработки) собирается на сайте: PDF создаётся на телефоне (скачать / поделиться) и присылается сюда (POST).
-   Файл — в папку «Бар Мечты — Списания» (проработка — «Бар Мечты — Проработки») на Google Диске,
-   каждая позиция — строкой в лист «Списания» («Проработки») таблицы ревизии.
-   Повтор с тем же id не дублируется (id хранится в листе). Нужен доступ к Диску: выполните checkWriteoff один раз. */
-/* два вида актов — одна форма, разные папки и листы; у проработки причина у всех позиций — «Проработка» */
+   Акт списания и акт проработки собираются на сайте: PDF создаётся на телефоне (скачать / поделиться) и присылается сюда (POST).
+   У каждого вида своя папка на Google Диске — «Бар Мечты — Списания» и «Бар Мечты — Проработки»: в ней PDF актов
+   и таблица-журнал («Журнал списаний» / «Журнал проработок»), где каждая позиция — строкой. Таблицу ревизии не трогаем.
+   Повтор с тем же id не дублируется (id хранится в журнале). Нужен доступ к Диску: выполните checkWriteoff один раз. */
+/* два вида актов — одна форма, разные папки и журналы; у проработки причина у всех позиций — «Проработка» */
 const WO_KINDS = {
-  wo: { folder: "Бар Мечты — Списания",  sheet: "Списания",   file: "Акт списания" },
-  pr: { folder: "Бар Мечты — Проработки", sheet: "Проработки", file: "Акт проработки" }
+  wo: { folder: "Бар Мечты — Списания",  log: "Журнал списаний",   sheet: "Списания",   file: "Акт списания" },
+  pr: { folder: "Бар Мечты — Проработки", log: "Журнал проработок", sheet: "Проработки", file: "Акт проработки" }
 };
 const woKind = k => WO_KINDS[k] ? k : "wo";
 const WO_HEAD = ["Дата акта", "№", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Кто", "Файл", "Записано", "id"];
@@ -621,19 +621,82 @@ function doPost(e) {
 }
 function jsonOut(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
-function woSheet(kind) {
-  const ss = revBook(), name = WO_KINDS[woKind(kind)].sheet;
-  let sh = ss.getSheetByName(name);
+/* первая не удалённая папка / файл из выдачи Диска */
+function woAlive(it) { while (it.hasNext()) { const x = it.next(); if (!x.isTrashed()) return x; } return null; }
+function woFolder(kind, create) {
+  const name = WO_KINDS[woKind(kind)].folder;
+  return woAlive(DriveApp.getFoldersByName(name)) || (create ? DriveApp.createFolder(name) : null);
+}
+/* лист журнала вида. Журнал — таблица в папке вида; id запоминается в свойствах скрипта.
+   Журнала ещё нет: create — завести (и перенести старый лист из таблицы ревизии), иначе — null. */
+function woSheet(kind, create) {
+  kind = woKind(kind);
+  const K = WO_KINDS[kind], props = PropertiesService.getScriptProperties(), key = "WO_LOG_" + kind;
+  let ss = null, fresh = false;
+  const id = props.getProperty(key);
+  if (id) {
+    try { if (!create || !DriveApp.getFileById(id).isTrashed()) ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; }
+  }
+  if (!ss) {
+    const folder = woFolder(kind, create);
+    const f = folder && woAlive(folder.getFilesByName(K.log));
+    if (f) ss = SpreadsheetApp.openById(f.getId());
+    else if (!create) return null;
+    else {
+      ss = SpreadsheetApp.create(K.log);
+      DriveApp.getFileById(ss.getId()).moveTo(folder);
+      fresh = true;
+    }
+    props.setProperty(key, ss.getId());
+  }
+  let sh = ss.getSheetByName(K.sheet);
   if (!sh) {
-    sh = ss.insertSheet(name);
+    sh = ss.getSheets()[0];
+    if (fresh) sh.setName(K.sheet);
+  }
+  if (create && String(sh.getRange(1, 1).getValue()) === "") {
     sh.getRange(1, 1, 1, WO_HEAD.length).setValues([WO_HEAD]).setFontWeight("bold");
     sh.setFrozenRows(1);
   }
   return sh;
 }
-function woFolder(kind) {
-  const name = WO_KINDS[woKind(kind)].folder, f = DriveApp.getFoldersByName(name);
-  return f.hasNext() ? f.next() : DriveApp.createFolder(name);
+/* Раньше журнал вёлся листом «Списания» / «Проработки» в таблице ревизии (а без REV_BOOK_ID — в таблице журнала входов).
+   Строки такого листа переносятся в журнал (кроме уже перенесённых — по id), а сам лист удаляется.
+   Смотрим обе таблицы. Чужой лист с таким же именем не трогаем. */
+function woMigrate(kind, sh) {
+  const books = [], ids = {};
+  [() => SpreadsheetApp.getActiveSpreadsheet(), revBook].forEach(f => {
+    try { const b = f(); if (b && !ids[b.getId()]) { ids[b.getId()] = 1; books.push(b); } } catch (e) {}
+  });
+  return books.map(b => woMigrateFrom(b, kind, sh)).filter(Boolean).join("; ");
+}
+function woMigrateFrom(book, kind, sh) {
+  const old = book.getSheetByName(WO_KINDS[kind].sheet);
+  if (!old) return "";
+  const name = "лист «" + old.getName() + "»", where = " в таблице «" + book.getName() + "»";  // после удаления лист не прочитать
+  const keep = name + where + " не наш (другие столбцы) — оставлен как есть";
+  if (old.getMaxColumns() < WO_HEAD.length || old.getLastColumn() > WO_HEAD.length) return keep;
+  const head = old.getRange(1, 1, 1, WO_HEAD.length).getDisplayValues()[0];
+  if (head.join("|") !== WO_HEAD.join("|")) return keep;
+  let moved = 0;
+  const last = old.getLastRow();
+  if (last >= 2) {
+    const have = {}, top = sh.getLastRow();
+    if (top >= 2) sh.getRange(2, 10, top - 1, 1).getValues().forEach(r => { have[String(r[0])] = 1; });
+    const v = old.getRange(2, 1, last - 1, WO_HEAD.length).getValues().filter(r => String(r.join("")) !== "" && !have[String(r[9])]);
+    moved = v.length;
+    if (v.length) {
+      const from = Math.max(top, 1) + 1;
+      ensureRows(sh, from + v.length - 1);
+      sh.getRange(from, 1, v.length, 4).setNumberFormat("@");
+      sh.getRange(from, 6, v.length, 5).setNumberFormat("@");
+      sh.getRange(from, 1, v.length, WO_HEAD.length).setValues(v);
+      SpreadsheetApp.flush();
+    }
+  }
+  if (book.getSheets().length < 2) return "строк перенесено: " + moved + "; " + name + where + " — единственный, не удалён";
+  book.deleteSheet(old);
+  return name + " убран" + where.replace(" в таблице", " из таблицы") + (moved ? ", его строки (" + moved + ") — в журнале" : "");
 }
 /* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
 function woFind(sh, id) {
@@ -653,13 +716,15 @@ function woSave(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = woSheet(kind), seen = woFind(sh, id);
+    const sh = woSheet(kind, true);
+    try { woMigrate(kind, sh); } catch (e) {}                              // перенос старого листа не мешает сохранить акт
+    const seen = woFind(sh, id);
     if (seen !== null) return { ok: true, url: seen, dup: true };
     let url = "";
     if (p.pdf) {
       const name = WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " — " + (who || "бар").replace(/\.+$/, "") + ".pdf";
       const blob = Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), "application/pdf", name);
-      url = woFolder(kind).createFile(blob).getUrl();
+      url = woFolder(kind, true).createFile(blob).getUrl();
     }
     const stamp = new Date(), last = Math.max(sh.getLastRow(), 1);
     ensureRows(sh, last + rows.length);
@@ -677,10 +742,10 @@ function woSave(p) {
 
 /* JSONP: wo=check — записан ли акт; wo=list — последние акты */
 function writeoffs(p) {
-  const sh = woSheet(p.k), act = String(p.wo);
-  if (act === "check") { const u = woFind(sh, String(p.id || "")); return { ok: true, saved: u !== null, url: u || "" }; }
+  const sh = woSheet(p.k, false), act = String(p.wo);                     // журнала ещё нет — ни одного акта
+  if (act === "check") { const u = sh ? woFind(sh, String(p.id || "")) : null; return { ok: true, saved: u !== null, url: u || "" }; }
   if (act === "list") {
-    const last = sh.getLastRow(), out = [], seen = {};
+    const last = sh ? sh.getLastRow() : 0, out = [], seen = {};
     if (last >= 2) {
       const v = sh.getRange(Math.max(2, last - 400), 1, Math.min(last - 1, 401), WO_HEAD.length).getDisplayValues();
       for (let i = v.length - 1; i >= 0; i--) {                           // 15 актов, у последнего — все строки
@@ -697,9 +762,19 @@ function writeoffs(p) {
   return { error: "action" };
 }
 
-/* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску. */
+/* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску.
+   Заводит папки и журналы, а старые листы «Списания» / «Проработки» из таблицы ревизии переносит в журналы. */
 function checkWriteoff() {
-  Object.keys(WO_KINDS).forEach(k => Logger.log("Папка: «" + woFolder(k).getName() + "», лист: «" + woSheet(k).getName() + "»."));
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    Object.keys(WO_KINDS).forEach(k => {
+      const sh = woSheet(k, true), moved = woMigrate(k, sh);
+      Logger.log("Папка: «" + woFolder(k, true).getName() + "», журнал: «" + sh.getParent().getName() + "»" + (moved ? "; " + moved : "") + ".");
+    });
+  } finally {
+    lock.releaseLock();
+  }
   Logger.log("Всё в порядке.");
 }
 
@@ -722,8 +797,9 @@ function checkRevision() {
 
 /* ── Ежемесячная копия таблиц ──
    Один раз: выберите installBackup в списке функций вверху и нажмите «Выполнить», разрешите доступ к Диску.
-   1-го числа каждого месяца в папке «Бар Мечты — бэкапы» на Google Диске появляются копии таблицы журнала
-   и таблицы ревизии с датой в названии. Хранятся последние 12 копий каждой, старые уходят в корзину. */
+   1-го числа каждого месяца в папке «Бар Мечты — бэкапы» на Google Диске появляются копии таблицы журнала,
+   таблицы ревизии и журналов списаний и проработок с датой в названии. Хранятся последние 12 копий каждой,
+   старые уходят в корзину. */
 const BACKUP_FOLDER = "Бар Мечты — бэкапы";
 const BACKUP_KEEP = 12;
 
@@ -742,11 +818,17 @@ function monthlyBackup() {
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
   const ids = [SpreadsheetApp.getActiveSpreadsheet().getId()];
   if (REV_BOOK_ID && ids.indexOf(REV_BOOK_ID) < 0) ids.push(REV_BOOK_ID);
-  ids.forEach(id => {
+  const copy = id => {
     const f = DriveApp.getFileById(id);
     const prefix = f.getName() + " — бэкап ";
     f.makeCopy(prefix + stamp, folder);
     backupPrune(folder, prefix);
+  };
+  ids.forEach(copy);
+  /* журналы списаний и проработок; журнала нет или он удалён — пропускаем, остальное уже скопировано */
+  Object.keys(WO_KINDS).forEach(k => {
+    const id = PropertiesService.getScriptProperties().getProperty("WO_LOG_" + k);
+    if (id && ids.indexOf(id) < 0) { try { copy(id); } catch (e) { Logger.log("Журнал «" + WO_KINDS[k].log + "» не скопирован: " + e.message); } }
   });
 }
 
