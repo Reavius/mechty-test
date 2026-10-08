@@ -45,7 +45,7 @@ const woRowsData = () => [...document.querySelectorAll("#woRows .worow")].map(li
   u: li.querySelector(".wou").value, why: wkind === "pr" ? WO_PR : li.querySelector(".woy").value.replace(/\s+/g, " ").trim()}));
 function woDraftSave(){
   if (!me) return;
-  wsave(wdraft(), {date: $("woDate").value, no: $("woNo").value, rows: woRowsData()});
+  wsave(wdraft(), {date: $("woDate").value, no: $("woNo").value, rows: woRowsData(), paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
   const ini = wjson(WI, {}); ini[me.name] = $("woIni").value; wsave(WI, ini);
 }
 
@@ -67,6 +67,8 @@ function woLoad(){
   $("woNo").value = d && d.no || "";
   const rows = d && d.rows && d.rows.length ? d.rows.slice(0, WO_MAX) : [{}];
   $("woRows").innerHTML = rows.map(woRow).join("");
+  $("woPasteT").value = d && d.paste || ""; $("woPasteWhy").value = d && d.pasteWhy || "";
+  $("woPaste").hidden = !$("woPasteT").value.trim();
   document.querySelectorAll("#wokind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === wkind)));
   $("woTitle").textContent = WOK[wkind].title;
   woCap();
@@ -74,6 +76,7 @@ function woLoad(){
 function woCap(){
   const full = $("woRows").children.length >= WO_MAX;
   $("woAdd").disabled = full; $("woMax").hidden = !full;
+  if (!$("woPaste").hidden) woPasteDraw();                     // сколько ещё войдёт и какая причина — по текущему акту
 }
 
 function woInit(){
@@ -90,7 +93,7 @@ function woInit(){
 /* выход из аккаунта: форма — в исходное */
 function woLeave(){
   woUser = null; woLast = null; woLastOf = {};
-  if (woReady){ woSigReset(); woLoad(); woDoneUi(); $("woWarn").textContent = ""; }
+  if (woReady){ woSigReset(); woLoad(); woDoneUi(); $("woWarn").textContent = ""; }   // woLoad: поле вставки — из черновика этого бармена
   wnItems = []; wnState = "load"; if (woReady) wnDraw();
 }
 
@@ -130,34 +133,101 @@ $("woForm").addEventListener("input", woDraftSave);
 $("woForm").addEventListener("change", woDraftSave);
 
 /* ── вставка списком ──
-   Позиция на строке: «Водка Беленькая — 170 мл», «Трипл сек 30 + 30 мл», «40 мл окхарт», «Сок 0,5 л — Порча».
-   Количество — последнее число с единицей (иначе последнее число); слагаемые через «+» складываются.
-   Текст до количества — наименование, после — причина (если количество стоит первым — после него наименование).
-   Строки без числа (заголовки «Алко», «Безалко») пропускаются. */
-const WO_UNITS_RE = [[/^(мл|миллилитр)/i, "мл"], [/^(л|литр)/i, "л"], [/^(кг|килограмм)/i, "кг"], [/^(гр?|грамм)/i, "гр"], [/^(шт|штук)/i, "шт"]];
-const woUnitNorm = u => { for (const [re, v] of WO_UNITS_RE) if (u && re.test(u)) return v; return ""; };
+   Позиция на строке: «Водка Беленькая — 170 мл», «Трипл сек 30 + 30 мл», «40 мл окхарт — Порча», «Ред Булл 250мл 2 шт».
+   Количество — число с единицей перед первой причиной (« — », «(», «;», «, …»); если количество стоит первым — после него
+   наименование. Слагаемые через «+» складываются (л и мл, кг и гр — с пересчётом). «… 250мл 2» — 2 штуки, размер — в названии;
+   «20 мл х2» — 40 мл. Число без единицы — только в конце строки («Негрони 180»), единицу тогда выберет бармен («ед.?»).
+   Строки из таблицы (через Tab) — по столбцам. Заголовки («Алко», «Итого») пропускаются. */
+const WO_U = "миллилитр[а-яё]*|литр[а-яё]*|килограмм[а-яё]*|кило|кгр|грамм[а-яё]*|грам[а-яё]*|штук[а-яё]*|бутыл[а-яё]*|бут|банк[а-яё]*|мл|ml|кг|kg|гр|шт|pcs|лт|л|l|г|g";
+function woUnitNorm(u){
+  u = String(u || "").toLowerCase().replace(/\.$/, "");
+  if (/^(мл|миллилитр|ml$)/.test(u)) return "мл";
+  if (/^(кг|кгр|кило|kg$)/.test(u)) return "кг";
+  if (/^(гр|грам|г$|g$)/.test(u)) return "гр";
+  if (/^(шт|штук|бут|банк|pcs$)/.test(u)) return "шт";
+  if (/^(лт$|л$|литр|l$)/.test(u)) return "л";
+  return "";
+}
+const wr3 = x => Math.round(x * 1000) / 1000;
+const woTidy = t => String(t).replace(/^\s*\d+[.)]\s+/, "").replace(/^[\s\-–—•*·:;,.(]+|[\s\-–—•*·:;,(]+$/g, "")
+  .replace(/^(.*)\)$/, (a, b) => b.includes("(") ? a : b).trim();
+/* сумма «1 л + 200 мл» → 1200 мл; у слагаемого без единицы — единица соседнего; несовместимые единицы — ошибка */
+function woSum(m){
+  const terms = m[1].split("+").map(t => { const x = t.match(new RegExp("(\\d+(?:[.,]\\d+)?)\\s*(" + WO_U + ")?", "i"));
+    return {v: parseFloat(x[1].replace(",", ".")), u: woUnitNorm(x[2])}; });
+  const k = terms.length - 1;
+  if (!terms[k].u) terms[k].u = woUnitNorm(m[2]);
+  for (let i = k - 1; i >= 0; i--) if (!terms[i].u) terms[i].u = terms[i + 1].u;
+  for (let i = 1; i <= k; i++) if (!terms[i].u) terms[i].u = terms[i - 1].u;
+  const us = [...new Set(terms.map(t => t.u))];
+  if (us.length === 1) return {q: wr3(terms.reduce((a, t) => a + t.v, 0)), u: us[0]};
+  const base = {"л": ["мл", 1000], "мл": ["мл", 1], "кг": ["гр", 1000], "гр": ["гр", 1]};
+  const bs = [...new Set(terms.map(t => base[t.u] ? base[t.u][0] : "?"))];
+  if (bs.length !== 1 || bs[0] === "?") return {bad: true};
+  return {q: wr3(terms.reduce((a, t) => a + t.v * base[t.u][1], 0)), u: bs[0]};
+}
+/* строка из таблицы: столбцы через Tab — наименование, ед., кол-во, причина в любом порядке; дата, ссылка, id, № — мимо */
+function woParseCells(line, raw){
+  const cells = line.split("\t").map(c => c.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const isNum = c => /^\d+(?:[.,]\d+)?$/.test(c);
+  let q = null, u = "", text = [];
+  cells.forEach((c, i) => {
+    if (/^\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}(?: \d{1,2}:\d{2})?$/.test(c) || /^https?:/i.test(c) || (/^[\w-]{12,}$/.test(c) && /\d/.test(c) && /[a-z]/i.test(c))) return;
+    if (new RegExp("^(?:" + WO_U + ")\\.?$", "i").test(c)){ if (!u) u = woUnitNorm(c); return; }
+    if (isNum(c)){
+      if (q === null && !(i === 0 && /^\d+$/.test(c) && cells.slice(1).some(isNum))) q = parseFloat(c.replace(",", "."));
+      return;
+    }
+    const qu = c.match(new RegExp("^(\\d+(?:[.,]\\d+)?)\\s*(" + WO_U + ")\\.?$", "i"));
+    if (qu && q === null){ q = parseFloat(qu[1].replace(",", ".")); u = u || woUnitNorm(qu[2]); return; }
+    text.push(c);
+  });
+  const n = woTidy(text[0] || "");
+  if (!n || !(q > 0)) return {skip: raw.trim()};
+  return {n: n.charAt(0).toUpperCase() + n.slice(1, 120), q: wr3(q), u, why: woTidy(text[1] || "").slice(0, 120)};
+}
 function woParseLine(raw){
-  const line = String(raw).replace(/[\u2705\u2714\u2611\u2713\ufe0f]/g, " ").replace(/\*\*|__/g, "").replace(/\s+/g, " ").trim();
+  let s = String(raw).replace(/[✅✔☑✓️]/g, " ").replace(/\*\*|__/g, "")
+    .replace(/(\d)[   ](?=\d{3}(?!\d))/g, "$1").replace(/(\d) (?=000(?!\d))/g, "$1")   // «1 500» из таблицы, «1 000 мл»
+    .replace(/[   ]/g, " ").replace(/½/g, " 0.5 ").replace(/¼/g, " 0.25 ").replace(/¾/g, " 0.75 ")
+    .replace(/(\d+)\s*\/\s*(\d+)/g, (a, x, y) => +y ? String(wr3(x / y)) : a);                        // «1/2 шт» → 0.5 шт
+  if (s.includes("\t")) return woParseCells(s, String(raw));
+  const line = s.replace(/\s+/g, " ").trim();
   if (!line) return null;
-  const U = "миллилитр[а-яё]*|литр[а-яё]*|килограмм[а-яё]*|грамм[а-яё]*|штук[а-яё]*|мл|кг|гр|шт|л|г";
-  /* число или сумма «20 + 30», единица — после суммы или у слагаемых («120мл + 90»); не часть слова или другого числа */
-  const re = new RegExp("(\\d+(?:[.,]\\d+)?(?:\\s*(?:" + U + ")?\\s*\\+\\s*\\d+(?:[.,]\\d+)?)*)\\s*(" + U + ")?(?![а-яёa-z\\d])\\.?", "gi");
-  const ms = [...line.matchAll(re)].filter(m => !m.index || !/[а-яёa-z\d.,]/i.test(line[m.index - 1]));
-  if (!ms.length) return {skip: line};
-  const unitIn = m => m[2] || (m[1].match(new RegExp("(" + U + ")", "i")) || [])[1] || "";
-  const withU = ms.filter(unitIn), m = withU.length ? withU[withU.length - 1] : ms[ms.length - 1];
-  const tidy = t => t.replace(/^\s*\d+[.)]\s+/, "").replace(/^[\s\-\u2013\u2014\u2022*\u00b7:;,.(]+|[\s\-\u2013\u2014\u2022*\u00b7:;,(]+$/g, "").replace(/^(.*[^(]*)\)$/, (a, b) => b.includes("(") ? a : b).trim();
-  const before = tidy(line.slice(0, m.index)), after = tidy(line.slice(m.index + m[0].length));
-  if (!unitIn(m) && after) return {skip: line};                 // «Алко — 16 позиций»: число без единицы посреди текста — не количество
-  const q = Math.round(m[1].split("+").reduce((a, x) => a + (parseFloat(x.replace(",", ".")) || 0), 0) * 1000) / 1000;
-  let n = before, why = after;
-  if (!n){                                                     // «40 мл окхарт — Порча»: после количества — наименование, через тире — причина
-    const k = after.search(/\s[\u2014\u2013-]\s|;|\(/);
-    n = tidy(k < 0 ? after : after.slice(0, k)); why = k < 0 ? "" : tidy(after.slice(k));
+  const skip = {skip: line};
+  /* число или сумма «20 + 30», единица — после суммы или у слагаемых; не часть слова или другого числа */
+  const re = new RegExp("(\\d+(?:[.,]\\d+)?(?:\\s*(?:" + WO_U + ")?\\.?\\s*\\+\\s*\\d+(?:[.,]\\d+)?)*)\\s*(" + WO_U + ")?(?![а-яёa-z\\d])\\.?", "gi");
+  const ms = [...line.matchAll(re)].filter(m => !m.index || !/[а-яёa-z\d.,\/]/i.test(line[m.index - 1]));
+  if (!ms.length) return skip;
+  const hasU = m => !!(m[2] || new RegExp("(?:" + WO_U + ")(?![а-яёa-z])", "i").test(m[1]));
+  const fu = ms.find(hasU);
+  let seg = line, reason = "", qm;
+  if (fu){
+    const end = fu.index + fu[0].length, rest = line.slice(end), k = rest.search(/\s[—–-]\s|\(|;|,\s+(?=[а-яёa-z])/i);
+    if (k >= 0){ seg = line.slice(0, end + k); reason = rest.slice(k); }
+    const inSeg = ms.filter(m => m.index + m[0].length <= seg.length && hasU(m));
+    qm = !woTidy(line.slice(0, fu.index)) ? fu : inSeg[inSeg.length - 1];      // количество первым — «40 мл окхарт»
+  } else {
+    qm = ms[ms.length - 1];
+    if (woTidy(line.slice(qm.index + qm[0].length))) return skip;               // «Алко — 16 позиций»: число посреди текста — не количество
   }
-  if (!n || !(q > 0) || /^(итого|всего)(?![а-яё])/i.test(n)) return {skip: line};
-  n = n.charAt(0).toUpperCase() + n.slice(1);
-  return {n: n.slice(0, 120), q, u: woUnitNorm(unitIn(m)) || woUnitOf[n] || "", why: why.slice(0, 120)};
+  const sum = woSum(qm);
+  if (sum.bad) return skip;
+  let q = sum.q, u = sum.u, why = woTidy(reason), n, trail = woTidy(seg.slice(qm.index + qm[0].length));
+  if (!woTidy(line.slice(0, qm.index))){ n = trail; trail = ""; }
+  else {
+    n = woTidy(seg.slice(0, qm.index));
+    const tail = trail || why, xm = fu && tail.match(/^(?:([хx×*])\s*)?(\d+(?:[.,]\d+)?)$/i);
+    if (xm){
+      const N = parseFloat(xm[2].replace(",", "."));
+      if (xm[1]) q = wr3(q * N);                                                // «20 мл х2» → 40 мл
+      else { n = woTidy(seg.slice(0, qm.index + qm[0].length)); q = N; u = ""; } // «Ред Булл 250мл 2» → 2, размер — в названии
+      if (trail) trail = ""; else why = "";
+    }
+    if (trail) why = why ? trail + " — " + why : trail;                         // «Лимоны 2 кг испорчены»
+  }
+  if (!n || !(q > 0) || /^(итого|всего)(?![а-яё])/i.test(n)) return skip;
+  return {n: n.charAt(0).toUpperCase() + n.slice(1, 120), q, u, why: why.slice(0, 120)};
 }
 function woPasteRows(){
   const rows = [], skip = [], fill = $("woPasteWhy").value.replace(/\s+/g, " ").trim();
@@ -189,8 +259,11 @@ $("woPasteOpen").addEventListener("click", () => {
 $("woPasteX").addEventListener("click", () => { $("woPaste").hidden = true; });
 $("woPasteT").addEventListener("input", woPasteDraw);
 $("woPasteWhy").addEventListener("input", woPasteDraw);
+$("woPasteWhy").addEventListener("keydown", e => {                // Enter здесь — не «Создать файл», а «Добавить в акт»
+  if (e.key === "Enter"){ e.preventDefault(); if (!$("woPasteGo").disabled) $("woPasteGo").click(); }
+});
 $("woPasteGo").addEventListener("click", () => {
-  const {rows} = woPasteRows();
+  const {rows, skip} = woPasteRows();
   [...document.querySelectorAll("#woRows .worow")].forEach(li => {   // пустые строки формы — убрать
     if (![".won", ".woq", ".woy"].some(s => { const x = li.querySelector(s); return x && x.value && x.value.trim(); })) li.remove();
   });
@@ -198,12 +271,14 @@ $("woPasteGo").addEventListener("click", () => {
   $("woRows").insertAdjacentHTML("beforeend", put.map(r => woRow({n: r.n, q: wq(r.q), u: r.u, why: r.why})).join(""));
   if (!$("woRows").children.length) $("woRows").innerHTML = woRow({});
   woCap(); woDraftSave(); buzz(14);
-  $("woPasteT").value = rest.map(r => r.src).join("\n");             // что не вошло — остаётся в поле
+  const bad = skip.filter(t => /\d/.test(t));                         // не понятые строки с числами — тоже остаются
+  $("woPasteT").value = rest.map(r => r.src).concat(bad).join("\n");  // что не вошло — остаётся в поле
   const miss = put.filter(r => !r.u || !r.why).length;
   $("woWarn").textContent = "Добавлено: " + put.length + " поз." + (rest.length ? " Не вошло " + rest.length + " — в акте не больше " + WO_MAX + ": они остались в поле, вставите в следующий акт." : "") +
+    (bad.length ? " Не понял " + bad.length + " строк — они остались в поле, поправьте и добавьте." : "") +
     (miss ? " Проверьте единицу и причину у " + miss + " поз." : "");
-  if (!rest.length) $("woPaste").hidden = true;
-  woPasteDraw();
+  if (!rest.length && !bad.length) $("woPaste").hidden = true;
+  woDraftSave(); woPasteDraw();
 });
 
 /* ── подпись пальцем ──
@@ -417,7 +492,7 @@ $("woForm").addEventListener("submit", async e => {
     const name = WOK[kind].file + " " + act.date + (no ? " №" + no : "") + " — " + (me ? me.name : "бар") + ".pdf";
     woLast = woLastOf[kind] = {pdf, name, id: rid(), act, prev: pages[0].toDataURL("image/jpeg", .6)};
     /* акт готов — черновик очищаем: после перезагрузки не создать тот же акт второй раз */
-    if (me) wsave(wdraft(), {date: wtoday(), no: "", rows: []});
+    if (me) wsave(wdraft(), {date: wtoday(), no: "", rows: [], paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
     woDoneUi();
     $("woDone").scrollIntoView({behavior: "smooth", block: "start"});
     buzz(14);
@@ -459,7 +534,7 @@ $("woShare").addEventListener("click", async () => {
   try { await navigator.share({files: [woFile(woLast)], title: woLast.name}); } catch (e) { if (e.name !== "AbortError") $("woDl").click(); }
 });
 $("woNew").addEventListener("click", () => {
-  if (me) wsave(wdraft(), {date: wtoday(), no: "", rows: []});
+  if (me) wsave(wdraft(), {date: wtoday(), no: "", rows: [], paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
   woLast = woLastOf[wkind] = null;
   woLoad(); woSigReset(); woDoneUi();
   $("woForm").scrollIntoView({behavior: "smooth", block: "start"});
