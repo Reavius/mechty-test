@@ -231,6 +231,7 @@ $("logout").addEventListener("click", async () => {
   await dropSession();
   R = null; ALL = []; K = []; KALL = []; Z = []; ZO = []; TOKEN = ""; me = null; shared = null; logged = false; logState = "idle";
   $("res").innerHTML = ""; $("tres").innerHTML = ""; $("olist").innerHTML = ""; $("log").innerHTML = "";
+  if (typeof woLeave === "function") woLeave();                // подпись и акты прежнего бармена не остаются на форме
   leaveBt();
 });
 

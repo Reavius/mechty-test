@@ -290,7 +290,7 @@ input[type="date"]{
 .rin button:disabled{opacity:.4;cursor:default}
 
 /* ── заявка ── */
-#okind{margin-top:4px}
+#okind,#wokind{margin-top:4px}
 .osum{margin-top:22px;border-color:var(--accent)}
 .otools{
   display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 18px;
@@ -477,6 +477,17 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .worow .wox{padding:0;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);font:600 18px/1 var(--sans);cursor:pointer}
 .woadd{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px dashed var(--line);background:transparent;color:var(--accent);
   font:700 14.5px var(--sans);cursor:pointer}
+.woadd:disabled{opacity:.45;cursor:default}
+.wonote{margin:8px 2px 0;font-size:13px;color:var(--muted)}
+.wofix{display:flex;align-items:center;min-width:0;padding:0 10px;border:1px dashed var(--line);border-radius:10px;
+  color:var(--muted);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* узкий телефон: причина — своей строкой, иначе в ней ничего не видно */
+@media (max-width:440px){
+  .worow2{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 40px}
+  .worow2 .woy{grid-column:1/-1;grid-row:2}
+  .worow2 .wox{grid-column:3;grid-row:1}
+  .worow2 .wofix{min-height:34px}
+}
 .wowho #woName{background:transparent;color:var(--muted);border-style:dashed}
 .wosig{position:relative;border-radius:12px;overflow:hidden;background:#fff;border:1px solid var(--line)}
 .wosig canvas{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair}

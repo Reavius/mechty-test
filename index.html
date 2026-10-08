@@ -169,8 +169,12 @@
   </div>
 
   <div id="secWo" hidden>
+    <div class="modes" id="wokind" role="group" aria-label="Вид акта">
+      <button type="button" data-k="wo" aria-pressed="true">Акт списания</button>
+      <button type="button" data-k="pr" aria-pressed="false">Акт проработки</button>
+    </div>
     <form class="result tcard wo" id="woForm" autocomplete="off" novalidate>
-      <div class="tname"><em>ООО «Заря» · Бар</em><h2 class="h3">Акт о списании</h2></div>
+      <div class="tname"><em>ООО «Заря» · Бар</em><h2 class="h3" id="woTitle">Акт о списании</h2></div>
       <div class="wobody">
         <div class="wo2">
           <div>
@@ -186,6 +190,7 @@
         <p class="label wolab">Позиции</p>
         <ol class="worows" id="woRows"></ol>
         <button type="button" class="ghost woadd" id="woAdd">+ Добавить позицию</button>
+        <p class="wonote" id="woMax" hidden>В акте не больше 25 позиций — остальное оформите следующим актом.</p>
 
         <p class="label wolab">Кто списывает</p>
         <div class="wo2 wowho">
@@ -210,9 +215,10 @@
     <div class="result tcard" id="woDone" hidden>
       <div class="tname"><h2 class="h3">Акт готов</h2></div>
       <p class="oempty" id="woInfo"></p>
-      <div class="lprev"><img id="woPrev" alt="Акт о списании — превью"></div>
+      <div class="lprev"><img id="woPrev" alt="Акт — превью"></div>
       <div class="otools">
-        <button type="button" class="link" id="woShare">Скачать / поделиться</button>
+        <button type="button" class="link" id="woDl">Скачать</button>
+        <button type="button" class="link" id="woShare" hidden>Поделиться</button>
         <button type="button" class="link" id="woNew">Новый акт</button>
       </div>
     </div>
