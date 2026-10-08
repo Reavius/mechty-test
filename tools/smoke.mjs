@@ -114,7 +114,7 @@ if (PW) {
   ok(await page.locator("#rlist li").count() > 0, "ревизия");
   await page.click('#rkind [data-k="month"]'); await page.waitForTimeout(600);
   ok(await page.locator("#mlist li.rrow").count() === 2, "месячная ревизия: позиции по разделам");
-  await page.fill("#mq", "виски");
+  await page.fill("#mq", "виски"); await page.waitForTimeout(300);   // поиск срабатывает после паузы в наборе
   ok(await page.locator("#mlist li.rrow").count() === 1, "месячная ревизия: поиск по разделу");
   ok(await page.isVisible("#mnew") && await page.locator("#mlist .rin").count() === 1, "месячная ревизия: свой столбец и новая позиция");
   await page.fill("#mq", "");
