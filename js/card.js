@@ -2,13 +2,14 @@
 const TOTAL = data.reduce((a,g) => a + g.items.length, 0);
 let active = "all";
 
-/* состав для гостей — строкой, как в меню бара (m); полный (c) — только на этикетках */
+/* состав для гостей — слова как в меню бара (m), столбиком и с большой буквы; полный (c) — только на этикетках */
 const comp = it => it.m || it.c.join(", ");
+const compList = it => comp(it).split(/,\s*/).filter(Boolean).map(x => x.charAt(0).toUpperCase() + x.slice(1));
 
 function card(it, g){
   return '<article id="' + it.id + '">' +
     '<div class="chead"><h3>' + esc(it.n) + '</h3></div>' +
-    '<div class="cbody"><p class="mcomp">' + esc(comp(it)) + '</p>' +
+    '<div class="cbody"><ul class="mcomp">' + compList(it).map(x => '<li>' + esc(x) + '</li>').join("") + '</ul>' +
     (it.img ? '<img class="cph" src="' + esc(it.img) + '" alt="' + esc(it.n) + '"' + phwh(it.img) + ' loading="lazy" decoding="async">' : '') +
     '</div>' +
     '<dl>' +

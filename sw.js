@@ -1,8 +1,8 @@
 /* Офлайн-режим: страница, код и иконки кэшируются. Страница и свой код (css/, js/, fx.js) —
    «сначала сеть», чтобы обновления сайта приходили сразу и целиком; без сети открывается из кэша.
    Запросы к Google (журнал, ревизия) не кэшируются. */
-const CACHE = "mechty-v13";
-const CODE = ["css/app.css", "js/core.js", "js/data.js", "js/card.js", "js/auth.js", "js/ttk.js", "js/labels.js",
+const CACHE = "mechty-v16";
+const CODE = ["css/app.css", "js/core.js", "js/data.js", "js/card.js", "js/auth.js", "js/ttk.js", "js/lart.js", "js/labels.js",
   "js/rev.js", "js/mrev.js", "js/order.js", "js/calc.js", "js/swipe.js", "fx.js"];
 const CORE = ["./", "index.html", "manifest.webmanifest", ...CODE, "vendor/qrcode.js", "vendor/gsap.min.js", "vendor/ScrollTrigger.min.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon-32.png"];
