@@ -756,6 +756,9 @@ function woSave(p) {
     sh.getRange(top, 6, n, 5).setNumberFormat("@");                       // текст: причина, кто, файл, когда, id
     sh.getRange(top, 1, n, WO_HEAD.length)                                // кол-во — числом, чтобы считать суммы
       .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
+    /* строки, перенесённые из заметки, — списаны этим актом */
+    const nids = (Array.isArray(a.rows) ? a.rows : []).map(r => String(r && r.nid || "").replace(/[^\w-]/g, "")).filter(Boolean);
+    if (nids.length) { try { wnDone(nids, WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " · " + (who || "") + " · " + id); } catch (e) {} }
     SpreadsheetApp.flush();                                               // записать до снятия блокировки — повтор увидит id
     return { ok: true, url: url };
   } finally {
@@ -792,14 +795,14 @@ function writeoffs(p) {
 }
 
 /* ═════════════ Заметка к списанию ═════════════
-   Общий список «что списать» — видят все. Строку нельзя удалить: она уходит из заметки только переносом
-   в акт списания (кнопка на сайте). История — лист «Заметка» в «Журнале списаний»: кто записал,
-   кто и когда перенёс, когда строки дошли до его акта.
-   Перенос в два шага: take — строки закрепляются за барменом (rn) и уходят из заметки у всех; got — телефон
-   сообщает, что строки у него. Пока got нет (ответ потерялся), такие строки снова отдаются тому же бармену —
-   и при повторном нажатии, и при сверке (mine), с любого телефона. Повтор add с тем же id ничего не задваивает. */
+   Общий список «что списать» — видят все. Строку нельзя удалить. Перенос в акт закрепляет строку за барменом
+   на 24 часа (take): в заметке её больше не видно, в акте её нельзя изменить — только вернуть (back).
+   Окончательно строка уходит, когда создан и сохранён акт с ней (woSave → «Списано в акте»).
+   Не создал акт за 24 часа — строка сама возвращается в заметку и ждёт следующего акта.
+   История — лист «Заметка» в «Журнале списаний». Повтор add с тем же id ничего не задваивает. */
 const WN_SHEET = "Заметка";
-const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Перенёс в акт", "Когда перенёс", "Дошло до акта"];
+const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Взял в акт", "Когда взял", "Списано в акте"];
+const WN_HOLD = 24 * 3600e3;
 function wnSheet(create) {
   const log = woSheet("wo", create);
   if (!log) return null;
@@ -807,70 +810,89 @@ function wnSheet(create) {
   let sh = ss.getSheetByName(WN_SHEET);
   if (!sh && create) {
     sh = ss.insertSheet(WN_SHEET);
-    sh.getRange(1, 1, 1, WN_HEAD.length).setValues([WN_HEAD]).setFontWeight("bold");
     sh.setFrozenRows(1);
   }
+  if (sh && create && sh.getRange(1, 1, 1, WN_HEAD.length).getDisplayValues()[0].join("|") !== WN_HEAD.join("|"))
+    sh.getRange(1, 1, 1, WN_HEAD.length).setValues([WN_HEAD]).setFontWeight("bold");
   return sh;
 }
+/* «Когда взял» — дата (или текст «дд.мм.гггг чч:мм» по Астане из прежней версии) → мс */
+function wnTime(v) {
+  if (v instanceof Date) return v.getTime();
+  const m = String(v || "").match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
+  return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4] - 5, +m[5]) : 0;
+}
 function wnRows(sh) {
-  const last = sh ? sh.getLastRow() : 0;
+  const last = sh ? sh.getLastRow() : 0, now = Date.now();
   return last < 2 ? [] : sh.getRange(2, 1, last - 1, WN_HEAD.length).getValues()
-    .map((r, i) => ({ row: i + 2, id: String(r[0]), n: String(r[1]), u: String(r[2]), q: r[3], why: String(r[4]), who: String(r[5]),
-      at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]), took: String(r[7]), got: String(r[9]) }))
+    .map((r, i) => {
+      const x = { row: i + 2, id: String(r[0]), n: String(r[1]), u: String(r[2]), q: r[3], why: String(r[4]), who: String(r[5]),
+        at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]).slice(0, 5), took: String(r[7]), since: wnTime(r[8]), done: String(r[9]) };
+      x.held = !!x.took && !x.done && now - x.since < WN_HOLD;             // закреплена за барменом
+      return x;
+    })
     .filter(x => x.id);
 }
 const wnItem = x => ({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, who: x.who, at: x.at });
-const wnOpen = rows => rows.filter(x => !x.took).map(wnItem);
-const wnMine = (rows, who) => who ? rows.filter(x => x.took === who && !x.got).map(wnItem) : [];
+const wnOpen = rows => rows.filter(x => !x.done && !x.held).map(wnItem);
+const wnMine = (rows, who) => who ? rows.filter(x => x.held && x.took === who).map(x => Object.assign(wnItem(x), { until: x.since + WN_HOLD })) : [];
 
 function wnote(p) {
   const act = String(p.wn), who = clean(p.rn, 60);
-  if (act === "list") { const rows = wnRows(wnSheet(false)); return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) }; }
-  if (act !== "add" && act !== "take" && act !== "got") return { error: "action" };
+  if (act === "list" || act === "got") { const rows = wnRows(wnSheet(false)); return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) }; }
+  if (act !== "add" && act !== "take" && act !== "back") return { error: "action" };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = wnSheet(true), rows = wnRows(sh), stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm");
+    const sh = wnSheet(true), rows = wnRows(sh);
     const want = String(p.ids || "").split(",").filter(Boolean);
     if (act === "add") {
       const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), n = clean(p.n, 120), q = num(p.q);
       if (!id || !n || !(q > 0)) return { error: "bad" };
       if (!rows.some(x => x.id === id)) {
-        const top = Math.max(sh.getLastRow(), 1) + 1;
+        const top = Math.max(sh.getLastRow(), 1) + 1, now = new Date();
         ensureRows(sh, top);
         sh.getRange(top, 1, 1, 3).setNumberFormat("@"); sh.getRange(top, 5, 1, 2).setNumberFormat("@");
-        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, new Date()]]);
+        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, now]]);
         SpreadsheetApp.flush();
-        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: stamp.slice(0, 5), took: "", got: "" });
+        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: Utilities.formatDate(now, TZ, "dd.MM"), took: "", since: 0, done: "", held: false });
       }
       return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) };
     }
     if (!who || !want.length) return { error: "bad" };
     if (act === "take") {
-      /* свободные строки — закрепить за барменом; уже его, но не дошедшие — отдать снова; чужие — пропустить */
-      const took = [];
+      /* свободные (и вернувшиеся через 24 часа) — закрепить за барменом; уже его — оставить; чужие и списанные — мимо */
+      const now = new Date();
       rows.forEach(x => {
-        if (want.indexOf(x.id) < 0) return;
-        if (!x.took) {
-          sh.getRange(x.row, 8, 1, 2).setNumberFormat("@").setValues([[who, stamp]]);
-          x.took = who;
-        }
-        if (x.took === who && !x.got) took.push(wnItem(x));
+        if (want.indexOf(x.id) < 0 || x.done || x.held) return;
+        sh.getRange(x.row, 8).setNumberFormat("@").setValue(who);
+        sh.getRange(x.row, 9).setNumberFormat("dd.MM.yyyy HH:mm").setValue(now);
+        x.took = who; x.since = now.getTime(); x.held = true;
       });
       SpreadsheetApp.flush();
-      return { ok: true, took: took, items: wnOpen(rows), mine: wnMine(rows, who) };
+      const mine = wnMine(rows, who);
+      return { ok: true, took: mine.filter(x => want.indexOf(x.id) >= 0), items: wnOpen(rows), mine: mine };
     }
-    /* got: строки дошли до телефона бармена */
+    /* back: бармен отменил перенос — строки снова в заметке */
     rows.forEach(x => {
-      if (want.indexOf(x.id) < 0 || x.took !== who || x.got) return;
-      sh.getRange(x.row, 10).setNumberFormat("@").setValue(stamp);
-      x.got = stamp;
+      if (want.indexOf(x.id) < 0 || !x.held || x.took !== who) return;
+      sh.getRange(x.row, 8, 1, 2).setValues([["", ""]]);
+      x.took = ""; x.since = 0; x.held = false;
     });
     SpreadsheetApp.flush();
     return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) };
   } finally {
     lock.releaseLock();
   }
+}
+/* акт создан и сохранён — его строки из заметки списаны окончательно (вызывается из woSave под блокировкой) */
+function wnDone(ids, mark) {
+  const sh = wnSheet(false);
+  if (!sh || !ids.length) return;
+  wnRows(sh).forEach(x => {
+    if (ids.indexOf(x.id) < 0 || x.done) return;
+    sh.getRange(x.row, 10).setNumberFormat("@").setValue(mark);
+  });
 }
 
 /* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску.

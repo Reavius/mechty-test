@@ -488,6 +488,11 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
   .worow2 .wox{grid-column:3;grid-row:1}
   .worow2 .wofix{min-height:34px}
 }
+/* строка из заметки — закреплена */
+.worow.wolock{border-left:3px solid var(--accent);padding-left:10px;margin-left:-13px}
+.wolock input[readonly],.wolock select:disabled{color:var(--fg);background:transparent;border-style:dashed;opacity:1}
+.wolockcap{margin:0 0 6px;font-size:12px;color:var(--accent)}
+.worow .woback{color:var(--accent);border-color:var(--accent)}
 .wopasteopen{margin-top:8px;color:var(--muted)}
 .wopaste{margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:12px}
 .wopaste .label{margin-top:0!important}
