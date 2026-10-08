@@ -85,22 +85,27 @@ function woInit(){
   $("woName").value = me ? me.name : "";
   $("woIni").value = me ? (wjson(WI, {})[me.name] || "") : "";
   woFlush().then(woHist);
+  wnInit();
 }
 /* выход из аккаунта: форма — в исходное */
 function woLeave(){
   woUser = null; woLast = null; woLastOf = {};
   if (woReady){ woSigReset(); woLoad(); woDoneUi(); $("woWarn").textContent = ""; }
+  wnItems = []; wnState = "load"; if (woReady) wnDraw();
 }
 
-$("wokind").addEventListener("click", e => {
-  const b = e.target.closest("button");
-  if (!b || woBusy || b.dataset.k === wkind) return;
+function woSetKind(k){
+  if (woBusy || k === wkind) return;
   if (!woLast) woDraftSave();                                  // форма на экране — запомнить; акт уже создан — черновик пуст
-  wkind = b.dataset.k;
+  wkind = k;
   try { localStorage.setItem("mechty-wo-kind", wkind); } catch (e2) {}
   woLast = woLastOf[wkind] || null;
   woLoad(); $("woWarn").textContent = "";
   woDoneUi(); woHist();
+}
+$("wokind").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (b) woSetKind(b.dataset.k);
 });
 
 $("woAdd").addEventListener("click", () => {
@@ -458,18 +463,153 @@ async function woFlushRun(){
 }
 window.addEventListener("online", () => { if (R) woFlush(true).then(woHist); });
 
+/* последние акты: строка — акт, нажали — раскрываются позиции */
+const wq = q => String(q).replace(".", ",");
+function woActLi(a, rows, url, pend){
+  return '<li class="woact"><details><summary><span>' + esc(a.date) + (a.no ? " № " + esc(a.no) : "") + " · " + esc(a.who) + " · " + rows.length + ' поз.</span>' +
+    (pend ? '<em class="wopend">ждёт отправки</em>' : "") + '</summary>' +
+    '<ul class="womini">' + rows.map(r => '<li><span>' + esc(r[0]) + '</span><b>' + esc(wq(r[2])) + " " + esc(r[1]) + '</b><em>' + esc(r[3]) + '</em></li>').join("") + '</ul>' +
+    (url ? '<a class="link womore" href="' + esc(url) + '" target="_blank" rel="noopener">Открыть PDF</a>' : "") + '</details></li>';
+}
 async function woHist(){
   const k = wkind, [d, all] = await Promise.all([api({wo: "list", k}), qList()]);
   if (k !== wkind) return;                                    // пока ждали — переключили вид
   const q = all.filter(a => (a.act.kind || "wo") === k);
-  const wait = q.map(a => '<li><div class="row1"><span>' + esc(a.act.date) + (a.act.no ? " № " + esc(a.act.no) : "") + " · " + esc(a.act.who) +
-    " · " + a.act.rows.length + ' поз.</span><em class="wopend">ждёт отправки</em></div></li>');
+  const wait = q.map(a => woActLi(a.act, a.act.rows.map(r => [r.n, r.u, r.q, r.why]), "", true));
   $("woHistN").textContent = q.length ? "не отправлено: " + q.length : "";
   if (!d.ok || !Array.isArray(d.acts)){
     $("woList").innerHTML = wait.join("") || '<li><div class="row1"><span>' + (d.error === "net" ? "Нет связи с таблицей." : "Список появится после обновления Apps Script.") + '</span></div></li>';
     return;
   }
-  $("woList").innerHTML = wait.concat(d.acts.map(a => '<li><div class="row1"><span>' + esc(a.date) + (a.no ? " № " + esc(a.no) : "") +
-    " · " + esc(a.who) + " · " + a.n + ' поз.</span>' + (a.url ? '<a class="link" href="' + esc(a.url) + '" target="_blank" rel="noopener">файл</a>' : "") + '</div></li>')).join("") ||
+  $("woList").innerHTML = wait.concat(d.acts.map(a => woActLi(a, Array.isArray(a.rows) ? a.rows : [], a.url, false))).join("") ||
     '<li><div class="row1"><span>Пока ни одного акта.</span></div></li>';
 }
+
+/* ════════════ Заметка к списанию ════════════
+   Общий список «что списать», виден всем барменам (лист «Заметка» в «Журнале списаний»). Строку нельзя удалить:
+   из заметки она уходит только кнопкой «Перенести в акт списания». Без связи записанное ждёт на устройстве.
+   Перенос: таблица закрепляет строки за барменом → телефон кладёт их в «ждут вставки» и отвечает «дошло».
+   Потерялся ответ — строки придут при следующей сверке (или повторном нажатии). В форму акта они попадают
+   только по нажатию бармена: сама по себе сверка форму не трогает. */
+const WNQ = "mechty-wn-q", WNI = "mechty-wn-in", WNA = "mechty-wn-done";
+let wnItems = [], wnState = "load", wnBusy = false, wnTimer = 0, wnSyncP = null;
+const wnPend = () => wjson(WNQ, []);
+/* перенесённые этому бармену строки на этом телефоне: ждут вставки в акт; и уже вставленные — чтобы не вставить дважды */
+const wnIn = () => { const m = wjson(WNI, {}); return me && Array.isArray(m[me.name]) ? m[me.name] : []; };
+const wnInSet = list => { if (!me) return; const m = wjson(WNI, {}); if (list.length) m[me.name] = list; else delete m[me.name]; wsave(WNI, m); };
+const wnDone = () => wjson(WNA, []);
+
+function wnDraw(){
+  const pend = wnPend(), all = wnItems.concat(pend.filter(x => !wnItems.some(y => y.id === x.id)).map(x => ({...x, pend: true})));
+  $("wnCount").textContent = all.length ? all.length + " поз." : "";
+  $("wnList").innerHTML = all.length
+    ? all.map(x => '<li' + (x.pend ? ' class="pend"' : "") + '><div class="wnrow"><span>' + esc(x.n) + '</span><b>' + esc(wq(x.q)) + " " + esc(x.u || "") + '</b></div>' +
+        '<div class="wnmeta">' + (x.why ? esc(x.why) + " · " : "") + (x.pend ? "ждёт отправки" : esc(x.who || "") + (x.at ? ", " + esc(x.at) : "")) + '</div></li>').join("")
+    : '<li class="wnempty">' + (wnState === "load" ? "Загружаем…" : wnState === "old" ? "Заметка заработает после обновления Apps Script." :
+        wnState === "net" ? "Нет связи с таблицей." : "Пусто. Запишите ниже, что нужно списать, — увидят все.") + '</li>';
+  const n = wnItems.length, inbox = wnIn();
+  $("wnMove").disabled = !n || wnBusy;
+  $("wnMove").textContent = wnBusy ? "Переносим…" : "Перенести в акт списания" + (n ? " (" + n + ")" : "");
+  $("wnIn").hidden = !inbox.length;
+  $("wnInT").textContent = "Перенесено вам из заметки: " + inbox.length + " поз. — ещё не в акте.";
+}
+
+/* строки, закреплённые за мной, — в «ждут вставки» (без повторов) и ответ таблице «дошло» */
+async function wnKeep(list){
+  if (!list || !list.length || !me) return;
+  const inbox = wnIn(), seen = new Set(wnDone().concat(inbox.map(x => x.id))), add = [];
+  for (const x of list) if (!seen.has(x.id)){ seen.add(x.id); add.push(x); }    // повторы (took и mine, две сверки) — один раз
+  if (add.length) wnInSet(inbox.concat(add));
+  const d = await api({wn: "got", ids: [...new Set(list.map(x => x.id))].join(","), rn: me.name});
+  if (d.ok && Array.isArray(d.items)) wnItems = d.items;
+}
+
+/* записанное без связи — в таблицу; затем свежий список и «мои», не дошедшие до телефона. Одна сверка за раз */
+function wnSync(){ return wnSyncP || (wnSyncP = wnSyncRun().finally(() => { wnSyncP = null; wnDraw(); })); }
+async function wnSyncRun(){
+  if (!TOKEN || !me) return;
+  for (const x of wnPend()){
+    const d = await api({wn: "add", id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, rn: x.rn});
+    if (d.ok && Array.isArray(d.items)){ wsave(WNQ, wnPend().filter(y => y.id !== x.id)); wnItems = d.items; wnState = "ok"; continue; }
+    if (d.ok){ wnState = "old"; return; }
+    if (d.error === "bad"){ wsave(WNQ, wnPend().filter(y => y.id !== x.id)); continue; }
+    break;
+  }
+  const d = await api({wn: "list", rn: me.name});
+  wnState = d.ok ? (Array.isArray(d.items) ? "ok" : "old") : d.error === "net" ? "net" : "err";
+  if (d.ok && Array.isArray(d.items)){ wnItems = d.items; await wnKeep(d.mine); }
+}
+function wnInit(){
+  wnDraw(); wnSync();
+  if (!wnTimer) wnTimer = setInterval(() => { if (!$("secWo").hidden && !document.hidden && !wnBusy) wnSync(); }, 30e3);
+}
+
+$("wnForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const warn = m => { $("wnWarn").textContent = m; };
+  const n = $("wnN").value.replace(/\s+/g, " ").trim(), c = rcalc($("wnQ").value), u = $("wnU").value, why = $("wnWhy").value.replace(/\s+/g, " ").trim();
+  if (!n) return warn("Впишите наименование.");
+  if (!isFinite(c.v) || c.v <= 0) return warn("«" + n + "»: укажите количество.");
+  if (!u) return warn("«" + n + "»: выберите единицу измерения.");
+  if (!why) return warn("«" + n + "»: укажите причину — строку потом не исправить.");
+  warn("");
+  wsave(WNQ, wnPend().concat([{id: rid(), n, u, q: c.v, why, rn: me ? me.name : ""}]));
+  $("wnN").value = ""; $("wnQ").value = ""; $("wnU").value = ""; $("wnWhy").value = "";
+  buzz(14); wnDraw(); wnSync();
+});
+$("wnN").addEventListener("change", () => { const u = woUnitOf[$("wnN").value.trim()]; if (u && !$("wnU").value) $("wnU").value = u; });
+
+/* сколько строк уже будет в акте списания, куда пойдут перенесённые */
+function wnUsed(){
+  if (wkind === "wo" && !woLast) return woRowsData().filter(r => r.n || r.q || r.why).length;
+  if (woLastOf.wo) return 0;                                   // готовый акт закроется — начнётся новый
+  const d = wjson(WD + ":" + (me ? me.name : ""), null);
+  return d && Array.isArray(d.rows) ? d.rows.filter(r => r.n || r.q || r.why).length : 0;
+}
+/* вставить ждущие строки в акт списания — только по нажатию бармена */
+function wnApply(){
+  const inbox = wnIn();
+  if (!inbox.length) return;
+  if (woBusy){ $("wnWarn").textContent = "Идёт создание файла — нажмите «Вставить в акт», когда он будет готов."; return; }
+  if (wkind !== "wo") woSetKind("wo");
+  if (woLast) $("woNew").click();                              // на экране готовый акт (он уже сохранён) — начинаем новый
+  [...document.querySelectorAll("#woRows .worow")].forEach(li => {   // пустые строки формы — убрать
+    if (![".won", ".woq", ".woy"].some(s => li.querySelector(s).value.trim())) li.remove();
+  });
+  const free = Math.max(0, WO_MAX - $("woRows").children.length), put = inbox.slice(0, free), rest = inbox.slice(free);
+  $("woRows").insertAdjacentHTML("beforeend", put.map(x => woRow({n: x.n, u: x.u, q: wq(x.q), why: x.why})).join(""));
+  if (!$("woRows").children.length) $("woRows").innerHTML = woRow({});
+  woCap(); woDraftSave();
+  wsave(WNA, wnDone().concat(put.map(x => x.id)).slice(-300));
+  wnInSet(rest);
+  $("woWarn").textContent = (put.length ? "Из заметки в акт: " + put.length + " поз. Проверьте, распишитесь и создайте файл." : "") +
+    (rest.length ? " Не поместилось " + rest.length + " — в акте не больше " + WO_MAX + ": создайте этот акт, потом нажмите «Вставить в акт»." : "");
+  $("wnWarn").textContent = "";
+  wnDraw();
+  if (put.length) $("woForm").scrollIntoView({behavior: "smooth", block: "start"});
+}
+$("wnInGo").addEventListener("click", () => {
+  if (woLast && !confirm("Начать новый акт списания? Готовый акт уже сохранён — его можно открыть в «Последних актах».")) return;
+  wnApply();
+});
+$("wnMove").addEventListener("click", async () => {
+  if (wnBusy || woBusy || !wnItems.length || !me) return;
+  const free = WO_MAX - wnUsed() - wnIn().length;
+  if (free <= 0) return void ($("wnWarn").textContent = "В акте уже " + WO_MAX + " позиций — создайте его, потом перенесите остальное.");
+  const pick = wnItems.slice(0, free);
+  if (!confirm("Перенести в акт списания " + pick.length + " поз.?" + (pick.length < wnItems.length ? " Остальные " + (wnItems.length - pick.length) + " останутся в заметке — в акте не больше " + WO_MAX + "." : "") +
+    (woLastOf.wo ? " Готовый акт закроется (он уже сохранён)." : "") + "\nИз заметки они исчезнут у всех.")) return;
+  wnBusy = true; wnDraw(); $("wnWarn").textContent = "";
+  try {
+    const d = await api({wn: "take", ids: pick.map(x => x.id).join(","), rn: me.name});
+    if (!d.ok || !Array.isArray(d.took)){
+      $("wnWarn").textContent = d.error === "net" ? "Нет связи — нажмите ещё раз, когда появится связь. Ничего не потеряется." :
+        d.ok ? "Заметка заработает после обновления Apps Script." : "Не получилось перенести — попробуйте ещё раз.";
+      return;
+    }
+    wnItems = d.items;
+    await wnKeep(d.took.concat(d.mine || []));
+    if (!d.took.length) $("wnWarn").textContent = "Эти позиции уже перенёс в акт другой бармен.";
+    wnBusy = false; wnApply();
+  } finally { wnBusy = false; wnDraw(); }
+});

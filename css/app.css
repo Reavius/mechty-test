@@ -500,4 +500,39 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 #woHist{margin-top:22px}
 #woList .row1 span{min-width:0}
 #woList .link{flex:none;font-size:13.5px}
+/* заметка к списанию — общая, в жёлтой рамке */
+.wnbox{margin:0 0 18px;padding:14px 16px 16px;border:2px solid var(--accent);border-radius:16px;background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.wnhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.wnhead em{flex:none;white-space:nowrap;font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.wnhint{margin:6px 0 10px;font-size:13px;color:var(--muted)}
+.wnsub{margin:8px 0 0;font-size:12px}
+.wnlist{list-style:none;margin:0 0 10px;padding:0;border-top:1px solid var(--line);max-height:min(38vh,340px);overflow-y:auto;overscroll-behavior:contain}
+.wnin{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 14%,transparent);font-size:13.5px}
+.wnin span{display:block;margin-bottom:8px}
+.wnin .wnmove{margin:0;background:var(--accent);color:var(--bg)}
+.wnlist li{padding:8px 0;border-bottom:1px solid var(--line)}
+.wnlist li.pend{opacity:.7}
+.wnlist .wnempty{font-size:13.5px;color:var(--muted)}
+.wnrow{display:flex;justify-content:space-between;gap:12px;font-size:14.5px;font-weight:600}
+.wnrow span{min-width:0;overflow-wrap:anywhere}
+.wnrow b{flex:none;color:var(--accent)}
+.wnmeta{font-size:12px;color:var(--muted);margin-top:2px}
+.wnadd input,.wnadd select{width:100%;font-size:16px}
+.wnadd .worow2{margin-top:6px}
+.wnplus{padding:0;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--bg);font:700 20px/1 var(--sans);cursor:pointer}
+.wnmove{width:100%;margin-top:4px;padding:12px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);font:700 15px var(--sans);cursor:pointer}
+.wnmove:disabled{opacity:.45;cursor:default}
+/* последние акты — раскрываются */
+#woList .woact{border-top:1px solid var(--line)}
+#woList .woact:first-child{border-top:0}
+#woList summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;font-size:14px;font-weight:500;cursor:pointer;list-style:none}
+#woList summary::-webkit-details-marker{display:none}
+#woList summary::after{content:"▾";flex:none;color:var(--muted);transition:transform .2s}
+#woList details[open] summary::after{transform:rotate(180deg)}
+#woList summary span{min-width:0;flex:1}
+.womini{list-style:none;margin:0;padding:0 16px 6px}
+.womini li{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:6px 0;border-top:1px dashed var(--line);font-size:13.5px}
+.womini b{font-weight:600;color:var(--fg)}
+.womini em{grid-column:1/-1;font-style:normal;font-size:12px;color:var(--muted)}
+.womore{display:inline-block;margin:2px 16px 12px;font-size:13.5px}
 .wopend{font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--flag);font-weight:700;flex:none}
