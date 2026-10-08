@@ -5,9 +5,10 @@
 function checklist(o){
   const read = (suf, d) => { try { return JSON.parse(localStorage.getItem(o.key() + suf) || d) || JSON.parse(d); } catch (e) { return JSON.parse(d); } };
   const write = (suf, v) => { try { localStorage.setItem(o.key() + suf, JSON.stringify(v)); } catch (e) {} };
-  const readNeed = () => new Set(read("", "[]")), writeNeed = set => write("", [...set]);
+  /* испорченная запись на устройстве — как пустая, чтобы не мешать входу */
+  const readNeed = () => { const v = read("", "[]"); return new Set(Array.isArray(v) ? v : []); }, writeNeed = set => write("", [...set]);
   /* количество — свободным текстом («5 кг») или только числом (o.num) */
-  const readQty = () => read("-q", "{}"), writeQty = q => write("-q", q);
+  const readQty = () => { const v = read("-q", "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }, writeQty = q => write("-q", q);
   const el = id => $(o.id + id), copyLabel = el("copy").textContent;
 
   function fill(){
@@ -64,8 +65,17 @@ function checklist(o){
   el("sum").addEventListener("input", e => {
     const inp = e.target.closest("input.oq");
     if (!inp) return;
-    if (o.num){ const c = inp.value.replace(/[^\d.,]/g, ""); if (c !== inp.value) inp.value = c; }
-    const q = readQty(), v = inp.value.replace(/\s+/g, " ").trim();
+    let v = inp.value;
+    if (o.num){                                               // только цифры и одна запятая; курсор — на месте
+      const was = v, at = inp.selectionStart;
+      v = v.replace(/[^\d.,]/g, "");
+      const i = v.search(/[.,]/);
+      if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/[.,]/g, "");
+      if (v !== was){ inp.value = v; const p = Math.max(0, at - (was.length - v.length)); inp.setSelectionRange(p, p); }
+      v = v.replace(/[.,]$/, "").replace(/^[.,]/, "0$&");      // «3,» → «3», «,5» → «0,5»
+    }
+    const q = readQty();
+    v = v.replace(/\s+/g, " ").trim();
     v ? q[inp.dataset.n] = v : delete q[inp.dataset.n];
     writeQty(q);
     inp.closest(".row1").classList.toggle("has-q", !!v);
