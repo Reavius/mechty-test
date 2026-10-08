@@ -102,6 +102,7 @@
       <button type="button" data-s="ttk"  aria-pressed="true">Технологическая карта</button>
       <button type="button" data-s="calc" aria-pressed="false">Калькулятор</button>
       <button type="button" data-s="order" aria-pressed="false">Заявка</button>
+      <button type="button" data-s="zone"  aria-pressed="false">На зону</button>
       <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
       <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
       <button type="button" data-s="wo"    aria-pressed="false">Списания</button>
@@ -342,6 +343,18 @@
       </div>
     </div>
     <div id="olist"></div>
+  </div>
+
+  <div id="secZone" hidden>
+    <div class="result tcard osum">
+      <div class="tname"><em id="zcount"></em><h2 class="h3">Взять на зону</h2></div>
+      <div id="zsum"></div>
+      <div class="otools">
+        <button type="button" class="link" id="zcopy">Скопировать список</button>
+        <button type="button" class="link" id="zreset">Отменить выбранное</button>
+      </div>
+    </div>
+    <div id="zlist"></div>
   </div>
 
   <div class="block">
