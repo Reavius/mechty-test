@@ -33,6 +33,8 @@ function doGet(e) {
     try { out = monthly(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.wo) {
     try { out = writeoffs(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.wn) {
+    try { out = wnote(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else {
     const name = clean(p.name, 60);
     const email = clean(p.email, 120).toLowerCase();
@@ -621,6 +623,15 @@ function doPost(e) {
 }
 function jsonOut(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
+/* файл в корзине или удалён (в корзине и вся его папка — тоже). fresh — без кэша; иначе ответ помнится 10 минут */
+function woTrashed(id, fresh) {
+  const cache = CacheService.getScriptCache(), k = "wot:" + id, c = fresh ? null : cache.get(k);
+  if (c) return c === "1";
+  let gone = true;
+  try { gone = DriveApp.getFileById(id).isTrashed(); } catch (e) { gone = true; }
+  cache.put(k, gone ? "1" : "0", 600);
+  return gone;
+}
 /* первая не удалённая папка / файл из выдачи Диска */
 function woAlive(it) { while (it.hasNext()) { const x = it.next(); if (!x.isTrashed()) return x; } return null; }
 function woFolder(kind, create) {
@@ -635,7 +646,7 @@ function woSheet(kind, create) {
   let ss = null, fresh = false;
   const id = props.getProperty(key);
   if (id) {
-    try { if (!create || !DriveApp.getFileById(id).isTrashed()) ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; }
+    try { if (!woTrashed(id, create)) ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; }
   }
   if (!ss) {
     const folder = woFolder(kind, create);
@@ -698,6 +709,12 @@ function woMigrateFrom(book, kind, sh) {
   book.deleteSheet(old);
   return name + " убран" + where.replace(" в таблице", " из таблицы") + (moved ? ", его строки (" + moved + ") — в журнале" : "");
 }
+const WO_LIST = 30;
+/* PDF акта удалён (по ссылке из журнала); без ссылки — считаем, что есть */
+function woFileGone(url) {
+  const m = String(url || "").match(/\/d\/([\w-]{10,})/);
+  return m ? woTrashed(m[1], false) : false;
+}
 /* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
 function woFind(sh, id) {
   const last = sh.getLastRow();
@@ -745,21 +762,95 @@ function writeoffs(p) {
   const sh = woSheet(p.k, false), act = String(p.wo);                     // журнала ещё нет — ни одного акта
   if (act === "check") { const u = sh ? woFind(sh, String(p.id || "")) : null; return { ok: true, saved: u !== null, url: u || "" }; }
   if (act === "list") {
+    /* последние WO_LIST актов, у каждого — его позиции (на сайте акт раскрывается). Акт, чей PDF удалён
+       с Диска, на сайте не показываем: строки в журнале остаются, их можно стереть там же. */
     const last = sh ? sh.getLastRow() : 0, out = [], seen = {};
     if (last >= 2) {
-      const v = sh.getRange(Math.max(2, last - 400), 1, Math.min(last - 1, 401), WO_HEAD.length).getDisplayValues();
-      for (let i = v.length - 1; i >= 0; i--) {                           // 15 актов, у последнего — все строки
+      const from = Math.max(2, last - 1499), v = sh.getRange(from, 1, last - from + 1, WO_HEAD.length).getDisplayValues();
+      for (let i = v.length - 1; i >= 0; i--) {                           // строки акта идут подряд; снизу — новые
         const r = v[i], id = r[9];
         if (!id) continue;
-        if (seen[id]) { seen[id].n++; continue; }
-        if (out.length >= 15) break;
-        seen[id] = { date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 1 };
-        out.push(seen[id]);
+        if (!seen[id]) {
+          if (out.length >= WO_LIST) break;
+          seen[id] = woFileGone(r[7]) ? { gone: true } : { date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 0, rows: [] };
+          if (!seen[id].gone) out.push(seen[id]);
+        }
+        if (seen[id].gone) continue;
+        seen[id].n++;
+        seen[id].rows.unshift([r[2], r[3], r[4], r[5]]);
       }
     }
     return { ok: true, acts: out };
   }
   return { error: "action" };
+}
+
+/* ═════════════ Заметка к списанию ═════════════
+   Общий список «что списать» — видят все. Строку нельзя удалить: она уходит из заметки только переносом
+   в акт списания (кнопка на сайте). История остаётся листом «Заметка» в «Журнале списаний»: кто записал,
+   кто и когда перенёс в акт. Повтор запроса с тем же id / op ничего не задваивает. */
+const WN_SHEET = "Заметка";
+const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Перенёс в акт", "Когда перенёс", "op"];
+function wnSheet(create) {
+  const log = woSheet("wo", create);
+  if (!log) return null;
+  const ss = log.getParent();
+  let sh = ss.getSheetByName(WN_SHEET);
+  if (!sh && create) {
+    sh = ss.insertSheet(WN_SHEET);
+    sh.getRange(1, 1, 1, WN_HEAD.length).setValues([WN_HEAD]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function wnRows(sh) {
+  const last = sh ? sh.getLastRow() : 0;
+  return last < 2 ? [] : sh.getRange(2, 1, last - 1, WN_HEAD.length).getValues()
+    .map((r, i) => ({ row: i + 2, id: String(r[0]), n: String(r[1]), u: String(r[2]), q: r[3], why: String(r[4]), who: String(r[5]),
+      at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]), took: String(r[7]), op: String(r[9]) }))
+    .filter(x => x.id);
+}
+const wnOpen = rows => rows.filter(x => !x.took).map(x => ({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, who: x.who, at: x.at }));
+
+function wnote(p) {
+  const act = String(p.wn), who = clean(p.rn, 60);
+  if (act === "list") return { ok: true, items: wnOpen(wnRows(wnSheet(false))) };
+  if (act !== "add" && act !== "take") return { error: "action" };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = wnSheet(true), rows = wnRows(sh);
+    if (act === "add") {
+      const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), n = clean(p.n, 120), q = num(p.q);
+      if (!id || !n || !(q > 0)) return { error: "bad" };
+      if (!rows.some(x => x.id === id)) {
+        const top = Math.max(sh.getLastRow(), 1) + 1;
+        ensureRows(sh, top);
+        sh.getRange(top, 1, 1, 3).setNumberFormat("@"); sh.getRange(top, 5, 1, 2).setNumberFormat("@");
+        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, new Date()]]);
+        SpreadsheetApp.flush();
+        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: Utilities.formatDate(new Date(), TZ, "dd.MM"), took: "" });
+      }
+      return { ok: true, items: wnOpen(rows) };
+    }
+    /* take: забрать в акт перечисленные строки; уже забранные другим — пропускаются */
+    const op = String(p.op || "").replace(/[^\w-]/g, "").slice(0, 64), want = String(p.ids || "").split(",").filter(Boolean);
+    if (!op || !want.length) return { error: "bad" };
+    const got = [], stamp = new Date();
+    rows.forEach(x => {
+      if (want.indexOf(x.id) < 0) return;
+      if (x.took && x.op !== op) return;                                     // уже перенесена другим
+      if (!x.took) {
+        sh.getRange(x.row, 8, 1, 3).setNumberFormat("@").setValues([[who || "—", Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), op]]);
+        x.took = who || "—"; x.op = op;
+      }
+      got.push({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why });
+    });
+    SpreadsheetApp.flush();
+    return { ok: true, took: got, items: wnOpen(rows) };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску.

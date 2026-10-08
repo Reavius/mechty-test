@@ -170,6 +170,23 @@
   </div>
 
   <div id="secWo" hidden>
+    <section class="wonote" id="wnBox" aria-labelledby="wnTitle">
+      <div class="wnhead"><h2 class="h3" id="wnTitle">Заметка к списанию</h2><em id="wnCount"></em></div>
+      <p class="wnhint">Видна всем барменам. Запишите, что нужно списать, — позиция останется здесь, пока её не перенесут в акт списания.</p>
+      <ul class="wnlist" id="wnList"></ul>
+      <form class="wnadd" id="wnForm" autocomplete="off" novalidate>
+        <input id="wnN" type="text" list="woNames" maxlength="120" placeholder="Что списать" aria-label="Наименование для заметки">
+        <div class="worow2">
+          <input id="wnQ" type="text" inputmode="decimal" maxlength="16" placeholder="Кол-во" aria-label="Количество">
+          <select id="wnU" aria-label="Единица измерения"><option value="">ед.</option><option>л</option><option>мл</option><option>гр</option><option>кг</option><option>шт</option></select>
+          <input id="wnWhy" class="woy" type="text" list="woWhy" maxlength="120" placeholder="Причина" aria-label="Причина">
+          <button type="submit" class="wox wnplus" aria-label="Записать в заметку">+</button>
+        </div>
+      </form>
+      <p class="warn" id="wnWarn" role="status"></p>
+      <button type="button" class="wnmove" id="wnMove" disabled>Перенести в акт списания</button>
+      <p class="wnhint wnsub">Перенесённые позиции уходят из заметки у всех и появляются в вашем акте ниже.</p>
+    </section>
     <div class="modes" id="wokind" role="group" aria-label="Вид акта">
       <button type="button" data-k="wo" aria-pressed="true">Акт списания</button>
       <button type="button" data-k="pr" aria-pressed="false">Акт проработки</button>
