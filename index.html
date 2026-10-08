@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Бар «Мечты» — барный гид</title>
 <meta name="description" content="Барный гид бара «Мечты»: коктейли, премиксы, настойки и полуфабрикаты — состав, аллергены и хранение. Для команды — техкарты, калькулятор, заявки и ревизия.">
 <!-- превью ссылки в Telegram, WhatsApp, ВКонтакте -->
@@ -104,6 +104,7 @@
       <button type="button" data-s="order" aria-pressed="false">Заявка</button>
       <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
       <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
+      <button type="button" data-s="wo"    aria-pressed="false">Списания</button>
     </div>
     <h1 id="btTitle">Технологическая<br>карта</h1>
     <p class="lede" id="btLede">Граммовки, посуда, метод и украшение для каждого напитка и заготовки.</p>
@@ -165,6 +166,63 @@
 
     <div class="result" id="res"></div>
     <div class="warn" id="resNote"></div>
+  </div>
+
+  <div id="secWo" hidden>
+    <form class="result tcard wo" id="woForm" autocomplete="off" novalidate>
+      <div class="tname"><em>ООО «Заря» · Бар</em><h2 class="h3">Акт о списании</h2></div>
+      <div class="wobody">
+        <div class="wo2">
+          <div>
+            <label class="label" for="woDate">Дата акта</label>
+            <input id="woDate" type="date" required>
+          </div>
+          <div>
+            <label class="label" for="woNo">№ акта <small>(необяз.)</small></label>
+            <input id="woNo" type="text" inputmode="numeric" maxlength="12" placeholder="—">
+          </div>
+        </div>
+
+        <p class="label wolab">Позиции</p>
+        <ol class="worows" id="woRows"></ol>
+        <button type="button" class="ghost woadd" id="woAdd">+ Добавить позицию</button>
+
+        <p class="label wolab">Кто списывает</p>
+        <div class="wo2 wowho">
+          <div>
+            <label class="label" for="woName">Фамилия</label>
+            <input id="woName" type="text" readonly tabindex="-1" aria-readonly="true">
+          </div>
+          <div>
+            <label class="label" for="woIni">Инициалы</label>
+            <input id="woIni" type="text" maxlength="8" placeholder="Д.М." autocapitalize="characters">
+          </div>
+        </div>
+
+        <p class="label wolab">Подпись <button type="button" class="link" id="woSigClear">Очистить</button></p>
+        <div class="wosig"><canvas id="woSig" aria-label="Поле для подписи пальцем или мышью"></canvas><span class="wosighint" id="woSigHint">Распишитесь здесь</span></div>
+
+        <p class="warn" id="woWarn" role="status"></p>
+        <button type="submit" class="wogo" id="woGo">Создать файл</button>
+      </div>
+    </form>
+
+    <div class="result tcard" id="woDone" hidden>
+      <div class="tname"><h2 class="h3">Акт готов</h2></div>
+      <p class="oempty" id="woInfo"></p>
+      <div class="lprev"><img id="woPrev" alt="Акт о списании — превью"></div>
+      <div class="otools">
+        <button type="button" class="link" id="woShare">Скачать / поделиться</button>
+        <button type="button" class="link" id="woNew">Новый акт</button>
+      </div>
+    </div>
+
+    <div class="result tcard" id="woHist">
+      <div class="tname"><em id="woHistN"></em><h2 class="h3">Последние акты</h2></div>
+      <ul class="olist" id="woList"><li><div class="row1"><span>Загружаем…</span></div></li></ul>
+    </div>
+    <datalist id="woNames"></datalist>
+    <datalist id="woWhy"><option value="Порча"><option value="Пролив"><option value="Проба"><option value="Бой"><option value="Брак упаковки"><option value="Истёк срок годности"><option value="Передано на кухню"></datalist>
   </div>
 
   <div id="secLab" hidden>
@@ -323,6 +381,7 @@
 <script src="js/card.js" defer></script>
 <script src="js/auth.js" defer></script>
 <script src="js/ttk.js" defer></script>
+<script src="js/wo.js" defer></script>
 <script src="js/lart.js" defer></script>
 <script src="js/labels.js" defer></script>
 <script src="js/rev.js" defer></script>

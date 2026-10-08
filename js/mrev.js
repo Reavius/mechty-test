@@ -6,7 +6,7 @@
    добавления уходят с id, без связи копятся в очереди на устройстве. Поиск — по названию и разделу.
    Позиции, которых нет в бланке, добавляются вниз — в «Новые позиции». */
 const MQ = "mechty-mrev-q", MH = "mechty-mrev-hist", MS = "mechty-mrev-state", RK = "mechty-rkind";
-let MREVS = null, mbusy = false, rkind = "day", mcached = false;
+let MREVS = null, mbusy = false, rkind = "day", mcached = false, mnewTry = null;
 try { if (localStorage.getItem(RK) === "month") rkind = "month"; } catch (e) {}
 
 /* ── переключатель ── */
@@ -34,7 +34,7 @@ const mblock = () => MREVS && MREVS.block;
 /* мой открытый столбец: по фамилии того, кто вошёл */
 const mmine = () => { const b = mblock(); return b && b.open && me ? b.cols.find(c => c.open && mnorm(c.name) === mnorm(me.name)) : null; };
 const mmineIdx = () => { const b = mblock(), c = mmine(); return c ? b.cols.indexOf(c) : -1; };
-const mhk = () => { const b = mblock(); return b ? b.title + "|" + b.started : ""; };   // ключ истории отмены — ревизия
+const mhk = () => { const c = mmine(); return c ? c.id : ""; };   // ключ истории отмены — свой столбец (новый день — новая история)
 
 /* строки листа → разделы; раздел без своих позиций (П/ф бар) — заголовок группы */
 function msections(){
@@ -237,6 +237,7 @@ async function mFlush(){
   if (mbusy) return;
   mbusy = true;
   let bad = false;
+  const lost = [];
   try {
     for (;;){
       const q = rjson(MQ, []);
@@ -253,10 +254,11 @@ async function mFlush(){
       if (!d.ok){
         bad = true;
         mhistDrop(a);
-        $("mwarn").textContent = a.pos + ": " + (d.error === "closed" ? "ваш подсчёт уже завершён — добавление не записано." : "не записано (" + d.error + ").");
+        lost.push(a.pos + " " + rfmt(a.v) + (d.error === "closed" ? "" : " (" + d.error + ")"));
+        $("mwarn").textContent = "Не записано" + (d.error === "closed" ? " — ваш подсчёт уже завершён или ревизия закрыта" : "") + ": " + lost.join("; ") + ". Впишите заново, если нужно.";
         continue;
       }
-      $("mwarn").textContent = "";
+      if (!lost.length) $("mwarn").textContent = "";
       const b = mblock(), ci = b ? b.cols.findIndex(c => c.id === a.cid) : -1;
       if (d.add && ci >= 0 && d.add.v !== null && d.add.v !== undefined){
         msnap(d.add.row, a.pos, ci, d.add.v === "" ? null : d.add.v, d.add.tot);
@@ -290,19 +292,25 @@ async function mnewSend(){
   if (!mine){ $("mwarn").textContent = "Сначала нажмите «Начать мой подсчёт»."; return; }
   if (!name){ $("mnn").focus(); return; }
   if (!isFinite(c.v)){ $("mnq").focus(); return; }
+  /* один id на одну и ту же форму: повтор после «нет связи» не задвоит количество */
+  const sig = [mine.id, name, unit, c.v].join("|");
+  if (!mnewTry || mnewTry.sig !== sig) mnewTry = {sig, id: rid()};
   const btn = $("mnadd"); btn.disabled = true; btn.textContent = "Добавляем…";
-  const d = await api({mrev:"new", id:rid(), cid:mine.id, pos:name, unit, v:String(c.v), rn: me ? me.name : ""});
+  const d = await api({mrev:"new", id:mnewTry.id, cid:mine.id, pos:name, unit, v:String(c.v), rn: me ? me.name : ""});
   btn.disabled = false; btn.textContent = "Добавить в ревизию";
   if (!d.ok){
-    $("mwarn").textContent = d.error === "net" ? "Нет связи — новую позицию добавить не получилось, попробуйте ещё раз." : "Не добавлено: " + (d.error === "closed" ? "ваш подсчёт завершён" : d.error) + ".";
+    $("mwarn").textContent = d.error === "net" ? "Таблица не ответила — нажмите «Добавить» ещё раз (повтор не задвоит количество)." : "Не добавлено: " + (d.error === "closed" ? "ваш подсчёт завершён" : d.error) + ".";
     return;
   }
+  mnewTry = null;
   buzz(14);
   $("mwarn").textContent = "";
   $("mnn").value = ""; $("mnq").value = ""; $("mnu").value = ""; $("mnprev").textContent = "";
-  $("mq").value = name;                                     // сразу показать её в списке
-  await mrevLoad(true);
+  $("mq").value = name; $("msec").value = ""; $("mtodo").checked = false;   // сразу показать её в списке, без фильтров
+  await mrevLoad();
   $("mfound").textContent = "Добавлено вниз ревизии: " + name + (c.v ? " — " + rfmt(c.v) + (unit ? " " + unit : "") : "");
+  const li = d.add && $("mlist").querySelector('li[data-r="' + d.add.row + '"]');
+  if (li) li.scrollIntoView({behavior: "smooth", block: "center"});
 }
 
 /* ── события ── */
@@ -367,15 +375,19 @@ $("mstart").addEventListener("click", async () => {
 $("mfinish").addEventListener("click", async () => {
   const mine = mmine();
   if (!mine) return;
-  if (rjson(MQ, []).length){ alert("Сначала дождитесь отправки всех добавлений."); return; }
+  if (rjson(MQ, []).length) await mFlush();
+  if (rjson(MQ, []).length){ alert("Есть неотправленные добавления — нет связи с таблицей. Попробуйте ещё раз, когда связь появится."); return; }
   if (!confirm("Завершить ваш подсчёт (" + mine.date + ")? Добавлять в этот столбец больше будет нельзя. Продолжить потом — «Начать мой подсчёт», это будет новый столбец.")) return;
   const d = await api({mrev:"finish", cid: mine.id, rn: me ? me.name : ""});
   if (d.ok && d.mrev){ MREVS = d.mrev; rsave(MS, MREVS); mrevDraw(true); }
   else $("mwarn").textContent = "Не удалось завершить: " + (d.error === "net" ? "нет связи" : d.error) + ".";
 });
 $("mend").addEventListener("click", async () => {
-  if (rjson(MQ, []).length){ alert("Сначала дождитесь отправки всех добавлений."); return; }
-  if (!confirm("Закрыть месячную ревизию для всех? Все столбцы будут завершены, «Итог» зафиксируется. Следующая — «Начать ревизию».")) return;
+  if (rjson(MQ, []).length) await mFlush();
+  if (rjson(MQ, []).length){ alert("Есть неотправленные добавления — нет связи с таблицей. Попробуйте ещё раз, когда связь появится."); return; }
+  const others = (mblock().cols || []).filter(c => c.open && c !== mmine()).map(c => c.name);
+  if (!confirm("Закрыть месячную ревизию для всех? Все столбцы будут завершены, «Итог» зафиксируется." +
+    (others.length ? "\n\nЕщё считают: " + others.join(", ") + " — их неотправленные числа не запишутся." : "") + "\n\nСледующая — «Начать ревизию».")) return;
   const d = await api({mrev:"end"});
   if (d.ok && d.mrev){ MREVS = d.mrev; rsave(MS, MREVS); mrevDraw(true); }
   else $("mwarn").textContent = "Не удалось закрыть: " + (d.error === "net" ? "нет связи" : d.error) + ".";
@@ -386,7 +398,8 @@ window.addEventListener("online", () => { if (R) mFlush(); });
 /* синхронизация раз в 30 секунд, пока открыт раздел: видно, что насчитали другие; не мешаем вводу */
 const mtyping = () => [...document.querySelectorAll("#mlist input, #mq, #mnew input")].some(i => i === document.activeElement || (i.id !== "mq" && i.value));
 setInterval(() => {
-  if (sect !== "rev" || rkind !== "month" || !R || !MREVS || document.hidden || !navigator.onLine || mbusy) return;
-  if (rjson(MQ, []).length || mtyping()) return;
+  if (sect !== "rev" || rkind !== "month" || !R || !MREVS || document.hidden || mbusy) return;
+  if (rjson(MQ, []).length){ mFlush(); return; }          // связь вернулась без события «online» — отправляем сами
+  if (!navigator.onLine || mtyping()) return;
   mrevLoad(true);
 }, 30000);
