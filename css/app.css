@@ -501,12 +501,15 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 #woList .row1 span{min-width:0}
 #woList .link{flex:none;font-size:13.5px}
 /* заметка к списанию — общая, в жёлтой рамке */
-.wonote{margin:0 0 18px;padding:14px 16px 16px;border:2px solid var(--accent);border-radius:16px;background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.wnbox{margin:0 0 18px;padding:14px 16px 16px;border:2px solid var(--accent);border-radius:16px;background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .wnhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.wnhead em{font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.wnhead em{flex:none;white-space:nowrap;font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
 .wnhint{margin:6px 0 10px;font-size:13px;color:var(--muted)}
 .wnsub{margin:8px 0 0;font-size:12px}
-.wnlist{list-style:none;margin:0 0 10px;padding:0;border-top:1px solid var(--line)}
+.wnlist{list-style:none;margin:0 0 10px;padding:0;border-top:1px solid var(--line);max-height:min(38vh,340px);overflow-y:auto;overscroll-behavior:contain}
+.wnin{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 14%,transparent);font-size:13.5px}
+.wnin span{display:block;margin-bottom:8px}
+.wnin .wnmove{margin:0;background:var(--accent);color:var(--bg)}
 .wnlist li{padding:8px 0;border-bottom:1px solid var(--line)}
 .wnlist li.pend{opacity:.7}
 .wnlist .wnempty{font-size:13.5px;color:var(--muted)}

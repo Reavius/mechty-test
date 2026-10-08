@@ -170,10 +170,11 @@
   </div>
 
   <div id="secWo" hidden>
-    <section class="wonote" id="wnBox" aria-labelledby="wnTitle">
+    <section class="wnbox" id="wnBox" aria-labelledby="wnTitle">
       <div class="wnhead"><h2 class="h3" id="wnTitle">Заметка к списанию</h2><em id="wnCount"></em></div>
       <p class="wnhint">Видна всем барменам. Запишите, что нужно списать, — позиция останется здесь, пока её не перенесут в акт списания.</p>
       <ul class="wnlist" id="wnList"></ul>
+      <div class="wnin" id="wnIn" hidden><span id="wnInT"></span><button type="button" class="wnmove" id="wnInGo">Вставить в акт</button></div>
       <form class="wnadd" id="wnForm" autocomplete="off" novalidate>
         <input id="wnN" type="text" list="woNames" maxlength="120" placeholder="Что списать" aria-label="Наименование для заметки">
         <div class="worow2">
