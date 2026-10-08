@@ -673,8 +673,8 @@ function woMigrate(kind, sh) {
 function woMigrateFrom(book, kind, sh) {
   const old = book.getSheetByName(WO_KINDS[kind].sheet);
   if (!old) return "";
-  const where = " в таблице «" + book.getName() + "»";
-  const keep = "лист «" + old.getName() + "»" + where + " не наш (другие столбцы) — оставлен как есть";
+  const name = "лист «" + old.getName() + "»", where = " в таблице «" + book.getName() + "»";  // после удаления лист не прочитать
+  const keep = name + where + " не наш (другие столбцы) — оставлен как есть";
   if (old.getMaxColumns() < WO_HEAD.length || old.getLastColumn() > WO_HEAD.length) return keep;
   const head = old.getRange(1, 1, 1, WO_HEAD.length).getDisplayValues()[0];
   if (head.join("|") !== WO_HEAD.join("|")) return keep;
@@ -694,9 +694,9 @@ function woMigrateFrom(book, kind, sh) {
       SpreadsheetApp.flush();
     }
   }
-  if (book.getSheets().length < 2) return "строк перенесено: " + moved + "; лист «" + old.getName() + "»" + where + " — единственный, не удалён";
+  if (book.getSheets().length < 2) return "строк перенесено: " + moved + "; " + name + where + " — единственный, не удалён";
   book.deleteSheet(old);
-  return "лист «" + old.getName() + "» убран из таблицы «" + book.getName() + "»" + (moved ? ", его строки (" + moved + ") — в журнале" : "");
+  return name + " убран" + where.replace(" в таблице", " из таблицы") + (moved ? ", его строки (" + moved + ") — в журнале" : "");
 }
 /* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
 function woFind(sh, id) {
