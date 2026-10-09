@@ -8,6 +8,8 @@
   --line:#262B33;
   --accent:#C9A24B;
   --flag:#E0A36A;
+  --red:#E5584F;                                    /* отмена, возврат, убрать */
+  --red-line:rgba(229,88,79,.55);
   --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
   --sans:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   color-scheme:dark;
@@ -288,6 +290,7 @@ input[type="date"]{
 }
 .rin button.ghost{background:transparent;color:var(--muted);border-color:var(--line);padding:0 12px}
 .rin button:disabled{opacity:.4;cursor:default}
+.rin button.undo{color:var(--red);border-color:var(--red-line)}
 
 /* ── заявка ── */
 #okind,#wokind{margin-top:4px}
@@ -305,7 +308,8 @@ input[type="date"]{
   flex:none;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);
   background:transparent;color:var(--muted);font:600 15px/1 var(--sans);cursor:pointer;
 }
-.olist button.x:hover{color:var(--fg);border-color:var(--muted)}
+.olist button.x{color:var(--red);border-color:var(--red-line)}
+.olist button.x:hover{color:var(--red);border-color:var(--red)}
 .olist .row1{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:9px 16px;font-size:14.5px;font-weight:500}
 .olist{list-style:none;margin:0;padding:0}
 .olist li{border-top:1px solid var(--line)}
@@ -378,6 +382,8 @@ dialog .label{margin:8px 0 0}
 }
 .btns button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
 .btns button:disabled{opacity:.5;cursor:default}
+.btns button#cancel{color:var(--red);border-color:var(--red-line)}
+#woSigClear{color:var(--red)}
 .btns button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
 .gmsg{font-size:13px;color:var(--flag);margin:4px 0 0;min-height:1.2em}
 .ghint{font-size:12px;color:var(--muted);margin:2px 0 0}
@@ -488,6 +494,11 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
   .worow2 .wox{grid-column:3;grid-row:1}
   .worow2 .wofix{min-height:34px}
 }
+/* строка из заметки — закреплена */
+.worow.wolock{border-left:3px solid var(--accent);padding-left:10px;margin-left:-13px}
+.wolock input[readonly],.wolock select:disabled{color:var(--fg);background:transparent;border-style:dashed;opacity:1}
+.wolockcap{margin:0 0 6px;font-size:12px;color:var(--accent)}
+.worow .wox,.worow .woback{color:var(--red);border-color:var(--red-line)}
 .wopasteopen{margin-top:8px;color:var(--muted)}
 .wopaste{margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:12px}
 .wopaste .label{margin-top:0!important}
@@ -508,6 +519,13 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
   border:1px solid var(--accent);background:var(--accent);color:var(--bg)}
 .wogo:disabled{opacity:.6;cursor:default}
 #woDone .lprev img{display:block;width:100%;height:auto;border-radius:8px;background:#fff}
+#woSave{display:block;margin-top:8px;color:var(--fg);font-weight:600}
+#woSave.ok{color:#7BC47F}
+#woSave.bad{color:var(--flag)}
+#woSave.send::after{content:"";display:inline-block;width:12px;height:12px;margin-left:8px;vertical-align:-1px;border-radius:50%;
+  border:2px solid var(--accent);border-right-color:transparent;animation:wospin .8s linear infinite}
+@keyframes wospin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#woSave.send::after{animation:none}}
 #woHist{margin-top:22px}
 #woList .row1 span{min-width:0}
 #woList .link{flex:none;font-size:13.5px}
@@ -546,4 +564,5 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .womini b{font-weight:600;color:var(--fg)}
 .womini em{grid-column:1/-1;font-style:normal;font-size:12px;color:var(--muted)}
 .womore{display:inline-block;margin:2px 16px 12px;font-size:13.5px}
+.wonopdf{margin:8px 0 0;font-size:12.5px;color:var(--flag)}
 .wopend{font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--flag);font-weight:700;flex:none}

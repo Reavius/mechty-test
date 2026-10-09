@@ -7,14 +7,14 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Бар «Мечты» — барный гид</title>
-<meta name="description" content="Барный гид бара «Мечты»: коктейли, премиксы, настойки и полуфабрикаты — состав, аллергены и хранение. Для команды — техкарты, калькулятор, заявки и ревизия.">
+<meta name="description" content="Барный гид бара «Мечты»: коктейли, премиксы, шоты и полуфабрикаты — состав, аллергены и хранение. Для команды — техкарты, калькулятор, заявки и ревизия.">
 <!-- превью ссылки в Telegram, WhatsApp, ВКонтакте -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Бар «Мечты»">
 <meta property="og:locale" content="ru_RU">
 <meta property="og:url" content="https://mechty-bar.netlify.app/">
 <meta property="og:title" content="Бар «Мечты» — барный гид">
-<meta property="og:description" content="Коктейли, премиксы и настойки бара: состав, аллергены, хранение. Для команды — техкарты, заявки и ревизия.">
+<meta property="og:description" content="Коктейли, премиксы и шоты бара: состав, аллергены, хранение. Для команды — техкарты, заявки и ревизия.">
 <meta property="og:image" content="https://mechty-bar.netlify.app/og.jpg">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
@@ -71,7 +71,7 @@
   <header>
     <p class="mark">Бар «Мечты»</p>
     <h1>Коктейльная<br>карта</h1>
-    <p class="lede">Коктейли, премиксы, настойки и полуфабрикаты собственного производства: состав, аллергены и условия хранения.</p>
+    <p class="lede">Коктейли, премиксы, шоты и полуфабрикаты собственного производства: состав, аллергены и условия хранения.</p>
 
     <dl class="meta">
       <div>
@@ -89,7 +89,6 @@
   <div id="out"></div>
 
   <footer>
-    <span>Ответственный за производство — <b>Куклин</b></span>
     <span>Технологические карты хранятся на производстве</span>
   </footer>
 </main>
@@ -172,7 +171,7 @@
   <div id="secWo" hidden>
     <section class="wnbox" id="wnBox" aria-labelledby="wnTitle">
       <div class="wnhead"><h2 class="h3" id="wnTitle">Заметка к списанию</h2><em id="wnCount"></em></div>
-      <p class="wnhint">Видна всем барменам. Запишите, что нужно списать, — позиция останется здесь, пока её не перенесут в акт списания.</p>
+      <p class="wnhint">Видна всем барменам. Запишите, что нужно списать, — позиция останется здесь, пока её не спишут актом.</p>
       <ul class="wnlist" id="wnList"></ul>
       <div class="wnin" id="wnIn" hidden><span id="wnInT"></span><button type="button" class="wnmove" id="wnInGo">Вставить в акт</button></div>
       <form class="wnadd" id="wnForm" autocomplete="off" novalidate>
@@ -186,7 +185,7 @@
       </form>
       <p class="warn" id="wnWarn" role="status"></p>
       <button type="button" class="wnmove" id="wnMove" disabled>Перенести в акт списания</button>
-      <p class="wnhint wnsub">Перенесённые позиции уходят из заметки у всех и появляются в вашем акте ниже.</p>
+      <p class="wnhint wnsub">Перенесённые позиции закрепляются в вашем акте ниже: изменить их нельзя, можно вернуть в заметку (↩). Не создадите акт за 24 часа — они вернутся в заметку сами.</p>
     </section>
     <div class="modes" id="wokind" role="group" aria-label="Вид акта">
       <button type="button" data-k="wo" aria-pressed="true">Акт списания</button>
@@ -245,8 +244,9 @@
       <p class="oempty" id="woInfo"></p>
       <div class="lprev"><img id="woPrev" alt="Акт — превью"></div>
       <div class="otools">
-        <button type="button" class="link" id="woDl">Скачать</button>
+        <button type="button" class="link" id="woDl" hidden>Скачать</button>
         <button type="button" class="link" id="woShare" hidden>Поделиться</button>
+        <button type="button" class="link" id="woRetry" hidden>Отправить ещё раз</button>
         <button type="button" class="link" id="woNew">Новый акт</button>
       </div>
     </div>

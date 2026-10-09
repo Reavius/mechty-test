@@ -299,7 +299,7 @@ async function mnewSend(){
   const d = await api({mrev:"new", id:mnewTry.id, cid:mine.id, pos:name, unit, v:String(c.v), rn: me ? me.name : ""});
   btn.disabled = false; btn.textContent = "Добавить в ревизию";
   if (!d.ok){
-    $("mwarn").textContent = d.error === "net" ? "Таблица не ответила — нажмите «Добавить» ещё раз (повтор не задвоит количество)." : "Не добавлено: " + (d.error === "closed" ? "ваш подсчёт завершён" : d.error) + ".";
+    $("mwarn").textContent = d.error === "net" || d.error === "busy" ? "Таблица не ответила — нажмите «Добавить» ещё раз (повтор не задвоит количество)." : "Не добавлено: " + (d.error === "closed" ? "ваш подсчёт завершён" : d.error) + ".";
     return;
   }
   mnewTry = null;
@@ -315,7 +315,8 @@ async function mnewSend(){
 
 /* ── события ── */
 /* только при наборе: «change» при уходе из поиска перерисовал бы список под пальцем */
-$("mq").addEventListener("input", () => { if (mblock() && mblock().open) mlistDraw(); });
+let mqT = 0;                                                 // поиск — после паузы в наборе: список большой
+$("mq").addEventListener("input", () => { clearTimeout(mqT); mqT = setTimeout(() => { if (mblock() && mblock().open) mlistDraw(); }, 150); });
 $("msec").addEventListener("change", () => { if (mblock() && mblock().open) mlistDraw(); });
 $("mtodo").addEventListener("change", () => { if (mblock() && mblock().open) mlistDraw(); });
 

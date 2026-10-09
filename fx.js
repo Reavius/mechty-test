@@ -84,6 +84,7 @@
       .from("#viewBar .lede", { opacity: 0, y: 12, duration: .5 }, "-=.3")
       .from("#viewBar .meta > div", { opacity: 0, y: 14, stagger: .08, duration: .45 }, "-=.3")
       .from("#viewBar .controls", { opacity: 0, y: 14, duration: .45 }, "-=.25");
+    return tl;
   }
 
   /* ── карточки: всплывают каскадом при прокрутке, крепость досчитывается ── */
@@ -207,6 +208,11 @@
   try { seen = !!sessionStorage.getItem("fx-intro"); sessionStorage.setItem("fx-intro", 1); } catch (e) {}
   document.documentElement.classList.remove("fx-pre");
   /* заставка — при каждом открытии сайта или приложения (один раз за вкладку), на любой странице */
-  if (!seen){ intro(); if (onBar) heroIn(3.1); }
+  if (!seen){
+    const ov = intro(), hero = onBar ? heroIn(3.1) : null, el = $(".fx-intro");
+    /* нажали на заставку — сразу к сайту (бармену некогда ждать) */
+    /* click, а не pointerdown: касание достаётся заставке, а не кнопке под ней */
+    if (el) el.addEventListener("click", () => { ov.progress(1); if (hero && hero.progress() === 0) hero.restart(); }, { once: true });
+  }
   else if (onBar) heroIn(0);
 })();

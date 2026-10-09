@@ -17,10 +17,25 @@ const REV_ZONES = "По зонам";                // по колонке на 
 const REV_LOG = "Ревизия журнал";            // каждое добавление отдельной строкой
 const ZONES = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда"];
 const TZ = "GMT+5";                                                 // время Астаны — для дат ревизии
-const PCS = ["корона", "ред булл", "red bull"];
+const PCS = ["корона", "ред булл", "рэд булл", "red bull", "байкал"];   // считаются в штуках
 const MREV = "Месячная ревизия";                                    // лист месячной ревизии (в таблице ревизии)                      // позиции в штуках (по вхождению в название); остальные — литры
 
+/* Одно открытие таблицы, листа, папки за запрос (кэш живёт до конца запроса; Apps Script и так запускает скрипт
+   заново на каждый запрос — сбрасываем явно в каждой точке входа). */
+let MEMO = {};
+/* общая блокировка; занята дольше ms — ошибка «busy»: сайт повторит запрос сам, ничего не теряется */
+function lockOrBusy(ms) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(ms)) throw new Error("busy");
+  return lock;
+}
+/* закрепить лист журнала входов до создания новых листов — нужно только пока его id не запомнен */
+function journalPin() {
+  if (!PropertiesService.getScriptProperties().getProperty("JOURNAL_SHEET_ID")) sheet();
+}
+
 function doGet(e) {
+  MEMO = {};
   const p = (e && e.parameter) || {};
   const cb = /^[A-Za-z_$][\w$]{0,63}$/.test(p.callback || "") ? p.callback : "";
   let out;
@@ -38,13 +53,20 @@ function doGet(e) {
   } else {
     const name = clean(p.name, 60);
     const email = clean(p.email, 120).toLowerCase();
-    if (name) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) out = { error: "email" };
-      else append(name, email);
+    try {
+      if (name) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) out = { error: "email" };
+        else append(name, email);
+      }
+      if (!out) out = { ok: true, log: recent() };
+    } catch (err) {                                                       // сбой журнала — сайт повторит (как при «нет связи»)
+      console.error("login: " + (err && err.stack || err));
+      out = { error: "net" };
     }
-    if (!out) out = { ok: true, log: recent() };
   }
 
+  /* таблица занята — для сайта это «нет связи»: повторяют все его версии (прежние понимают только «net») */
+  if (out && out.error === "busy") out = { error: "net", busy: 1 };
   const json = JSON.stringify(out);
   if (cb) {
     return ContentService.createTextOutput(cb + "(" + json + ")")
@@ -55,16 +77,17 @@ function doGet(e) {
 
 /* Лист журнала запоминается по ID, чтобы новые листы не сбили его с места. */
 function sheet() {
+  if (MEMO.journal) return MEMO.journal;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const props = PropertiesService.getScriptProperties();
   const id = Number(props.getProperty("JOURNAL_SHEET_ID"));
   if (id) {
     const found = ss.getSheets().find(s => s.getSheetId() === id);
-    if (found) return found;
+    if (found) return MEMO.journal = found;
   }
   const first = ss.getSheets()[0];
   props.setProperty("JOURNAL_SHEET_ID", String(first.getSheetId()));
-  return first;
+  return MEMO.journal = first;
 }
 
 function tokenOk(token) {
@@ -87,8 +110,7 @@ function firstRow(sh) {
 }
 
 function append(name, email) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  const lock = lockOrBusy(10000);
   try {
     const sh = sheet(), r = firstRow(sh);
     if (sh.getLastRow() >= r) sh.insertRowBefore(r);
@@ -102,9 +124,11 @@ function append(name, email) {
    Сортировка по дате — на случай старых записей, добавленных снизу. */
 function recent() {
   const sh = sheet();
-  const last = sh.getLastRow();
+  const all = sh.getLastRow(), last = Math.min(all, 400);                // новые — сверху; весь журнал читать незачем
   if (last < 1) return [];
-  const rows = sh.getRange(1, 1, last, 2).getValues();
+  let rows = sh.getRange(1, 1, last, 2).getValues();
+  const ts = rows.map(r => r[0] instanceof Date ? r[0].getTime() : null).filter(t => t !== null);
+  if (all > last && ts.some((t, i) => i && t > ts[i - 1])) rows = sh.getRange(1, 1, all, 2).getValues();   // не по порядку — весь
   const data = [];
   for (const r of rows) {
     const d = r[0], n = r[1];
@@ -118,6 +142,7 @@ function recent() {
 /* Разовая перестановка: выберите sortJournal в списке функций и нажмите «Выполнить» —
    все старые записи журнала встанут по убыванию даты (новые сверху). */
 function sortJournal() {
+  MEMO = {};
   const sh = sheet(), r = firstRow(sh), last = sh.getLastRow();
   if (last < r) return;
   sh.getRange(r, 1, last - r + 1, Math.max(sh.getLastColumn(), 3)).sort({ column: 1, ascending: false });
@@ -132,12 +157,12 @@ function sortJournal() {
    не прибавляется второй раз. */
 
 function revision(p) {
-  sheet();                                   // закрепить лист журнала до создания новых листов
+  journalPin();                              // закрепить лист журнала до создания новых листов
   const act = String(p.rev);
   if (act === "state") return { ok: true, rev: revState() };
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  revBook();                                 // открыть таблицу до блокировки — блокировка держится меньше
+  const lock = lockOrBusy(20000);
   try {
     if (act === "start") return { ok: true, rev: revStart(clean(p.rn, 60)) };
     if (act === "close") { PropertiesService.getScriptProperties().deleteProperty("REV_OPEN"); return { ok: true, rev: revState() }; }
@@ -149,7 +174,7 @@ function revision(p) {
 }
 
 function revBook() {
-  return REV_BOOK_ID ? SpreadsheetApp.openById(REV_BOOK_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  return MEMO.rev || (MEMO.rev = REV_BOOK_ID ? SpreadsheetApp.openById(REV_BOOK_ID) : SpreadsheetApp.getActiveSpreadsheet());
 }
 
 function revTotal(ss) {
@@ -232,7 +257,12 @@ function revStart(name) {
   ensureCols(ts, tc);
   ts.getRange(1, tc, 2, 1).setNumberFormat("@").setValues([[date], [name]]);
 
-  revPositions(ts).forEach(x => zoneRow(zs, x.n));
+  /* позиции, которых нет на листе зон, — дописать вниз одной записью (по порядку, без повторов) */
+  const zl = Math.max(zs.getLastRow(), 3);
+  const have = {}, miss = [];
+  if (zl > 3) zs.getRange(4, 1, zl - 3, 1).getValues().forEach(r => { have[String(r[0]).trim()] = 1; });
+  revPositions(ts).forEach(x => { if (!have[x.n]) { have[x.n] = 1; miss.push([x.n]); } });
+  if (miss.length) { ensureRows(zs, zl + miss.length); zs.getRange(zl + 1, 1, miss.length, 1).setValues(miss); }
   const zc = Math.max(zs.getLastColumn(), 1) + 1;
   /* дата и фамилия — один раз, объединённой ячейкой над пятью зонами */
   const n = ZONES.length, blank = ZONES.slice(1).map(() => "");
@@ -276,6 +306,7 @@ function revAdd(p) {
   const z = zs.getRange(zr, open.zc, 1, ZONES.length).getValues()[0].map(num);
   const t = round3(z.reduce((a, b) => a + b, 0));
   ts.getRange(pos.row, open.tc).setValue(t);
+  SpreadsheetApp.flush();                                                  // записать до снятия блокировки
   return { ok: true, add: { pos: name, z: z.map(round3), t: t } };
 }
 
@@ -334,10 +365,12 @@ function revState() {
 const MREV_NEW = "Новые позиции";
 
 function monthly(p) {
-  sheet();                                   // закрепить лист журнала до создания новых листов
+  journalPin();                              // закрепить лист журнала до создания новых листов
   const act = String(p.mrev), rn = clean(p.rn, 60);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  /* сверка без блокировки — если в листе нечего чинить (обычный случай): опрос не держит других */
+  if (act === "state") { const st = mrevState(true); if (st) return { ok: true, mrev: st }; }
+  revBook();                                 // открыть таблицу до блокировки
+  const lock = lockOrBusy(20000);
   try {
     if (act === "state") return { ok: true, mrev: mrevState() };
     if (act === "begin") return mrevBegin(rn);
@@ -352,11 +385,13 @@ function monthly(p) {
   }
 }
 
-function mrevSheet() {
+function mrevSheet(ro) {
+  if (MEMO.mrev) return MEMO.mrev;
   const ss = revBook();
   let sh = ss.getSheetByName(MREV);
-  if (sh) return sh;
-  sh = ss.insertSheet(MREV);
+  if (sh) return MEMO.mrev = sh;
+  if (ro) return null;                                       // листа нет — создать можно только под блокировкой
+  sh = MEMO.mrev = ss.insertSheet(MREV);
   sh.getRange(3, 1, 1, 3).merge().setValue("На дату:");
   sh.getRange(5, 1, 1, 2).merge();
   sh.getRange(5, 1, 2, 3).setValues([["Товар", "", "Ед. изм."], ["", "Наименование", ""]]).setFontWeight("bold");
@@ -417,16 +452,35 @@ const freezeRefs = (f, last) => String(f).replace(/(\$?)([A-Z]{1,3})(\$?)(\d+):(
 /* Формулы «Итога» (значения, вписанные руками, не трогаем):
    lastCol = 0 — ревизия идёт: позициям без итога (в том числе строкам, добавленным в лист руками) — открытая формула;
    lastCol > 0 — закрытие: открытые ссылки фиксируются на столбцах ревизии, пустым — закрытая формула. */
-function mrevTotals(sh, tc, rows, lastCol) {
+/* dry — ничего не писать, только сказать, сколько ячеек надо поправить. Пишет отрезками подряд идущих ячеек
+   (одна запись вместо сотни): в отрезок входят изменённые, формулы как есть и пустые; значение, вписанное руками, — граница. */
+function mrevTotals(sh, tc, rows, lastCol, dry) {
   const items = rows.filter(x => x.t === "i");
-  if (!items.length) return;
+  if (!items.length) return 0;
   const top = items[0].r, n = items[items.length - 1].r - top + 1;
   const rg = sh.getRange(top, tc, n, 1), fs = rg.getFormulas(), vs = rg.getValues();
+  const put = {};
+  let cnt = 0;
   items.forEach(x => {
-    const f = fs[x.r - top][0], v = vs[x.r - top][0];
-    if (!f && v === "") sh.getRange(x.r, tc).setFormula(totFormula(tc, x.r, lastCol));
-    else if (f && lastCol) { const g = freezeRefs(f, lastCol); if (g !== f) sh.getRange(x.r, tc).setFormula(g); }
+    const i = x.r - top, f = fs[i][0], v = vs[i][0];
+    if (!f && v === "") { put[i] = totFormula(tc, x.r, lastCol); cnt++; }
+    else if (f && lastCol) { const g = freezeRefs(f, lastCol); if (g !== f) { put[i] = g; cnt++; } }
   });
+  if (dry || !cnt) return cnt;
+  const cell = i => i in put ? put[i] : fs[i][0] ? fs[i][0] : vs[i][0] === "" ? "" : null;   // null — ручное значение
+  for (let i = 0; i < n;) {
+    if (cell(i) === null) { i++; continue; }
+    let j = i, any = false;
+    while (j < n && cell(j) !== null) { if (j in put) any = true; j++; }
+    if (any) {
+      let a = i, b = j;                                     // по краям — без лишних ячеек
+      while (!(a in put)) a++;
+      while (!((b - 1) in put)) b--;
+      sh.getRange(top + a, tc, b - a, 1).setFormulas(Array.from({ length: b - a }, (_, k) => [cell(a + k)]));
+    }
+    i = j;
+  }
+  return cnt;
 }
 /* столбец «Итог» открытой ревизии: по id (строка 4), а если id стёрли — по шапке «Итог» + название ревизии.
    Столбец удалили — 0: ревизия закрывается. */
@@ -445,21 +499,31 @@ function mrevTotalCol(sh, b, ids) {
   return 0;
 }
 
-function mrevState() {
-  const sh = mrevSheet(), rows = mrevRows(sh), ids = mrevIds(sh);
-  if (mprops().getProperty("MREV_OPEN")) mprops().deleteProperty("MREV_OPEN");   // старая схема (до «Итога»)
-  const b = mrevBlock(), lastRow = Math.max(sh.getLastRow(), 7);
+/* ro — только чтение (без блокировки): если в листе есть что чинить — null, тогда сверка идёт под блокировкой */
+function mrevState(ro) {
+  const sh = mrevSheet(ro);
+  if (!sh) return null;
+  const rows = mrevRows(sh), ids = mrevIds(sh), P = mprops().getProperties();
+  if (P.MREV_OPEN) { if (ro) return null; mprops().deleteProperty("MREV_OPEN"); }   // старая схема (до «Итога»)
+  let b = null;
+  try { b = JSON.parse(P.MREV_BLOCK || "null"); } catch (e) { b = null; }
+  const lastRow = Math.max(sh.getLastRow(), 7);
   if (b && b.open) {
-    const tc = mrevTotalCol(sh, b, ids);
+    if (ro && (!ids[b.total] || mrevTotals(sh, ids[b.total], rows, 0, true))) return null;
+    const tc = ro ? ids[b.total] : mrevTotalCol(sh, b, ids);
     if (!tc) { b.open = false; b.cols.forEach(c => { c.open = false; }); mrevSave(b); }   // «Итог» удалили — ревизия закрыта
-    else mrevTotals(sh, tc, rows, 0);                                       // строки, добавленные в лист руками
+    else if (!ro) mrevTotals(sh, tc, rows, 0);                              // строки, добавленные в лист руками
   }
-  const colVals = c => c ? sh.getRange(7, c, lastRow - 6, 1).getValues().map(r => r[0]) : [];
+  const cols = b ? b.cols.filter(c => ids[c.id]) : [];
+  /* «Итог» и столбцы барменов — одним чтением (они рядом); прошлая ревизия — отдельно */
+  const want = (b && ids[b.total] ? [ids[b.total]] : []).concat(cols.map(c => ids[c.id]));
+  let blk = null, c0 = 0;
+  if (want.length) { c0 = Math.min.apply(null, want); blk = sh.getRange(7, c0, lastRow - 6, Math.max.apply(null, want) - c0 + 1).getValues(); }
+  const colVals = c => !c ? [] : blk && c >= c0 && c < c0 + blk[0].length ? blk.map(r => r[c - c0]) : sh.getRange(7, c, lastRow - 6, 1).getValues().map(r => r[0]);
   const val = (arr, r) => { const v = arr[r - 7]; return v === "" || v == null ? null : num(v); };
   const tv = b && ids[b.total] ? colVals(ids[b.total]) : [];
-  const cols = b ? b.cols.filter(c => ids[c.id]) : [];
   const cv = cols.map(c => colVals(ids[c.id]));
-  const prevId = mprops().getProperty("MREV_PREV"), pv = prevId && ids[prevId] ? colVals(ids[prevId]) : [];
+  const prevId = P.MREV_PREV, pv = prevId && ids[prevId] ? colVals(ids[prevId]) : [];
   rows.forEach(x => {
     if (x.t !== "i") return;
     x.tot = val(tv, x.r);
@@ -470,7 +534,7 @@ function mrevState() {
     now: Date.now(),
     block: b && ids[b.total] ? { title: b.title, date: b.date, open: b.open, started: b.started,
       cols: cols.map(c => ({ id: c.id, name: c.name, date: c.date, open: c.open })) } : null,
-    prev: mprops().getProperty("MREV_PREV_TITLE") || null,
+    prev: P.MREV_PREV_TITLE || null,
     rows: rows
   };
 }
@@ -488,8 +552,10 @@ function mrevNewCol(sh, id, title, name, date) {
 function mrevBegin(name) {
   if (!name) return { error: "Нет фамилии" };
   const sh = mrevSheet();
-  mrevState();                                              // заодно закрыть «сломанную» ревизию (без «Итога»)
   let b = mrevBlock();
+  if (b && b.open && !mrevTotalCol(sh, b, mrevIds(sh))) {   // «сломанная» ревизия (без «Итога») — закрыть
+    b.open = false; b.cols.forEach(c => { c.open = false; }); mrevSave(b);
+  }
   if (b && b.open) return mrevMine(name);                 // ревизия уже идёт — просто свой столбец
   const started = new Date(), date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
   const months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
@@ -561,10 +627,12 @@ function mrevAdd(p, isNew) {
   const ids = mrevIds(sh), col = ids[c.id], tc = mrevTotalCol(sh, b, ids);
   if (!col || !tc) return { error: "closed" };
 
-  let rows = mrevRows(sh), row = parseInt(p.row, 10);
+  let rows = null, row = parseInt(p.row, 10), pos = "";
+  const allRows = () => rows || (rows = mrevRows(sh));                  // весь лист — только если строка не на месте
   if (isNew) {
+    rows = allRows();
     const same = rows.filter(x => x.t === "i" && mnorm(x.n) === mnorm(text(name, 80)));
-    if (same.length) row = same[same.length - 1].r;
+    if (same.length) { row = same[same.length - 1].r; pos = same[same.length - 1].n; }
     else {
       let last = Math.max(sh.getLastRow(), 7);
       if (!rows.some(x => x.t === "h" && x.n === MREV_NEW)) {
@@ -575,27 +643,29 @@ function mrevAdd(p, isNew) {
       sh.getRange(row, 1, 1, 3).setNumberFormat("@").setValues([["", text(name, 80), text(p.unit, 12)]]);
       sh.getRange(row, tc).setFormula(totFormula(tc, row, 0)).setFontWeight("bold");
     }
-  } else if (!(row >= 7) || mnorm(sh.getRange(row, 2).getDisplayValue()) !== mnorm(name)) {
+  } else if (!(row >= 7) || mnorm(pos = String(sh.getRange(row, 2).getDisplayValue()).trim()) !== mnorm(name)) {
     /* строки сдвинули — ищем по названию; одинаковые (Мандарин) — по разделу и ближайшей строке */
     let sec = "";
+    rows = allRows();
     const hit = rows.filter(x => { if (x.t !== "i") { sec = x.n; return false; } x.sec = sec; return mnorm(x.n) === mnorm(name); });
     const same = p.sec ? hit.filter(x => x.sec === p.sec) : [];
     const pool = same.length ? same : hit;
     if (!pool.length) return { error: "position" };
     pool.sort((a, z) => Math.abs(a.r - (row || 0)) - Math.abs(z.r - (row || 0)));
-    row = pool[0].r;
+    row = pool[0].r; pos = pool[0].n;
   }
   const tcell = sh.getRange(row, tc);
   if (!tcell.getFormula() && tcell.getValue() === "") tcell.setFormula(totFormula(tc, row, 0));   // строку добавили руками
   const cell = sh.getRange(row, col);
-  if (v || cell.getValue() === "") cell.setValue(round3(num(cell.getValue()) + v));
-  if (p.clr && num(cell.getValue()) === 0) cell.setValue("");          // отменили всё — снова «не посчитано»
+  let cv = cell.getValue();                                               // столбец бармена — простые числа
+  if (v || cv === "") { cv = round3(num(cv) + v); cell.setValue(cv); }
+  if (p.clr && num(cv) === 0) { cell.setValue(""); cv = ""; }             // отменили всё — снова «не посчитано»
   revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), b.title + " · " + c.name + " " + c.date, isNew ? "новая" : "—", clean(name, 80), v, id]);
   cache.put("mrev:" + id, String(row), 21600);
   SpreadsheetApp.flush();
   const t = sh.getRange(row, tc).getValue();
-  const cv = cell.getValue();
-  return { ok: true, add: { row: row, pos: String(sh.getRange(row, 2).getDisplayValue()).trim(), v: cv === "" ? "" : round3(num(cv)), tot: t === "" ? null : round3(num(t)), isNew: isNew } };
+  if (!pos) pos = String(sh.getRange(row, 2).getDisplayValue()).trim();   // новая строка — как её показывает лист
+  return { ok: true, add: { row: row, pos: pos, v: cv === "" ? "" : round3(num(cv)), tot: t === "" ? null : round3(num(t)), isNew: isNew } };
 }
 
 /* ═════════════ Списания ═════════════
@@ -612,14 +682,19 @@ const woKind = k => WO_KINDS[k] ? k : "wo";
 const WO_HEAD = ["Дата акта", "№", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Кто", "Файл", "Записано", "id"];
 
 function doPost(e) {
+  MEMO = {};
   let p = {};
   try { p = JSON.parse(e && e.postData ? e.postData.contents : "{}"); } catch (err) { return jsonOut({ error: "bad" }); }
   if (!tokenOk(p.token)) return jsonOut({ error: "denied" });
   try {
-    sheet();
+    journalPin();
     if (p.wo === "save") return jsonOut(woSave(p));
+    if (p.wo === "rec") return jsonOut(woSave(p, true));
     return jsonOut({ error: "action" });
-  } catch (err) { return jsonOut({ error: String(err && err.message || err) }); }
+  } catch (err) {
+    console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
+    return jsonOut({ error: String(err && err.message || err) });
+  }
 }
 function jsonOut(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
@@ -627,25 +702,66 @@ function jsonOut(o) { return ContentService.createTextOutput(JSON.stringify(o)).
 function woTrashed(id, fresh) {
   const cache = CacheService.getScriptCache(), k = "wot:" + id, c = fresh ? null : cache.get(k);
   if (c) return c === "1";
-  let gone;
-  try { gone = DriveApp.getFileById(id).isTrashed(); }
-  catch (e) {                                                   // нет файла / нет доступа — удалён; сбой Диска — не судим и не запоминаем
-    if (!/not found|no item|permission|access|не найден|доступ/i.test(String(e && e.message || e))) return false;
-    gone = true;
-  }
+  const gone = woTrashedNow(id);
+  if (gone === null) return false;                              // сбой Диска — не судим и не запоминаем
   cache.put(k, gone ? "1" : "0", 600);
   return gone;
 }
+/* спросить Диск: true — в корзине или удалён («не найден»), false — на месте, null — Диск ответил ошибкой */
+function woTrashedNow(id) {
+  try { return DriveApp.getFileById(id).isTrashed(); }
+  catch (e) { return /not found|no item|не найден|не удалось найти|найти элемент/i.test(String(e && e.message || e)) ? true : null; }
+}
+/* то же для списка актов — пачкой: кэш одним запросом, Диск — не больше WO_CHECK файлов за раз (новые — первыми);
+   остальные считаем на месте и проверим при следующем открытии истории */
+const WO_CHECK = 10;
+function woGoneMap(ids) {
+  const out = {};
+  if (!ids.length) return out;
+  const cache = CacheService.getScriptCache(), got = cache.getAll(ids.map(id => "wot:" + id)) || {}, alive = {}, dead = {};
+  let left = WO_CHECK;
+  ids.forEach(id => {
+    const c = got["wot:" + id];
+    if (c) { out[id] = c === "1"; return; }                               // «?» — недавно не ответил Диск: на месте
+    out[id] = false;
+    if (left <= 0) return;
+    left--;
+    const g = woTrashedNow(id);
+    if (g === null) { cache.put("wot:" + id, "?", 300); return; }      // сбой Диска — не удалён; спросим через 5 минут
+    out[id] = g;
+    (g ? dead : alive)["wot:" + id] = g ? "1" : "0";
+  });
+  if (Object.keys(alive).length) cache.putAll(alive, 1800);
+  if (Object.keys(dead).length) cache.putAll(dead, 3600);
+  return out;
+}
 /* первая не удалённая папка / файл из выдачи Диска */
 function woAlive(it) { while (it.hasNext()) { const x = it.next(); if (!x.isTrashed()) return x; } return null; }
+/* папка вида: id запоминается в свойствах (по имени Диск ищет дольше); папку удалили — ищем по имени или заводим */
 function woFolder(kind, create) {
-  const name = WO_KINDS[woKind(kind)].folder;
-  return woAlive(DriveApp.getFoldersByName(name)) || (create ? DriveApp.createFolder(name) : null);
+  kind = woKind(kind);
+  if (MEMO["dir:" + kind]) return MEMO["dir:" + kind];
+  const props = PropertiesService.getScriptProperties(), key = "WO_DIR_" + kind, id = props.getProperty(key);
+  let f = null;
+  if (id) { try { const x = DriveApp.getFolderById(id); if (!x.isTrashed()) f = x; } catch (e) { f = null; } }
+  if (!f) {
+    const name = WO_KINDS[kind].folder;
+    f = woAlive(DriveApp.getFoldersByName(name)) || (create ? DriveApp.createFolder(name) : null);
+    if (f) props.setProperty(key, f.getId());
+  }
+  return f ? (MEMO["dir:" + kind] = f) : null;
 }
 /* лист журнала вида. Журнал — таблица в папке вида; id запоминается в свойствах скрипта.
    Журнала ещё нет: create — завести (и перенести старый лист из таблицы ревизии), иначе — null. */
 function woSheet(kind, create) {
   kind = woKind(kind);
+  const m = MEMO["wo:" + kind];
+  if (m && (m.ready || !create)) return m.sh;
+  const sh = woSheetOpen(kind, create);
+  if (sh) MEMO["wo:" + kind] = { sh: sh, ready: !!create };
+  return sh;
+}
+function woSheetOpen(kind, create) {
   const K = WO_KINDS[kind], props = PropertiesService.getScriptProperties(), key = "WO_LOG_" + kind;
   let ss = null, fresh = false;
   const id = props.getProperty(key);
@@ -682,8 +798,9 @@ function woSheet(kind, create) {
    Смотрим обе таблицы. Чужой лист с таким же именем не трогаем. */
 function woMigrate(kind, sh) {
   const books = [], ids = {};
+  MEMO.migFail = false;                                       // таблица не открылась — перенос не закончен, повторим
   [() => SpreadsheetApp.getActiveSpreadsheet(), revBook].forEach(f => {
-    try { const b = f(); if (b && !ids[b.getId()]) { ids[b.getId()] = 1; books.push(b); } } catch (e) {}
+    try { const b = f(); if (b && !ids[b.getId()]) { ids[b.getId()] = 1; books.push(b); } } catch (e) { MEMO.migFail = true; }
   });
   return books.map(b => woMigrateFrom(b, kind, sh)).filter(Boolean).join("; ");
 }
@@ -716,90 +833,126 @@ function woMigrateFrom(book, kind, sh) {
   return name + " убран" + where.replace(" в таблице", " из таблицы") + (moved ? ", его строки (" + moved + ") — в журнале" : "");
 }
 const WO_LIST = 30;
-/* PDF акта удалён (по ссылке из журнала); без ссылки — считаем, что есть */
-function woFileGone(url) {
-  const m = String(url || "").match(/\/d\/([\w-]{10,})/);
-  return m ? woTrashed(m[1], false) : false;
-}
 /* id уже записанного акта → ссылка на файл ("" — без файла); нет — null */
 function woFind(sh, id) {
   const last = sh.getLastRow();
-  if (last < 2) return null;
+  if (last < 2 || !id) return null;
+  try {                                                       // поиск в таблице — быстрее, чем читать весь журнал
+    const hit = sh.getRange(2, 10, last - 1, 1).createTextFinder(id).matchEntireCell(true).matchCase(true).findAll();
+    return hit.length ? String(sh.getRange(hit[hit.length - 1].getRow(), 8).getValue() || "") : null;
+  } catch (e) {}
   const v = sh.getRange(2, 8, last - 1, 3).getValues();
   for (let i = v.length - 1; i >= 0; i--) if (String(v[i][2]) === id) return String(v[i][0] || "");
   return null;
 }
 
-function woSave(p) {
+/* Акт приходит двумя запросами. «rec» — сразу при «Создать файл», маленький (без PDF, браузер дошлёт его, даже если
+   телефон тут же свернут): строки акта — в журнал, акт уже в истории, столбец «Файл» пока пуст. «save» — с PDF:
+   файл — на Диск, ссылка — в строки акта (или, если «rec» не дошёл, строки целиком). Оба повторяемы: id акта один. */
+function woSave(p, recOnly) {
   const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), a = p.act || {}, kind = woKind(a.kind);
   const rows = (Array.isArray(a.rows) ? a.rows : []).slice(0, 200)
     .map(r => [clean(r.n, 120), clean(r.u, 10), num(r.q), kind === "pr" ? "Проработка" : clean(r.why, 120)]).filter(r => r[0]);
   const date = clean(a.date, 20), no = clean(a.no, 20), who = clean(a.who, 80);
   if (!id || !rows.length || !/^\d{2}\.\d{2}\.\d{4}$/.test(date)) return { error: "bad" };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  /* строки, перенесённые из заметки, — списаны этим актом (и при повторе: отметка могла не записаться) */
+  const nids = (Array.isArray(a.rows) ? a.rows : []).map(r => String(r && r.nid || "").replace(/[^\w-]/g, "")).filter(Boolean);
+  const mark = WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " · " + (who || "") + " · " + id;
+  const lock = lockOrBusy(20000);
   try {
-    const sh = woSheet(kind, true);
-    try { woMigrate(kind, sh); } catch (e) {}                              // перенос старого листа не мешает сохранить акт
-    const seen = woFind(sh, id);
-    if (seen !== null) return { ok: true, url: seen, dup: true };
-    let url = "";
-    if (p.pdf) {
-      const name = WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " — " + (who || "бар").replace(/\.+$/, "") + ".pdf";
-      const blob = Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), "application/pdf", name);
-      url = woFolder(kind, true).createFile(blob).getUrl();
+    const sh = woSheet(kind, true), props = PropertiesService.getScriptProperties();
+    if (!props.getProperty("WO_MIGRATED_" + kind)) {                      // старые листы переносятся один раз
+      try { woMigrate(kind, sh); if (!MEMO.migFail) props.setProperty("WO_MIGRATED_" + kind, "1"); } catch (e) {}
     }
-    const stamp = new Date(), last = Math.max(sh.getLastRow(), 1);
-    ensureRows(sh, last + rows.length);
-    const n = rows.length, top = last + 1;
-    sh.getRange(top, 1, n, 4).setNumberFormat("@");                       // текст: дата, №, наименование, ед.
-    sh.getRange(top, 6, n, 5).setNumberFormat("@");                       // текст: причина, кто, файл, когда, id
-    sh.getRange(top, 1, n, WO_HEAD.length)                                // кол-во — числом, чтобы считать суммы
-      .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
-    SpreadsheetApp.flush();                                               // записать до снятия блокировки — повтор увидит id
-    return { ok: true, url: url };
+    const seen = woFind(sh, id);
+    let url = seen || "", out;
+    if (seen === null || (seen === "" && p.pdf && !recOnly)) {
+      if (p.pdf && !recOnly) {
+        const name = WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " — " + (who || "бар").replace(/\.+$/, "") + ".pdf";
+        const blob = Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), "application/pdf", name);
+        const f = woFolder(kind, true).createFile(blob);
+        url = f.getUrl();
+        CacheService.getScriptCache().put("wot:" + f.getId(), "0", 1800);  // история не будет проверять новый файл на Диске
+      }
+      if (seen === "") {                                                  // строки уже в журнале («rec») — дописать ссылку
+        const at = woRowsOf(sh, id);
+        if (at.length) sh.getRangeList(at.map(r => "H" + r)).setValue(url);
+      } else {
+        const stamp = new Date(), last = Math.max(sh.getLastRow(), 1);
+        ensureRows(sh, last + rows.length);
+        const n = rows.length, top = last + 1;
+        sh.getRange(top, 1, n, 4).setNumberFormat("@");                   // текст: дата, №, наименование, ед.
+        sh.getRange(top, 6, n, 5).setNumberFormat("@");                   // текст: причина, кто, файл, когда, id
+        sh.getRange(top, 1, n, WO_HEAD.length)                            // кол-во — числом, чтобы считать суммы
+          .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
+      }
+      SpreadsheetApp.flush();                                             // записать до снятия блокировки — повтор увидит id
+      out = { ok: true, url: url, rec: true };
+    } else out = { ok: true, url: url, rec: true, dup: true };
+    /* отметка в заметке — после записи акта: её сбой не мешает сохранить акт (строки уже запечатаны с телефона) */
+    if (nids.length) { try { wnDone(nids, mark, id); SpreadsheetApp.flush(); } catch (e) { console.error("wnDone " + id + ": " + e); } }
+    return out;
   } finally {
     lock.releaseLock();
   }
+}
+/* строки журнала с этим id (номера строк) */
+function woRowsOf(sh, id) {
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  try { return sh.getRange(2, 10, last - 1, 1).createTextFinder(id).matchEntireCell(true).matchCase(true).findAll().map(r => r.getRow()); }
+  catch (e) {}
+  return sh.getRange(2, 10, last - 1, 1).getValues().map((r, i) => String(r[0]) === id ? i + 2 : 0).filter(Boolean);
 }
 
 /* JSONP: wo=check — записан ли акт; wo=list — последние акты */
 function writeoffs(p) {
   const sh = woSheet(p.k, false), act = String(p.wo);                     // журнала ещё нет — ни одного акта
-  if (act === "check") { const u = sh ? woFind(sh, String(p.id || "")) : null; return { ok: true, saved: u !== null, url: u || "" }; }
+  /* saved — акт с PDF на Диске (так его понимают и прежние версии сайта); rec — строки акта уже в журнале, PDF ещё нет */
+  if (act === "check") { const u = sh ? woFind(sh, String(p.id || "")) : null; return { ok: true, saved: !!u, rec: u !== null, url: u || "" }; }
   if (act === "list") {
     /* последние WO_LIST актов, у каждого — его позиции (на сайте акт раскрывается). Акт, чей PDF удалён
        с Диска, на сайте не показываем: строки в журнале остаются, их можно стереть там же. */
-    const last = sh ? sh.getLastRow() : 0, out = [], seen = {};
-    if (last >= 2) {
-      const from = Math.max(2, last - 1499), v = sh.getRange(from, 1, last - from + 1, WO_HEAD.length).getDisplayValues();
+    const last = sh ? sh.getLastRow() : 0;
+    let acts = [], by = {};
+    const scan = n => {                                                   // последние n строк журнала (не больше 1500)
+      acts = []; by = {};
+      const from = Math.max(2, last - n + 1), v = sh.getRange(from, 1, last - from + 1, WO_HEAD.length).getDisplayValues();
       for (let i = v.length - 1; i >= 0; i--) {                           // строки акта идут подряд; снизу — новые
         const r = v[i], id = r[9];
         if (!id) continue;
-        if (!seen[id]) {
-          if (out.length >= WO_LIST) break;
-          seen[id] = woFileGone(r[7]) ? { gone: true } : { date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 0, rows: [] };
-          if (!seen[id].gone) out.push(seen[id]);
+        let x = by[id];
+        if (!x) {
+          if (acts.length >= WO_LIST * 2) return true;                    // с запасом — на случай удалённых PDF
+          const m = String(r[7] || "").match(/\/d\/([\w-]{10,})/);
+          x = by[id] = { id: id, date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 0, rows: [], fid: m ? m[1] : "" };
+          acts.push(x);
         }
-        if (seen[id].gone) continue;
-        seen[id].n++;
-        seen[id].rows.unshift([r[2], r[3], r[4], r[5]]);
+        x.n++;
+        x.rows.unshift([r[2], r[3], r[4], r[5]]);
       }
-    }
+      return from === 2;                                                  // дошли до начала журнала
+    };
+    if (last >= 2 && !scan(400)) scan(1500);
+    const gone = woGoneMap(acts.map(x => x.fid).filter(Boolean).slice(0, WO_LIST + 10));
+    const out = acts.filter(x => !(x.fid && gone[x.fid])).slice(0, WO_LIST);
+    out.forEach(x => { delete x.fid; });
     return { ok: true, acts: out };
   }
   return { error: "action" };
 }
 
 /* ═════════════ Заметка к списанию ═════════════
-   Общий список «что списать» — видят все. Строку нельзя удалить: она уходит из заметки только переносом
-   в акт списания (кнопка на сайте). История — лист «Заметка» в «Журнале списаний»: кто записал,
-   кто и когда перенёс, когда строки дошли до его акта.
-   Перенос в два шага: take — строки закрепляются за барменом (rn) и уходят из заметки у всех; got — телефон
-   сообщает, что строки у него. Пока got нет (ответ потерялся), такие строки снова отдаются тому же бармену —
-   и при повторном нажатии, и при сверке (mine), с любого телефона. Повтор add с тем же id ничего не задваивает. */
+   Общий список «что списать» — видят все. Строку нельзя удалить. Перенос в акт закрепляет строку за барменом и его
+   телефоном на 24 часа (take): в заметке её больше не видно, в акте её нельзя изменить — только вернуть (back).
+   Акт создан на телефоне — строка запечатана (seal: «в акте …, ждёт копии»): больше не возвращается, даже если копия
+   акта дойдёт до таблицы позже. Копия дошла (woSave) — «Акт … · кто · id»: списана окончательно.
+   Не создал акт за 24 часа — строка сама возвращается в заметку и ждёт следующего акта.
+   Отметки прежних версий сайта в «Списано в акте» (без «Акт …») считаются закрытыми, как и были.
+   История — лист «Заметка» в «Журнале списаний». Повтор add с тем же id ничего не задваивает. */
 const WN_SHEET = "Заметка";
-const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Перенёс в акт", "Когда перенёс", "Дошло до акта"];
+const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Взял в акт", "Когда взял", "Списано в акте", "Телефон"];
+const WN_HOLD = 24 * 3600e3, WN_V = 2;
 function wnSheet(create) {
   const log = woSheet("wo", create);
   if (!log) return null;
@@ -807,31 +960,46 @@ function wnSheet(create) {
   let sh = ss.getSheetByName(WN_SHEET);
   if (!sh && create) {
     sh = ss.insertSheet(WN_SHEET);
-    sh.getRange(1, 1, 1, WN_HEAD.length).setValues([WN_HEAD]).setFontWeight("bold");
     sh.setFrozenRows(1);
   }
+  if (sh && create && sh.getRange(1, 1, 1, WN_HEAD.length).getDisplayValues()[0].join("|") !== WN_HEAD.join("|"))
+    sh.getRange(1, 1, 1, WN_HEAD.length).setValues([WN_HEAD]).setFontWeight("bold");
   return sh;
 }
+/* «Когда взял» — дата (или текст «дд.мм.гггг чч:мм» по Астане из прежней версии) → мс */
+function wnTime(v) {
+  if (v instanceof Date) return v.getTime();
+  const m = String(v || "").match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
+  return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4] - 5, +m[5]) : 0;
+}
+const WN_SEAL = "в акте ";
 function wnRows(sh) {
-  const last = sh ? sh.getLastRow() : 0;
+  const last = sh ? sh.getLastRow() : 0, now = Date.now();
   return last < 2 ? [] : sh.getRange(2, 1, last - 1, WN_HEAD.length).getValues()
-    .map((r, i) => ({ row: i + 2, id: String(r[0]), n: String(r[1]), u: String(r[2]), q: r[3], why: String(r[4]), who: String(r[5]),
-      at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]), took: String(r[7]), got: String(r[9]) }))
+    .map((r, i) => {
+      const x = { row: i + 2, id: String(r[0]), n: String(r[1]), u: String(r[2]), q: r[3], why: String(r[4]), who: String(r[5]),
+        at: r[6] instanceof Date ? Utilities.formatDate(r[6], TZ, "dd.MM") : String(r[6]).slice(0, 5), took: String(r[7]), since: wnTime(r[8]),
+        done: String(r[9]), dev: String(r[10]) };
+      x.closed = !!x.done;                                                 // списана, запечатана в акте или закрыта прежней версией
+      x.held = !!x.took && !x.closed && now - x.since < WN_HOLD;           // закреплена за барменом
+      return x;
+    })
     .filter(x => x.id);
 }
 const wnItem = x => ({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, who: x.who, at: x.at });
-const wnOpen = rows => rows.filter(x => !x.took).map(wnItem);
-const wnMine = (rows, who) => who ? rows.filter(x => x.took === who && !x.got).map(wnItem) : [];
+const wnOpen = rows => rows.filter(x => !x.closed && !x.held).map(wnItem);
+const wnMine = (rows, who) => who ? rows.filter(x => x.held && x.took === who).map(x => Object.assign(wnItem(x), { until: x.since + WN_HOLD, dev: x.dev })) : [];
+const wnAns = (rows, who, more) => Object.assign({ ok: true, v: WN_V, items: wnOpen(rows), mine: wnMine(rows, who) }, more || {});
+const wnIds = v => String(v || "").split(",").map(x => x.replace(/[^\w-]/g, "").slice(0, 64)).filter(Boolean);
 
 function wnote(p) {
-  const act = String(p.wn), who = clean(p.rn, 60);
-  if (act === "list") { const rows = wnRows(wnSheet(false)); return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) }; }
-  if (act !== "add" && act !== "take" && act !== "got") return { error: "action" };
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  const act = String(p.wn), who = clean(p.rn, 60), dev = String(p.dev || "").replace(/[^\w-]/g, "").slice(0, 40);
+  if (act === "list") return wnAns(wnRows(wnSheet(false)), who);
+  if (["add", "take", "back", "seal", "got"].indexOf(act) < 0) return { error: "action" };
+  const lock = lockOrBusy(20000);
   try {
-    const sh = wnSheet(true), rows = wnRows(sh), stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm");
-    const want = String(p.ids || "").split(",").filter(Boolean);
+    const sh = wnSheet(true), rows = wnRows(sh), want = wnIds(p.ids), now = new Date();
+    const stamp = Utilities.formatDate(now, TZ, "dd.MM.yyyy HH:mm");
     if (act === "add") {
       const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), n = clean(p.n, 120), q = num(p.q);
       if (!id || !n || !(q > 0)) return { error: "bad" };
@@ -839,43 +1007,82 @@ function wnote(p) {
         const top = Math.max(sh.getLastRow(), 1) + 1;
         ensureRows(sh, top);
         sh.getRange(top, 1, 1, 3).setNumberFormat("@"); sh.getRange(top, 5, 1, 2).setNumberFormat("@");
-        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, new Date()]]);
+        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, now]]);
         SpreadsheetApp.flush();
-        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: stamp.slice(0, 5), took: "", got: "" });
+        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: stamp.slice(0, 5), took: "", since: 0, done: "", dev: "", closed: false, held: false });
       }
-      return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) };
+      return wnAns(rows, who);
     }
     if (!who || !want.length) return { error: "bad" };
+    const mine = x => want.indexOf(x.id) >= 0;
     if (act === "take") {
-      /* свободные строки — закрепить за барменом; уже его, но не дошедшие — отдать снова; чужие — пропустить */
-      const took = [];
-      rows.forEach(x => {
-        if (want.indexOf(x.id) < 0) return;
-        if (!x.took) {
-          sh.getRange(x.row, 8, 1, 2).setNumberFormat("@").setValues([[who, stamp]]);
-          x.took = who;
-        }
-        if (x.took === who && !x.got) took.push(wnItem(x));
-      });
+      /* свободные (и вернувшиеся через 24 часа) — закрепить за барменом и телефоном; уже его — оставить; чужие и закрытые — мимо */
+      const rs = rows.filter(x => mine(x) && !x.closed && !x.held);
+      wnPut(sh, 8, rs, who, "@"); wnPut(sh, 9, rs, now, "dd.MM.yyyy HH:mm"); wnPut(sh, 11, rs, dev, "@");
+      rs.forEach(x => { x.took = who; x.since = now.getTime(); x.dev = dev; x.held = true; });
       SpreadsheetApp.flush();
-      return { ok: true, took: took, items: wnOpen(rows), mine: wnMine(rows, who) };
+      return wnAns(rows, who, { took: wnMine(rows, who).filter(mine) });
     }
-    /* got: строки дошли до телефона бармена */
-    rows.forEach(x => {
-      if (want.indexOf(x.id) < 0 || x.took !== who || x.got) return;
-      sh.getRange(x.row, 10).setNumberFormat("@").setValue(stamp);
-      x.got = stamp;
-    });
+    if (act === "back") {                                                  // бармен отменил перенос — строки снова в заметке
+      const rs = rows.filter(x => mine(x) && x.held && x.took === who);
+      if (rs.length) sh.getRangeList(rs.map(x => "H" + x.row + ":I" + x.row).concat(rs.map(x => "K" + x.row))).setValue("");
+      rs.forEach(x => { x.took = ""; x.since = 0; x.dev = ""; x.held = false; });
+      SpreadsheetApp.flush();
+      return wnAns(rows, who);
+    }
+    if (act === "seal") {
+      /* акт создан на телефоне: строки больше не возвращаются, даже если копия акта придёт позже */
+      const aid = String(p.act || "").replace(/[^\w-]/g, "").slice(0, 64), sealed = [], conflict = [];
+      if (!aid) return { error: "bad" };
+      const rs = [];
+      rows.forEach(x => {
+        if (!mine(x)) return;
+        if (x.closed){ (x.done.indexOf(aid) >= 0 ? sealed : conflict).push(x.id); return; }
+        if (x.held && x.took !== who){ conflict.push(x.id); return; }
+        rs.push(x);
+      });
+      wnPut(sh, 10, rs, WN_SEAL + aid + " · " + who + " · " + stamp + " · ждёт копии на Диске", "@");
+      rs.forEach(x => { x.done = WN_SEAL + aid; x.closed = true; x.held = false; sealed.push(x.id); });
+      SpreadsheetApp.flush();
+      return wnAns(rows, who, { sealed: sealed, conflict: conflict });
+    }
+    /* got — от прежней версии сайта: строка дошла до её акта, значит закрыта (та версия не отмечала акты) */
+    const rs = rows.filter(x => mine(x) && !x.closed && x.took === who);
+    wnPut(sh, 10, rs, "дошло до акта (прежняя версия сайта) " + stamp, "@");
+    rs.forEach(x => { x.closed = true; x.held = false; });
     SpreadsheetApp.flush();
-    return { ok: true, items: wnOpen(rows), mine: wnMine(rows, who) };
+    return wnAns(rows, who);
   } finally {
     lock.releaseLock();
   }
+}
+/* копия акта дошла — его строки из заметки списаны окончательно (из woSave, под блокировкой; повтор безопасен).
+   Строка уже списана другим актом — помечаем «⚠ также в акте …», чтобы двойное списание было видно в листе. */
+function wnDone(ids, mark, aid) {
+  const sh = wnSheet(false);
+  if (!sh || !ids.length) return;
+  const plain = [];
+  wnRows(sh).forEach(x => {
+    if (ids.indexOf(x.id) < 0) return;
+    if (x.done.indexOf(aid) >= 0 && x.done.indexOf(WN_SEAL) !== 0) return;          // уже отмечена этим актом
+    const other = /^Акт /.test(x.done) || (x.done.indexOf(WN_SEAL) === 0 && x.done.indexOf(aid) < 0);
+    if (other) sh.getRange(x.row, 10).setNumberFormat("@").setValue(x.done + " ⚠ также в акте " + mark);
+    else plain.push(x);
+  });
+  wnPut(sh, 10, plain, mark, "@");
+}
+/* одно значение в один столбец нескольких строк — одним вызовом, а не по ячейке */
+function wnPut(sh, col, rows, value, fmt) {
+  if (!rows.length) return;
+  const rl = sh.getRangeList(rows.map(x => colA1(col) + x.row));
+  if (fmt) rl.setNumberFormat(fmt);
+  rl.setValue(value);
 }
 
 /* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску.
    Заводит папки и журналы, а старые листы «Списания» / «Проработки» из таблицы ревизии переносит в журналы. */
 function checkWriteoff() {
+  MEMO = {};
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -896,6 +1103,7 @@ const MREV_ROWS = [[7,"h","Вермуты","","",1],[8,"i","","Вермут Ма
    «Выполнить». В первый раз Google попросит разрешение — дайте его. Результат —
    в «Журнале выполнения» внизу. После этого выпустите новую версию развертывания. */
 function checkRevision() {
+  MEMO = {};
   const ss = revBook();
   Logger.log("Таблица ревизии: «" + ss.getName() + "», листы: " + ss.getSheets().map(s => s.getName()).join(", "));
   const ts = revTotal(ss);
@@ -924,6 +1132,7 @@ function installBackup() {
 }
 
 function monthlyBackup() {
+  MEMO = {};
   const found = DriveApp.getFoldersByName(BACKUP_FOLDER);
   const folder = found.hasNext() ? found.next() : DriveApp.createFolder(BACKUP_FOLDER);
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");

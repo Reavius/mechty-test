@@ -60,15 +60,17 @@ function api(params){
   return new Promise(resolve => {
     const cb = "mechtyCb" + Date.now() + Math.floor(Math.random() * 1e6);
     const el = document.createElement("script");
-    let settled = false;
-    const settle = v => { if (!settled){ settled = true; resolve(v); } };
+    let settled = false, timer = 0;
+    const settle = v => { if (!settled){ settled = true; clearTimeout(timer); resolve(v); } };
 
     window[cb] = d => {
       settle(d && typeof d === "object" ? d : {error:"bad"});
       setTimeout(() => { try { delete window[cb]; } catch (e) { window[cb] = undefined; } el.remove(); }, 0);
     };
     el.onerror = () => settle({error:"net"});
-    setTimeout(() => settle({error:"net"}), 30000);
+    /* ответ пришёл, но это не наш ответ (страница ошибки Google) — не ждать 30 секунд */
+    el.onload = () => setTimeout(() => settle({error:"net"}), 0);
+    timer = setTimeout(() => settle({error:"net"}), 30000);
 
     const q = new URLSearchParams(Object.assign({callback:cb, token:TOKEN}, params));
     el.src = ENDPOINT + "?" + q.toString();
@@ -86,7 +88,7 @@ async function report(){
   logState = "loading"; drawLog();
   $("logWarn").textContent = "";
   let r = "net";
-  for (let a = 0; a < 3 && r === "net"; a++){
+  for (let a = 0; a < 3 && (r === "net" || r === "busy"); a++){
     if (a) await new Promise(ok => setTimeout(ok, 3000 * a));
     r = await call({name:me.name, email:me.email});
   }
@@ -156,6 +158,7 @@ function enter(p, name, email){
   if (!calcReady){ start(); calcReady = true; }
   showView("bt");
   if (!logged){ logged = true; report(); }
+  woKick(true);                                               // акты, не ушедшие на Диск раньше, — сразу
 }
 
 async function goBt(){

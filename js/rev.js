@@ -84,10 +84,30 @@ function revApplyQueue(){
   }
 }
 
+const rqueueDraw = () => { const q = rjson(RQ, []); $("rqueue").textContent = q.length ? "не отправлено: " + q.length : ""; };
+/* строка под позицией: что добавлено в этой зоне, все зоны, прошлый пересчёт */
+function rsubText(it, parts){
+  const sub = [];
+  if (parts.length) sub.push(parts.map(hl).join(" + ").replace(/\+ -/g, "− "));
+  sub.push("все зоны: " + rfmt(it.t) + " " + it.u);
+  if (it.p != null) sub.push("прошлый: " + rfmt(it.p));
+  return sub.join(" · ");
+}
+/* одна позиция — без перерисовки всего списка: поле ввода, фокус и клавиатура на месте */
+function rpatch(i){
+  const r = REV, it = r && r.open && r.items[i], li = it && document.querySelector('#rlist li[data-i="' + i + '"]');
+  if (!li) return;
+  const zi = r.zones.indexOf(rzone), parts = (rjson(RH, {})[r.open.key] || {})[rzone + "|" + it.n] || [];
+  const b = li.querySelector(".rtop > b");
+  b.className = it.pend ? "pend" : "";
+  b.innerHTML = rfmt(it.z[zi]) + '<small>' + esc(it.u) + '</small>';
+  li.querySelector(".rsub").textContent = rsubText(it, parts);
+  li.querySelector("button.undo").disabled = !parts.length;
+}
+
 function revDraw(){
   const r = REV;
-  const q = rjson(RQ, []);
-  $("rqueue").textContent = q.length ? "не отправлено: " + q.length : "";
+  rqueueDraw();
   if (!r) return;
   const open = r.open;
   $("rtitle").textContent = open ? "Ревизия · " + rdate(open) : "Ревизия не начата";
@@ -109,14 +129,10 @@ function revDraw(){
   const hist = rjson(RH, {})[open.key] || {};
   $("rlist").innerHTML = r.items.length ? r.items.map((it, i) => {
     const parts = hist[rzone + "|" + it.n] || [];
-    const sub = [];
-    if (parts.length) sub.push(parts.map(hl).join(" + ").replace(/\+ -/g, "− "));
-    sub.push("все зоны: " + rfmt(it.t) + " " + it.u);
-    if (it.p != null) sub.push("прошлый: " + rfmt(it.p));
     return '<li class="rrow" data-i="' + i + '">' +
       '<div class="rtop"><span class="rn">' + esc(it.n) + '<small>' + esc(it.u) + '</small></span>' +
       '<b' + (it.pend ? ' class="pend"' : '') + '>' + rfmt(it.z[zi]) + '<small>' + esc(it.u) + '</small></b></div>' +
-      '<div class="rsub">' + esc(sub.join(" · ")) + '</div>' +
+      '<div class="rsub">' + esc(rsubText(it, parts)) + '</div>' +
       '<form class="rin"><input type="text" inputmode="decimal" autocomplete="off" placeholder="Напр. 3 или 37×0,85" aria-label="Добавить: ' + esc(it.n) + '">' +
       '<button type="button" class="ghost mul" aria-label="Умножить">×</button>' +
       '<button type="submit" aria-label="Прибавить">+</button>' +
@@ -143,7 +159,7 @@ function revAdd(i, v, undo, e){
   const q = rjson(RQ, []);
   q.push({id:rid(), rk:r.open.key, pos:it.n, zone:rzone, v});
   rsave(RQ, q);
-  revDraw();
+  rpatch(i); rqueueDraw();
   revFlush();
 }
 
@@ -158,6 +174,11 @@ async function revFlush(){
       const a = q[0];
       const d = await api({rev:"add", id:a.id, rk:a.rk, pos:a.pos, zone:a.zone, v:String(a.v), rn: me ? me.name : ""});
       if (d.error === "net" || d.error === "denied") break;
+      if (!d.ok && !/^(closed|position|bad)$/.test(String(d.error))){   // таблица занята или временная ошибка — повторим, не теряя
+        $("rwarn").textContent = "Таблица не ответила — добавления отправятся повторно.";
+        break;
+      }
+      if (d.ok && /повторно/.test($("rwarn").textContent)) $("rwarn").textContent = "";
       rsave(RQ, rjson(RQ, []).filter(x => x.id !== a.id));
       if (d.ok && d.add && REV && REV.open && REV.open.key === a.rk){
         const it = REV.items.find(x => x.n === d.add.pos);
@@ -167,8 +188,8 @@ async function revFlush(){
     }
     if (REV){
       const left = rjson(RQ, []);
-      for (const it of REV.items) it.pend = left.some(x => x.pos === it.n);
-      revDraw();
+      REV.items.forEach((it, i) => { it.pend = left.some(x => x.pos === it.n); rpatch(i); });
+      rqueueDraw();
     }
   } finally { rbusy = false; }
 }
@@ -188,8 +209,8 @@ $("rlist").addEventListener("submit", e => {
   if (!isFinite(c.v) || !c.v){ inp.focus(); return; }
   const i = +li.dataset.i;
   revAdd(i, c.v, false, c.e);
-  const again = document.querySelector('#rlist li[data-i="' + i + '"] input');
-  if (again) again.focus();
+  inp.value = ""; li.querySelector(".rprev").textContent = "";
+  inp.focus();
 });
 
 /* кнопка «×» — на цифровой клавиатуре телефона знака умножения нет */
@@ -244,7 +265,8 @@ window.addEventListener("online", () => { if (R) revFlush(); });
 const rtyping = () => [...document.querySelectorAll("#rlist input")].some(i => i.value || i === document.activeElement);
 function rtick(){
   if (sect !== "rev" || rkind !== "day" || !R || !REV || document.hidden || !navigator.onLine || rbusy) return;
-  if (rjson(RQ, []).length || rtyping()) return;
+  if (rjson(RQ, []).length){ revFlush(); return; }          // не ушло (нет связи, таблица занята) — отправляем сами
+  if (rtyping()) return;
   revLoad(true);
 }
 setInterval(rtick, 30000);
