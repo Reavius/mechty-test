@@ -195,7 +195,7 @@ function revZones(ss) {
 }
 
 function revLog(ss) {
-  let sh = ss.getSheetByName(REV_LOG);
+  let sh = ss.getSheetByName(REV_LOG) || ss.getSheetByName("Журнал ревизии");   // лист могли переименовать
   if (!sh) {
     sh = ss.insertSheet(REV_LOG);
     sh.appendRow(["Время", "Фамилия", "Ревизия", "Зона", "Позиция", "Добавлено", "id"]);
@@ -1107,7 +1107,8 @@ function checkRevision() {
   const ss = revBook();
   Logger.log("Таблица ревизии: «" + ss.getName() + "», листы: " + ss.getSheets().map(s => s.getName()).join(", "));
   const ts = revTotal(ss);
-  Logger.log("Лист «" + ts.getName() + "»: позиций " + revPositions(ts).length);
+  const pos = revPositions(ts);
+  Logger.log("Лист «" + ts.getName() + "»: позиций " + pos.length + " — " + pos.map(x => x.n).join(", "));
   Logger.log("Открытая ревизия: " + JSON.stringify(revOpen()));
   const ms = mrevSheet();
   Logger.log("Лист «" + ms.getName() + "»: позиций " + mrevRows(ms).filter(x => x.t === "i").length + ", месячная ревизия: " + JSON.stringify(mrevBlock()));
