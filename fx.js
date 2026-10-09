@@ -211,7 +211,8 @@
   if (!seen){
     const ov = intro(), hero = onBar ? heroIn(3.1) : null, el = $(".fx-intro");
     /* нажали на заставку — сразу к сайту (бармену некогда ждать) */
-    if (el) el.addEventListener("pointerdown", () => { ov.progress(1); if (hero && hero.progress() === 0) hero.restart(); }, { once: true });
+    /* click, а не pointerdown: касание достаётся заставке, а не кнопке под ней */
+    if (el) el.addEventListener("click", () => { ov.progress(1); if (hero && hero.progress() === 0) hero.restart(); }, { once: true });
   }
   else if (onBar) heroIn(0);
 })();

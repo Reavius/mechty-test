@@ -59,9 +59,14 @@ function doGet(e) {
         else append(name, email);
       }
       if (!out) out = { ok: true, log: recent() };
-    } catch (err) { out = { error: String(err && err.message || err) }; }
+    } catch (err) {                                                       // сбой журнала — сайт повторит (как при «нет связи»)
+      console.error("login: " + (err && err.stack || err));
+      out = { error: "net" };
+    }
   }
 
+  /* таблица занята — для сайта это «нет связи»: повторяют все его версии (прежние понимают только «net») */
+  if (out && out.error === "busy") out = { error: "net", busy: 1 };
   const json = JSON.stringify(out);
   if (cb) {
     return ContentService.createTextOutput(cb + "(" + json + ")")
@@ -119,9 +124,11 @@ function append(name, email) {
    Сортировка по дате — на случай старых записей, добавленных снизу. */
 function recent() {
   const sh = sheet();
-  const last = Math.min(sh.getLastRow(), 400);                          // новые — сверху; весь журнал читать незачем
+  const all = sh.getLastRow(), last = Math.min(all, 400);                // новые — сверху; весь журнал читать незачем
   if (last < 1) return [];
-  const rows = sh.getRange(1, 1, last, 2).getValues();
+  let rows = sh.getRange(1, 1, last, 2).getValues();
+  const ts = rows.map(r => r[0] instanceof Date ? r[0].getTime() : null).filter(t => t !== null);
+  if (all > last && ts.some((t, i) => i && t > ts[i - 1])) rows = sh.getRange(1, 1, all, 2).getValues();   // не по порядку — весь
   const data = [];
   for (const r of rows) {
     const d = r[0], n = r[1];
@@ -703,7 +710,7 @@ function woTrashed(id, fresh) {
 /* спросить Диск: true — в корзине или удалён («не найден»), false — на месте, null — Диск ответил ошибкой */
 function woTrashedNow(id) {
   try { return DriveApp.getFileById(id).isTrashed(); }
-  catch (e) { return /not found|no item|не найден/i.test(String(e && e.message || e)) ? true : null; }
+  catch (e) { return /not found|no item|не найден|не удалось найти|найти элемент/i.test(String(e && e.message || e)) ? true : null; }
 }
 /* то же для списка актов — пачкой: кэш одним запросом, Диск — не больше WO_CHECK файлов за раз (новые — первыми);
    остальные считаем на месте и проверим при следующем открытии истории */
@@ -715,12 +722,12 @@ function woGoneMap(ids) {
   let left = WO_CHECK;
   ids.forEach(id => {
     const c = got["wot:" + id];
-    if (c) { out[id] = c === "1"; return; }
+    if (c) { out[id] = c === "1"; return; }                               // «?» — недавно не ответил Диск: на месте
     out[id] = false;
     if (left <= 0) return;
     left--;
     const g = woTrashedNow(id);
-    if (g === null) return;
+    if (g === null) { cache.put("wot:" + id, "?", 300); return; }      // сбой Диска — не удалён; спросим через 5 минут
     out[id] = g;
     (g ? dead : alive)["wot:" + id] = g ? "1" : "0";
   });
@@ -901,8 +908,8 @@ function woRowsOf(sh, id) {
 /* JSONP: wo=check — записан ли акт; wo=list — последние акты */
 function writeoffs(p) {
   const sh = woSheet(p.k, false), act = String(p.wo);                     // журнала ещё нет — ни одного акта
-  /* saved — строки акта в журнале; pdf — и файл на Диске (без него сайт дошлёт PDF) */
-  if (act === "check") { const u = sh ? woFind(sh, String(p.id || "")) : null; return { ok: true, saved: u !== null, url: u || "", pdf: !!u }; }
+  /* saved — акт с PDF на Диске (так его понимают и прежние версии сайта); rec — строки акта уже в журнале, PDF ещё нет */
+  if (act === "check") { const u = sh ? woFind(sh, String(p.id || "")) : null; return { ok: true, saved: !!u, rec: u !== null, url: u || "" }; }
   if (act === "list") {
     /* последние WO_LIST актов, у каждого — его позиции (на сайте акт раскрывается). Акт, чей PDF удалён
        с Диска, на сайте не показываем: строки в журнале остаются, их можно стереть там же. */

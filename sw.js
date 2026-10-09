@@ -27,8 +27,13 @@ self.addEventListener("fetch", e => {
   const url = new URL(req.url);
 
   /* страница: сначала сеть, без сети — кэш */
-  if (req.mode === "navigate" || (url.origin === location.origin && /\/(index\.html)?$/.test(url.pathname))) {
+  if (url.origin === location.origin && /\/(index\.html)?$/.test(url.pathname)) {
     e.respondWith(page(e));
+    return;
+  }
+  /* другие страницы (старые адреса calc.html, preview.html — переадресация) — своим адресом, не вместо index.html */
+  if (req.mode === "navigate") {
+    e.respondWith(fresh(req, req));
     return;
   }
   /* свой код — тоже сначала сеть: страница и скрипты всегда одной версии (страница из копии — и код из копии) */
@@ -49,20 +54,28 @@ self.addEventListener("fetch", e => {
   }
 });
 
-/* страница: сеть; не ответила за SLOW — сохранённая копия (если есть), сеть тем временем обновит кэш */
+/* страница: сеть; не ответила за SLOW — сохранённая копия (если есть). Тогда и код вкладки — из копии, а поздний ответ сети
+   в кэш не кладём: новая страница со старым кодом не смешается (обновится при следующем открытии с нормальной сетью). */
 function page(e){
-  const net = fresh(e.request, "index.html");
-  e.waitUntil(net.catch(() => {}));
+  const req = e.request, stale = () => { if (e.resultingClientId) STALE.add(e.resultingClientId); };
   return new Promise(ok => {
     let done = false;
     const t = setTimeout(() => caches.match("index.html").then(hit => {
       if (!hit || done) return;
-      done = true;
-      if (e.resultingClientId) STALE.add(e.resultingClientId);
-      ok(hit);
+      done = true; stale(); ok(hit);
     }), SLOW);
-    net.then(res => { if (!done){ done = true; clearTimeout(t); ok(res); } },
-      () => { if (!done){ done = true; clearTimeout(t); ok(caches.match("index.html")); } });
+    const net = fetch(req, {cache: "no-cache"}).then(res => {
+      if (done) return;
+      done = true; clearTimeout(t);
+      const copy = res.ok ? res.clone() : null;                 // копию — до того, как страница прочитает ответ
+      ok(res);
+      if (copy) return caches.open(CACHE).then(c => c.put("index.html", copy));
+    }, () => {
+      if (done) return;
+      done = true; clearTimeout(t); stale();                    // без сети — страница и код из копии
+      ok(caches.match("index.html"));
+    });
+    e.waitUntil(net.catch(() => {}));
   });
 }
 

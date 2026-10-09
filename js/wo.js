@@ -101,8 +101,8 @@ function woInit(){
 }
 /* выход из аккаунта: форма — в исходное */
 function woLeave(){
-  woUser = null; woLast = null; woLastOf = {};
-  try { localStorage.removeItem(WL); } catch (e) {}
+  woUser = null; woLast = null; woLastOf = {}; woHistSeq++;
+  if (!me) try { localStorage.removeItem(WL); } catch (e) {}  // вышли из аккаунта — копии истории на телефоне не остаётся
   if (woReady){ woSigReset(); woLoad(); woDoneUi(); $("woWarn").textContent = ""; }   // woLoad: поле вставки — из черновика этого бармена
   wnItems = []; wnMineList = null; wnState = "load"; wnSeq++; wnSyncP = null; wnBusy = false; if (woReady) wnDraw();
 }
@@ -587,9 +587,11 @@ $("woShare").addEventListener("click", async () => {
   if (!woLast) return;
   try { await navigator.share({files: [woFile(woLast)], title: woLast.name}); } catch (e) { if (e.name !== "AbortError") $("woDl").click(); }
 });
-$("woRetry").addEventListener("click", () => {
-  if (!woLast) return;
-  woSt(woLast.id, WO_SEND, "send");
+$("woRetry").addEventListener("click", async () => {
+  const L = woLast;
+  if (!L) return;
+  woSt(L.id, woRecOk.has(L.id) ? WO_REC : WO_SEND, "send");
+  if (!(await qList()).some(a => a.id === L.id)) return woQueue(L);   // на телефоне не записался — заново в очередь
   woFlush(true).then(woHistUp);
 });
 $("woNew").addEventListener("click", () => {
@@ -645,6 +647,8 @@ async function woQueue(L){
 const WO_SEND = "Сохраняем акт в историю и на Google Диск… Не закрывайте сайт.";
 const WO_REC = "Акт уже в истории. Загружаем PDF на Google Диск… Не закрывайте сайт.";
 const WO_RECW = "Акт в истории, но PDF ещё не на Диске — пробуем ещё раз…";
+const WO_RECN = "Акт уже в истории. PDF отправится на Диск сам, как только появится связь (сайт должен быть открыт).";
+const woNetMsg = id => woRecOk.has(id) ? WO_RECN : WO_NET;
 const WO_NET = "Нет связи — акт ещё не в истории и не на Диске. Он отправится сам, как только появится связь (сайт должен быть открыт).";
 const WO_WAIT = "Таблица не приняла акт — пробуем ещё раз…";
 const WO_OLD = "Списания ждут новый Apps Script (см. README) — акт отправится, когда он будет.";
@@ -663,17 +667,18 @@ function woFlush(force){
 async function woSendOne(a){
   const k = a.act.kind || "wo", pdf = typeof a.pdf === "string" ? a.pdf : await b64of(new Blob([a.pdf]));
   let d = null;
-  const ac = typeof AbortController === "function" ? new AbortController() : null, t = ac && setTimeout(() => ac.abort(), 90e3);
+  const body = JSON.stringify({token: TOKEN, wo: "save", id: a.id, act: a.act, pdf});
+  /* ждать ответа: минута + секунда на каждые 3 КБ (на слабом канале большой файл идёт долго — не обрывать его) */
+  const ac = typeof AbortController === "function" ? new AbortController() : null, t = ac && setTimeout(() => ac.abort(), 60e3 + body.length / 3);
   try {
-    const r = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, signal: ac ? ac.signal : undefined,
-      body: JSON.stringify({token: TOKEN, wo: "save", id: a.id, act: a.act, pdf})});
+    const r = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, signal: ac ? ac.signal : undefined, body});
     d = await r.json();
   } catch (e) { d = null; }                                   // нет связи или ответ не прочитать — запрос мог дойти
   finally { clearTimeout(t); }
   if (d && d.ok) return d;
   const c = await api({wo: "check", id: a.id, k});
-  if (c.ok && c.saved && c.pdf !== false) return {ok: true, url: c.url};
-  if (c.ok && c.saved) return {error: "rec"};                 // акт в истории, PDF ещё не дошёл — дошлём
+  if (c.ok && c.saved) return {ok: true, url: c.url};
+  if (c.ok && c.rec) return {error: "rec"};                   // акт в истории, PDF ещё не дошёл — дошлём
   if (c.ok && !("saved" in c)) return {error: "old"};
   return {error: c.error === "net" ? "net" : "wait"};
 }
@@ -703,8 +708,9 @@ async function woFlushRun(){
     if (d.ok){ await qDel(a.id); delete woRecs[a.id]; woSent++; woSt(a.id, woSaved(d.url), "ok"); continue; }
     left++;
     if (d.error === "rec") woSent++;                          // в истории уже есть — список обновить
-    woSt(a.id, d.error === "net" ? WO_NET : d.error === "old" ? WO_OLD : d.error === "rec" ? WO_RECW : WO_WAIT, "bad");
-    if (d.error === "net" || d.error === "old"){ q.slice(q.indexOf(a) + 1).forEach(x => { left++; woSt(x.id, d.error === "net" ? WO_NET : WO_OLD, "bad"); }); break; }
+    if (d.error === "rec") woRecOk.add(a.id);
+    woSt(a.id, d.error === "net" ? woNetMsg(a.id) : d.error === "old" ? WO_OLD : d.error === "rec" ? WO_RECW : WO_WAIT, "bad");
+    if (d.error === "net" || d.error === "old"){ q.slice(q.indexOf(a) + 1).forEach(x => { left++; woSt(x.id, d.error === "net" ? woNetMsg(x.id) : WO_OLD, "bad"); }); break; }
   }
   if (!left){ woRetryN = 0; return; }
   /* не ушло — сами повторяем: 5 с, 15 с, 30 с, дальше раз в минуту, пока сайт открыт */
@@ -727,13 +733,15 @@ function woActLi(a, rows, url, pend){
     (url ? '<a class="link womore" href="' + esc(url) + '" target="_blank" rel="noopener">Открыть PDF</a>'
       : pend ? "" : '<p class="womore wonopdf">PDF ещё не на Диске — он придёт с телефона, где создан акт.</p>') + '</details></li>';
 }
-/* история: сразу — копия последнего ответа таблицы (на этом телефоне), потом — свежий список */
+/* история: сразу — копия последнего ответа таблицы (на этом телефоне, этого бармена), потом — свежий список */
+let woHistSeq = 0;
 async function woHist(){
-  const k = wkind, keep = (wjson(WL, {}) || {})[k];
+  const k = wkind, seq = ++woHistSeq, who = me ? me.name : "", m0 = wjson(WL, {}) || {};
+  const keep = m0.u === who ? m0[k] : null;
   if (Array.isArray(keep)) woHistPaint(k, {ok: true, acts: keep}, await qList(), true);
   const [d, all] = await Promise.all([api({wo: "list", k}), qList()]);
-  if (k !== wkind) return;                                    // пока ждали — переключили вид
-  if (d.ok && Array.isArray(d.acts)){ const m = wjson(WL, {}) || {}; m[k] = d.acts; wsave(WL, m); }
+  if (k !== wkind || seq !== woHistSeq || !R) return;        // пока ждали — переключили вид, вышли или запросили снова
+  if (d.ok && Array.isArray(d.acts)){ const m = wjson(WL, {}) || {}; const n = m.u === who ? m : {u: who}; n[k] = d.acts; wsave(WL, n); }
   else if (Array.isArray(keep)) return woHistPaint(k, {ok: true, acts: keep}, all, true, d.error === "net" ? "нет связи — сохранённая копия" : "");
   woHistPaint(k, d, all, false);
 }
