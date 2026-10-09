@@ -679,13 +679,13 @@ async function woSendOne(a){
 }
 /* «rec» — строки акта без PDF: маленький запрос, браузер доставит его, даже если телефон тут же свернут
    (keepalive / sendBeacon — до 64 КБ). Акт сразу в истории; PDF догружается следом. */
-const woRecs = {};                                            // id → тело «rec» для актов, ещё не сохранённых целиком
+const woRecs = {}, woRecOk = new Set();                       // id → тело «rec» для актов, ещё не сохранённых целиком; дошедшие «rec»
 function woRec(L){
   const body = JSON.stringify({token: TOKEN, wo: "rec", id: L.id, act: L.act});
   if (body.length > 60000) return;
   woRecs[L.id] = body;
   fetch(ENDPOINT, {method: "POST", keepalive: true, headers: {"Content-Type": "text/plain;charset=utf-8"}, body})
-    .then(r => r.json()).then(d => { if (d && d.ok && L.state === "send") woSt(L.id, WO_REC, "send"); }).catch(() => {});
+    .then(r => r.json()).then(d => { if (!d || !d.ok) return; woRecOk.add(L.id); if (L.state === "send") woSt(L.id, WO_REC, "send"); }).catch(() => {});
 }
 /* сайт уходит в фон, а акт ещё не сохранён — отправить «rec» ещё раз, маячком (дойдёт и после сворачивания) */
 document.addEventListener("visibilitychange", () => {
@@ -698,7 +698,7 @@ async function woFlushRun(){
   const q = (await qList()).reverse();                         // новые — первыми: бармен ждёт только что созданный
   let left = 0;
   for (const a of q){
-    woSt(a.id, WO_SEND, "send");
+    woSt(a.id, woRecOk.has(a.id) ? WO_REC : WO_SEND, "send");
     const d = await woSendOne(a);
     if (d.ok){ await qDel(a.id); delete woRecs[a.id]; woSent++; woSt(a.id, woSaved(d.url), "ok"); continue; }
     left++;
