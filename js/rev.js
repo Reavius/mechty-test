@@ -65,7 +65,18 @@ async function revLoad(quiet){
     $("rlist").innerHTML = skel(6, "rrow"); $("rbody").hidden = false; $("rzone").innerHTML = "";
   }
   const d = await api({rev:"state"});
-  if (d.ok && d.rev){ rsync(d.rev); REV = d.rev; revApplyQueue(); revDraw(); revFlush(); }
+  if (d.ok && d.rev){
+    /* сверка, пока бармен вводит число: тот же список — обновить только цифры (поле и клавиатура на месте);
+       список в «Итоге» поменялся — перерисовать, если ничего не набрано */
+    const same = quiet && REV && REV.open && d.rev.open && REV.open.key === d.rev.open.key &&
+      REV.items.map(x => x.n).join("\n") === d.rev.items.map(x => x.n).join("\n");
+    if (quiet && rtyping() && (same || rtyped())) {
+      if (!same) return;                                       // список другой, но в поле есть цифры — после ввода
+      rsync(d.rev); REV = d.rev; revApplyQueue(); REV.items.forEach((_, i) => rpatch(i)); rqueueDraw(); revFlush();
+      return;
+    }
+    rsync(d.rev); REV = d.rev; revApplyQueue(); revDraw(); revFlush();
+  }
   else if (quiet){ $("rqueue").textContent = "нет связи"; }
   else {
     if (!REV) $("rbody").hidden = true;
@@ -263,11 +274,12 @@ window.addEventListener("online", () => { if (R) revFlush(); });
 /* Синхронизация: пока открыт раздел — раз в 30 секунд сверяемся с таблицей
    (числа от других телефонов и время). Не мешаем, если человек вводит число. */
 const rtyping = () => [...document.querySelectorAll("#rlist input")].some(i => i.value || i === document.activeElement);
+const rtyped = () => [...document.querySelectorAll("#rlist input")].some(i => i.value);
 function rtick(){
   if (sect !== "rev" || rkind !== "day" || !R || !REV || document.hidden || !navigator.onLine || rbusy) return;
   if (rjson(RQ, []).length){ revFlush(); return; }          // не ушло (нет связи, таблица занята) — отправляем сами
-  if (rtyping()) return;
-  revLoad(true);
+  if (rtyped()) return;                                      // набирает число — не мешаем
+  revLoad(true);                                             // курсор в пустом поле — цифры обновятся, поле останется
 }
 setInterval(rtick, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && rsynced && Date.now() - rsynced > 15000) rtick(); });
