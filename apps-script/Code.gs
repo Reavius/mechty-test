@@ -1083,6 +1083,37 @@ function wnPut(sh, col, rows, value, fmt) {
   rl.setValue(value);
 }
 
+/* Один раз в редакторе: выберите noteToProrabotka → «Выполнить». До разделения заметок всё записывали в одну —
+   заметку списаний. Функция переносит её открытые строки (не взятые в акт и не списанные) в заметку проработки,
+   причина — «Проработка». Что перенесено — в «Журнале выполнения». Запускайте, пока в заметке списаний только проработка. */
+function noteToProrabotka() {
+  MEMO = {};
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const from = wnSheet(false, "wo");
+    const rows = from ? wnRows(from).filter(x => !x.closed && !x.held) : [];
+    if (!rows.length) { Logger.log("В заметке списаний нет открытых строк — переносить нечего."); return; }
+    const to = wnSheet(true, "pr");
+    const v = rows.map(x => {
+      const r = from.getRange(x.row, 1, 1, WN_HEAD.length).getValues()[0];
+      r[4] = "Проработка"; r[7] = ""; r[8] = ""; r[9] = ""; r[10] = "";
+      return r;
+    });
+    const top = Math.max(to.getLastRow(), 1) + 1;
+    ensureRows(to, top + v.length - 1);
+    to.getRange(top, 1, v.length, 3).setNumberFormat("@");
+    to.getRange(top, 5, v.length, 2).setNumberFormat("@");
+    to.getRange(top, 1, v.length, WN_HEAD.length).setValues(v);
+    rows.map(x => x.row).sort((a, b) => b - a).forEach(r => from.deleteRow(r));   // снизу вверх — номера не сбиваются
+    SpreadsheetApp.flush();
+    rows.forEach(x => Logger.log("→ в заметку проработки: " + x.n + " — " + x.q + " " + x.u + " (" + x.who + ")"));
+    Logger.log("Готово: перенесено " + rows.length + ".");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* Один раз в редакторе: выберите checkWriteoff → «Выполнить» → разрешите доступ к Диску.
    Заводит папки и журналы, а старые листы «Списания» / «Проработки» из таблицы ревизии переносит в журналы. */
 function checkWriteoff() {
