@@ -154,9 +154,10 @@ function lshift(ctx, W, H){
   let x0 = W;
   for (let y = 0; y < H; y++) for (let x = 0; x < x0; x++) if (d[(y * W + x) * 4] < 160){ x0 = x; break; }
   x0 -= x0 & 1;                                              // на чётное: QR остаётся ровно по точкам принтера (2 пикселя = 1 точка)
-  if (x0 <= 0 || x0 >= W) return;
+  if (x0 <= 0 || x0 >= W) return 0;
   const img = ctx.getImageData(x0, 0, W - x0, H);
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.putImageData(img, 0, 0); ctx.fillStyle = "#000";
+  return x0;
 }
 function lcanvas(id, W, H){
   const c = $(id); c.width = W; c.height = H;
@@ -241,7 +242,7 @@ async function labDraw(){
   /* QR — поменьше, клетки ровно по точкам термопринтера: 203 dpi = 8 точек/мм, клетка = 3 точки = 6 px холста */
   const bodyTop = tBase + tfs * .32, bodyBottom = H - mb;
   let qx = W - mb, qsz = 0, qy = 0;
-  if (window.qrcode){
+  if (window.qrcode && !it.lo){                             // только для этикеток (нет в карте) — без QR
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
     const n = q.getModuleCount(), cell = Math.max(2, Math.round(LPX * 3 / 8));
     qsz = n * cell; qx = W - mb - H * .02 - qsz; qy = Math.round(bodyTop + (bodyBottom - bodyTop - qsz) / 2);
@@ -270,7 +271,13 @@ async function labDraw(){
     if (L.glyph) lglyph(ctx, L.glyph, left, y0 + L.y + lay.s * .12, lay.s * .82);
     ctx.fillText(L.t, left + lay.ind, y0 + L.y + lay.s * .86);
   });
-  lshift(ctx, W, H);
+  const sx = lshift(ctx, W, H);
+  /* нижний левый уголок — чуть правее, ближе к смайлу (край по-прежнему по уголку: сдвиг посчитан с ним) */
+  if (corner){
+    const bx = mb - sx, by = H - mb - cs, dx = Math.round(LPX * .6);
+    ctx.fillStyle = "#fff"; ctx.fillRect(bx - 1, by - 1, cs + 2, cs + 2); ctx.fillStyle = "#000";
+    ctx.save(); ctx.translate(bx + dx + cs, by + cs); ctx.rotate(Math.PI); corner.draw(ctx, 0, 0, cs, cs); ctx.restore();
+  }
 
   $("llink").textContent = lurl(it.id);
 }

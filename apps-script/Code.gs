@@ -856,7 +856,8 @@ function woSave(p, recOnly) {
   const date = clean(a.date, 20), no = clean(a.no, 20), who = clean(a.who, 80);
   if (!id || !rows.length || !/^\d{2}\.\d{2}\.\d{4}$/.test(date)) return { error: "bad" };
   /* строки, перенесённые из заметки, — списаны этим актом (и при повторе: отметка могла не записаться) */
-  const nids = (Array.isArray(a.rows) ? a.rows : []).map(r => String(r && r.nid || "").replace(/[^\w-]/g, "")).filter(Boolean);
+  const nids = [].concat.apply([], (Array.isArray(a.rows) ? a.rows : []).map(r => String(r && r.nid || "").split(",")))
+    .map(x => x.replace(/[^\w-]/g, "")).filter(Boolean);                // строка акта может собрать несколько строк заметки
   const mark = WO_KINDS[kind].file + " " + date + (no ? " №" + no : "") + " · " + (who || "") + " · " + id;
   const lock = lockOrBusy(20000);
   try {
@@ -890,7 +891,7 @@ function woSave(p, recOnly) {
       out = { ok: true, url: url, rec: true };
     } else out = { ok: true, url: url, rec: true, dup: true };
     /* отметка в заметке — после записи акта: её сбой не мешает сохранить акт (строки уже запечатаны с телефона) */
-    if (nids.length) { try { wnDone(nids, mark, id); SpreadsheetApp.flush(); } catch (e) { console.error("wnDone " + id + ": " + e); } }
+    if (nids.length) { try { wnDone(nids, mark, id, kind); SpreadsheetApp.flush(); } catch (e) { console.error("wnDone " + id + ": " + e); } }
     return out;
   } finally {
     lock.releaseLock();
@@ -953,8 +954,9 @@ function writeoffs(p) {
 const WN_SHEET = "Заметка";
 const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Взял в акт", "Когда взял", "Списано в акте", "Телефон"];
 const WN_HOLD = 24 * 3600e3, WN_V = 2;
-function wnSheet(create) {
-  const log = woSheet("wo", create);
+/* у каждого вида своя заметка: лист «Заметка» в журнале списаний и в журнале проработок */
+function wnSheet(create, kind) {
+  const log = woSheet(woKind(kind), create);
   if (!log) return null;
   const ss = log.getParent();
   let sh = ss.getSheetByName(WN_SHEET);
@@ -989,29 +991,31 @@ function wnRows(sh) {
 const wnItem = x => ({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, who: x.who, at: x.at });
 const wnOpen = rows => rows.filter(x => !x.closed && !x.held).map(wnItem);
 const wnMine = (rows, who) => who ? rows.filter(x => x.held && x.took === who).map(x => Object.assign(wnItem(x), { until: x.since + WN_HOLD, dev: x.dev })) : [];
-const wnAns = (rows, who, more) => Object.assign({ ok: true, v: WN_V, items: wnOpen(rows), mine: wnMine(rows, who) }, more || {});
+const wnAns = (rows, who, more, kind) => Object.assign({ ok: true, v: WN_V, k: woKind(kind), items: wnOpen(rows), mine: wnMine(rows, who) }, more || {});
 const wnIds = v => String(v || "").split(",").map(x => x.replace(/[^\w-]/g, "").slice(0, 64)).filter(Boolean);
 
 function wnote(p) {
   const act = String(p.wn), who = clean(p.rn, 60), dev = String(p.dev || "").replace(/[^\w-]/g, "").slice(0, 40);
-  if (act === "list") return wnAns(wnRows(wnSheet(false)), who);
+  const kind = woKind(p.k);                                               // прежние версии сайта — без k: заметка списаний
+  if (act === "list") return wnAns(wnRows(wnSheet(false, kind)), who, null, kind);
   if (["add", "take", "back", "seal", "got"].indexOf(act) < 0) return { error: "action" };
   const lock = lockOrBusy(20000);
   try {
-    const sh = wnSheet(true), rows = wnRows(sh), want = wnIds(p.ids), now = new Date();
+    const sh = wnSheet(true, kind), rows = wnRows(sh), want = wnIds(p.ids), now = new Date();
     const stamp = Utilities.formatDate(now, TZ, "dd.MM.yyyy HH:mm");
     if (act === "add") {
       const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), n = clean(p.n, 120), q = num(p.q);
+      const why = kind === "pr" ? "Проработка" : clean(p.why, 120);         // у проработки причина всегда одна
       if (!id || !n || !(q > 0)) return { error: "bad" };
       if (!rows.some(x => x.id === id)) {
         const top = Math.max(sh.getLastRow(), 1) + 1;
         ensureRows(sh, top);
         sh.getRange(top, 1, 1, 3).setNumberFormat("@"); sh.getRange(top, 5, 1, 2).setNumberFormat("@");
-        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, clean(p.why, 120), who, now]]);
+        sh.getRange(top, 1, 1, 7).setValues([[id, n, clean(p.u, 10), q, why, who, now]]);
         SpreadsheetApp.flush();
-        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: clean(p.why, 120), who: who, at: stamp.slice(0, 5), took: "", since: 0, done: "", dev: "", closed: false, held: false });
+        rows.push({ id: id, n: n, u: clean(p.u, 10), q: q, why: why, who: who, at: stamp.slice(0, 5), took: "", since: 0, done: "", dev: "", closed: false, held: false });
       }
-      return wnAns(rows, who);
+      return wnAns(rows, who, null, kind);
     }
     if (!who || !want.length) return { error: "bad" };
     const mine = x => want.indexOf(x.id) >= 0;
@@ -1021,14 +1025,14 @@ function wnote(p) {
       wnPut(sh, 8, rs, who, "@"); wnPut(sh, 9, rs, now, "dd.MM.yyyy HH:mm"); wnPut(sh, 11, rs, dev, "@");
       rs.forEach(x => { x.took = who; x.since = now.getTime(); x.dev = dev; x.held = true; });
       SpreadsheetApp.flush();
-      return wnAns(rows, who, { took: wnMine(rows, who).filter(mine) });
+      return wnAns(rows, who, { took: wnMine(rows, who).filter(mine) }, kind);
     }
     if (act === "back") {                                                  // бармен отменил перенос — строки снова в заметке
       const rs = rows.filter(x => mine(x) && x.held && x.took === who);
       if (rs.length) sh.getRangeList(rs.map(x => "H" + x.row + ":I" + x.row).concat(rs.map(x => "K" + x.row))).setValue("");
       rs.forEach(x => { x.took = ""; x.since = 0; x.dev = ""; x.held = false; });
       SpreadsheetApp.flush();
-      return wnAns(rows, who);
+      return wnAns(rows, who, null, kind);
     }
     if (act === "seal") {
       /* акт создан на телефоне: строки больше не возвращаются, даже если копия акта придёт позже */
@@ -1044,22 +1048,22 @@ function wnote(p) {
       wnPut(sh, 10, rs, WN_SEAL + aid + " · " + who + " · " + stamp + " · ждёт копии на Диске", "@");
       rs.forEach(x => { x.done = WN_SEAL + aid; x.closed = true; x.held = false; sealed.push(x.id); });
       SpreadsheetApp.flush();
-      return wnAns(rows, who, { sealed: sealed, conflict: conflict });
+      return wnAns(rows, who, { sealed: sealed, conflict: conflict }, kind);
     }
     /* got — от прежней версии сайта: строка дошла до её акта, значит закрыта (та версия не отмечала акты) */
     const rs = rows.filter(x => mine(x) && !x.closed && x.took === who);
     wnPut(sh, 10, rs, "дошло до акта (прежняя версия сайта) " + stamp, "@");
     rs.forEach(x => { x.closed = true; x.held = false; });
     SpreadsheetApp.flush();
-    return wnAns(rows, who);
+    return wnAns(rows, who, null, kind);
   } finally {
     lock.releaseLock();
   }
 }
 /* копия акта дошла — его строки из заметки списаны окончательно (из woSave, под блокировкой; повтор безопасен).
    Строка уже списана другим актом — помечаем «⚠ также в акте …», чтобы двойное списание было видно в листе. */
-function wnDone(ids, mark, aid) {
-  const sh = wnSheet(false);
+function wnDone(ids, mark, aid, kind) {
+  const sh = wnSheet(false, kind);
   if (!sh || !ids.length) return;
   const plain = [];
   wnRows(sh).forEach(x => {

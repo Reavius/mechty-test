@@ -530,6 +530,8 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 #woList .row1 span{min-width:0}
 #woList .link{flex:none;font-size:13.5px}
 /* заметка к списанию — общая, в жёлтой рамке */
+#wnWhy[hidden]{display:none}
+.wnadd.pr .worow2{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 40px}
 .wnbox{margin:0 0 18px;padding:14px 16px 16px;border:2px solid var(--accent);border-radius:16px;background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .wnhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .wnhead em{flex:none;white-space:nowrap;font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}

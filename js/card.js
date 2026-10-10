@@ -1,5 +1,5 @@
 /* Открытая коктейльная карта. */
-const TOTAL = data.reduce((a,g) => a + g.items.length, 0);
+const TOTAL = data.reduce((a,g) => a + g.items.filter(it => !it.lo).length, 0);
 let active = "all";
 
 /* состав для гостей — слова как в меню бара (m), столбиком и с большой буквы; полный (c) — только на этикетках */
@@ -14,8 +14,7 @@ function card(it, g){
     '</div>' +
     '<dl>' +
       (g.serve ? '<dt>Подача</dt><dd>' + it.vol + ' мл, сразу после приготовления</dd>' :
-      '<dt>Годность</dt><dd class="num">' + g.srok + '</dd>' +
-      '<dt>Хранение</dt><dd class="num">t ' + g.store + '</dd>') +
+      '<dt>Годность</dt><dd class="num">' + g.srok + '</dd>') +
       '<dt>Аллергены</dt><dd class="' + (it.flag ? "flag" : "none") + '">' + esc(it.al) + '</dd>' +
     '</dl></article>';
 }
@@ -30,11 +29,11 @@ function drawCard(){
 
   for (const g of data){
     if (active !== "all" && active !== g.key) continue;
-    const items = g.items.filter(it => matches(it, f));
+    const items = g.items.filter(it => !it.lo && matches(it, f));   // lo — только для этикеток, не в карте
     if (!items.length) continue;
     html +=
       '<section><div class="sechead"><h2>' + g.cat + '</h2>' +
-      '<em>' + items.length + ' из ' + g.items.length + '</em></div>' +
+      '<em>' + items.length + ' из ' + g.items.filter(it => !it.lo).length + '</em></div>' +
       '<p class="rule">' + g.rule + '</p>' +
       '<div class="grid">' + items.map(it => card(it, g)).join("") + '</div></section>';
   }
@@ -50,7 +49,7 @@ function drawCard(){
 function buildChips(){
   const el = $("chips");
   const defs = [{key:"all", label:"Все", n:TOTAL}]
-    .concat(data.map(g => ({key:g.key, label:g.short, n:g.items.length})));
+    .concat(data.map(g => ({key:g.key, label:g.short, n:g.items.filter(it => !it.lo).length})));
 
   el.innerHTML = defs.map(d =>
     '<button type="button" data-key="' + d.key + '" aria-pressed="false">' +
