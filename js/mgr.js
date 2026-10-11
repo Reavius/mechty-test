@@ -73,8 +73,8 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null;
-  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = "";
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null; sal = null;
+  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = ""; $("salDish").innerHTML = ""; $("salRes").innerHTML = "";
   $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
@@ -216,18 +216,19 @@ $("mgrCopy").addEventListener("click", async () => {
 });
 
 /* ── вкладки менеджера ── */
-let mgrTab = ["sum", "use", "ord", "inc", "ref", "pub", "rep"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
+let mgrTab = ["sum", "use", "sal", "ord", "inc", "ref", "pub", "rep"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
 function mgrTabDraw(){
   document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
   $("mgrSum").hidden = mgrTab !== "sum";
   $("mgrUse").hidden = mgrTab !== "use";
+  $("mgrSal").hidden = mgrTab !== "sal";
   $("mgrOrd").hidden = mgrTab !== "ord";
   $("mgrInc").hidden = mgrTab !== "inc";
   $("mgrPub").hidden = mgrTab !== "pub";
   $("mgrRep").hidden = mgrTab !== "rep";
   $("mgrRef").hidden = mgrTab !== "ref";
 }
-const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrTab === "pub" ? pubLoad() : mgrTab === "rep" ? repLoad() : mgrLoad();
+const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrTab === "pub" ? pubLoad() : mgrTab === "rep" ? repLoad() : mgrTab === "sal" ? salLoad() : mgrLoad();
 $("mgrTabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-t]");
   if (!b || b.dataset.t === mgrTab) return;
@@ -1163,3 +1164,290 @@ $("repQuick").addEventListener("click", e => {
   repRange = b.dataset.r; buzz(8); repLoad();
 });
 $("repMsg").addEventListener("click", e => { if (e.target.id === "repRetry") repLoad(); });
+
+/* ── продажи R-Keeper против ревизии ──
+   sal = {kind, use (как во «Расходе»), ref (справочник), map: ключ блюда → {comps: [{ri, q}], none, src}, sales: [{name, code, qty}], open}
+   Ключ блюда — код R-Keeper, иначе название. Расход на блюдо — в единицах позиции (40 мл джина = 0,04 л). */
+let sal = null, salKindSel = "m";
+const nmKey = s => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+const salKey = d => d.code ? "c:" + d.code : "n:" + nmKey(d.name);
+const LAT = [["sh", "ш"], ["ch", "ч"], ["zh", "ж"], ["kh", "х"], ["ts", "ц"], ["ya", "я"], ["yu", "ю"], ["yo", "ё"]];
+const LAT1 = {a: "а", b: "б", c: "к", d: "д", e: "е", f: "ф", g: "г", h: "х", i: "и", j: "дж", k: "к", l: "л", m: "м", n: "н", o: "о", p: "п", q: "к", r: "р", s: "с", t: "т", u: "у", v: "в", w: "в", x: "кс", y: "и", z: "з"};
+/* латиница → кириллица для сравнения названий («Beluga Noble» ~ «Белуга Нобл») */
+const toCyr = s => { let t = String(s).toLowerCase(); for (const [a, b] of LAT) t = t.split(a).join(b); return t.replace(/[a-z]/g, c => LAT1[c]).replace(/(.)\1+/g, "$1"); };
+const salU = u => { const s = String(u || "").trim().toLowerCase(); return s === "литр" || s === "л" ? "л" : s === "кг" ? "кг" : s === "шт" ? "шт" : ""; };
+
+/* лучшая позиция справочника для названия: однозначно лучшая и не ниже порога. Редкое слово весит больше частого:
+   «Спиртной напиток «Сарти Роза»» — это «Сарти», а не чай «Роза» («роза» встречается в нескольких позициях) */
+function salScore(a, b){
+  if (!a.length || !b.length) return 0;
+  const w = x => 1 / (1 + (sal.df[x] != null ? sal.df[x] : (sal.df[x] = sal.refTok.filter(t => t.some(y => incSame(x, y))).length)));
+  const hits = a.filter(x => b.some(y => incSame(x, y)));
+  return (hits.reduce((m, x) => m + w(x), 0) / a.reduce((m, x) => m + w(x), 0) + hits.length / b.length) / 2;
+}
+function salFind(name, thr){
+  const tries = [incTok(name)];
+  if (/[a-z]/i.test(name)) tries.push(incTok(toCyr(name)));
+  let b1 = 0, b2 = 0, bi = -1;
+  sal.refTok.forEach((t, i) => {
+    const sc = Math.max(...tries.map(x => salScore(x, t)));
+    if (sc > b1){ b2 = b1; b1 = sc; bi = i; } else if (sc > b2) b2 = sc;
+  });
+  return b1 >= thr && b1 > b2 ? bi : -1;
+}
+/* количество из техкарты (мл, гр, шт) — в единицах позиции */
+function salConv(q, u, r){
+  const iu = String(u || "").trim().toLowerCase(), pu = salU(r[2]), tara = mgrN(r[4]);
+  if (pu === "л") return iu === "мл" ? q / 1000 : iu === "л" ? q : null;
+  if (pu === "кг") return /^(г|гр)$/.test(iu) ? q / 1000 : iu === "кг" ? q : null;
+  if (pu === "шт") return iu === "шт" ? q : null;
+  return iu === "мл" && tara > 0 ? q / 1000 / tara : iu === "шт" ? q : null;   // бутылки
+}
+/* объём порции, мл: из названия блюда («… 0,5 л», «… 40 мл») или из меню */
+function salVol(name){
+  const m = String(name).match(/(\d+(?:[.,]\d+)?)\s*(мл|ml|л|l)\b/i);
+  if (m){ const v = parseFloat(m[1].replace(",", ".")); return /^(мл|ml)$/i.test(m[2]) ? v : v * 1000; }
+  const k = incNorm(name);
+  for (const c of MENU) for (const sc of c.secs) for (const x of sc.items){
+    const n = x.n || (x.c && cardItem(x.c) ? cardItem(x.c).n : "");
+    if ((incNorm(n) === k || (x.e && incNorm(x.e) === k)) && typeof x.v === "number" && x.u !== "pcs") return x.v;
+  }
+  return 0;
+}
+/* подсказка расхода на блюдо: техкарта → позиции; иначе позиция с тем же названием (розлив, бутылки) */
+function salSuggest(d){
+  const nk = incNorm(d.name), tk = incTok(d.name);
+  let best = null, b1 = 0, b2 = 0;
+  for (const k of (typeof KALL !== "undefined" ? KALL : [])){
+    if (k.out || !Array.isArray(k.i)) continue;
+    const sc = incNorm(k.n) === nk ? 1 : incScore(tk, incTok(k.n));
+    if (sc > b1){ b2 = b1; b1 = sc; best = k; } else if (sc > b2) b2 = sc;
+  }
+  if (best && b1 >= 0.75 && b1 > b2){
+    const comps = [], miss = [];
+    for (const [ing, q, u] of best.i){
+      const ri = salFind(ing, 0.4), qq = ri >= 0 ? salConv(mgrN(q), u, sal.ref[ri]) : null;
+      if (ri < 0 || !(qq > 0)){ miss.push(ing); continue; }
+      const same = comps.find(c => c.ri === ri);
+      if (same) same.q += qq; else comps.push({ri, q: qq});
+    }
+    if (comps.length) return {comps, miss, src: "техкарта «" + best.n + "»"};
+  }
+  const ri = salFind(d.name, 0.6);
+  if (ri >= 0){
+    const r = sal.ref[ri], pu = salU(r[2]), tara = mgrN(r[4]), vol = salVol(d.name);
+    const q = pu === "л" ? (vol ? vol / 1000 : 0) : pu === "кг" ? 0 : vol && tara > 0 && Math.abs(tara * 1000 - vol) > 1 ? vol / 1000 / tara : 1;
+    if (q > 0) return {comps: [{ri, q}], miss: [], src: "по названию" + (vol ? ", " + vol + " мл" : "")};
+  }
+  return null;
+}
+
+async function salLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  document.querySelectorAll("#salKind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === salKindSel)));
+  $("salWarn").textContent = "Загрузка…";
+  const [u, r, m] = await Promise.all([api({mgr: "usage", mk, kind: salKindSel}), api({mgr: "ref", mk}), api({mgr: "dishes", mk})]);
+  if ([u, r, m].some(x => x.error === "mgr")) return mgrExpired();
+  if (!u.ok || !r.ok || !m.ok){
+    $("salWarn").innerHTML = [u, r, m].some(x => x.error === "action") ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : 'Нет связи с таблицей. <button type="button" class="link" id="salRetry">Повторить</button>';
+    return;
+  }
+  const sales = sal && sal.sales, file = sal && sal.file;
+  sal = {kind: salKindSel, use: u, ref: r.rows, refTok: r.rows.map(x => incTok(x[1])), df: {}, map: {}, sales: sales || null, file, open: ""};
+  const at = {};
+  r.rows.forEach((x, i) => { at[nmKey(x[0]) + "|" + nmKey(x[1])] = i; });
+  for (const row of m.rows){
+    const k = row[1] ? "c:" + row[1] : "n:" + nmKey(row[0]), e = sal.map[k] || (sal.map[k] = {comps: [], none: false, src: row[6] || "", name: row[0]});
+    if (row[3] === "—"){ e.none = true; continue; }
+    const ri = at[nmKey(row[2]) + "|" + nmKey(row[3])];
+    if (ri != null && mgrN(row[4]) > 0) e.comps.push({ri, q: mgrN(row[4])});
+  }
+  m.rows.forEach(row => { if (row[1] && !sal.map["n:" + nmKey(row[0])]) sal.map["n:" + nmKey(row[0])] = sal.map["c:" + row[1]]; });   // по названию — тоже
+  const C = u.cols, opt = (i, sel) => '<option value="' + i + '"' + (sel ? " selected" : "") + '>' + mgrRu(C[i].iso) + (C[i].who ? " · " + esc(C[i].who) : "") + '</option>';
+  $("salFrom").innerHTML = C.map((c, i) => opt(i, i === C.length - 2)).join("");
+  $("salTo").innerHTML = C.map((c, i) => opt(i, i === C.length - 1)).join("");
+  $("salSrc").textContent = C.length < 2 ? "" : mgrRu(C[C.length - 2].iso) + " — " + mgrRu(C[C.length - 1].iso);
+  $("salRefs").innerHTML = r.rows.map(x => '<option value="' + esc(incLabel(x)) + '">').join("");
+  $("salWarn").textContent = C.length < 2 ? "Нужны хотя бы две " + (salKindSel === "m" ? "закрытые месячные" : "законченные ежедневные") + " ревизии." : "";
+  salDraw();
+}
+$("salKind").addEventListener("click", e => {
+  const b = e.target.closest("button[data-k]");
+  if (!b || b.dataset.k === salKindSel) return;
+  salKindSel = b.dataset.k; buzz(8); salLoad();
+});
+["salFrom", "salTo"].forEach(id => $(id).addEventListener("change", () => {
+  if (!sal) return;
+  const C = sal.use.cols, f = +$("salFrom").value, t = +$("salTo").value;
+  $("salSrc").textContent = C[f] && C[t] ? mgrRu(C[f].iso) + " — " + mgrRu(C[t].iso) : "";
+  salDraw();
+}));
+$("salWarn").addEventListener("click", e => { if (e.target.id === "salRetry") salLoad(); });
+
+$("salFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!f || !sal) return;
+  $("salWarn").textContent = "Читаем файл…";
+  let t;
+  try { t = await readTable(f); }
+  catch (err) { $("salWarn").textContent = err.message === "xls" ? "Это старый формат .xls — откройте файл в Excel и сохраните как «Книга Excel (.xlsx)»." : "Не удалось прочитать файл — сохраните его как .xlsx или CSV."; return; }
+  const sheet = t.sheets.find(s => s.rows.some(r => r.some(c => c !== ""))), rows = sheet ? sheet.rows : [];
+  let hr = -1, mp = {};
+  for (let i = 0; i < Math.min(rows.length, 40) && hr < 0; i++){
+    const c = rows[i].map(x => typeof x === "string" ? x.toLowerCase().trim() : "");
+    const n = c.findIndex(x => /наимен|блюд|товар|назван/.test(x)), q = c.findIndex(x => /^кол|количеств|порц/.test(x));
+    if (n >= 0 && q >= 0) mp = {hr: hr = i, n, q, c: c.findIndex(x => /^код/.test(x)), s: c.findIndex(x => /сумм|выручк/.test(x))};
+  }
+  if (hr < 0){ $("salWarn").textContent = "Не нашёл в файле столбцы «Наименование» (блюдо) и «Количество»."; return; }
+  const by = {}, top = rows.slice(0, hr).map(r => r.filter(c => c !== "").join(" ")).join(" ");
+  for (let i = hr + 1; i < rows.length; i++){
+    const name = String(rows[i][mp.n] || "").trim(), qty = rows[i][mp.q], code = mp.c >= 0 ? String(rows[i][mp.c] || "").trim() : "";
+    if (!name || typeof qty !== "number" || !(qty > 0) || /^(итого|всего)/i.test(name)) continue;
+    const d = {name, code, qty, sum: mp.s >= 0 && typeof rows[i][mp.s] === "number" ? rows[i][mp.s] : 0}, k = salKey(d);
+    if (by[k]){ by[k].qty += qty; by[k].sum += d.sum; } else by[k] = d;
+  }
+  const per = top.match(/(\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}).{1,8}?(\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2})/);
+  sal.sales = Object.values(by);
+  sal.file = {name: f.name, per: per ? per[1] + " — " + per[2] : ""};
+  $("salWarn").textContent = sal.sales.length ? "" : "В файле нет строк с блюдами и количеством.";
+  salDraw();
+});
+
+const salMapOf = d => sal.map[salKey(d)] || sal.map["n:" + nmKey(d.name)] || null;
+const salCompTxt = comps => comps.map(c => { const r = sal.ref[c.ri]; return mgrNum(Math.round(c.q * 10000) / 10000) + " " + useU(r[2]) + " " + r[1]; }).join(" + ");
+function salDraw(){
+  if (!sal) return;
+  if (!sal.sales){ $("salDish").innerHTML = ""; $("salRes").innerHTML = ""; return; }
+  const ds = sal.sales.map(d => Object.assign({}, d, {m: salMapOf(d)}));
+  ds.forEach(d => { if (!d.m) d.sug = salSuggest(d); });
+  const ok = ds.filter(d => d.m), sug = ds.filter(d => !d.m && d.sug), no = ds.filter(d => !d.m && !d.sug);
+  const line = d => {
+    const key = salKey(d), open = sal.open === key, st = d.m ? (d.m.none ? "не учитывается" : salCompTxt(d.m.comps)) : d.sug ? salCompTxt(d.sug.comps) : "";
+    return '<li class="' + (d.m ? "inc-code" : d.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(d.name) + (d.code ? ' <small>код ' + esc(d.code) + '</small>' : "") + '</span>' +
+      '<small class="mgrwhy">продано ' + mgrNum(d.qty) + (st ? ' · <b>' + esc(st) + '</b>' : ' · <b>расход не задан</b>') +
+        (d.sug && !d.m ? ' · ' + esc(d.sug.src) + (d.sug.miss.length ? " (без: " + esc(d.sug.miss.join(", ")) + ")" : "") : "") + '</small>' +
+      (open ? salForm(d) : '<div class="salbtns">' + (d.sug && !d.m ? '<button type="button" class="link" data-ok="' + esc(key) + '">Верно</button>' : "") +
+        '<button type="button" class="link" data-ed="' + esc(key) + '">' + (d.m || d.sug ? "Изменить" : "Задать расход") + '</button>' +
+        (!d.m || !d.m.none ? '<button type="button" class="link" data-no="' + esc(key) + '">Не учитывать</button>' : "") + '</div>') + '</div></li>';
+  };
+  $("salDish").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + esc(sal.file.name) + (sal.file.per ? " · " + esc(sal.file.per) : "") + '</em><h3>Блюда из отчёта</h3></div>' +
+    '<p class="mgrsum salsum">Блюд: <b>' + ds.length + '</b> · продано порций ' + mgrNum(ds.reduce((a, d) => a + d.qty, 0)) + ' · расход задан у ' + ok.length +
+      (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · не задан у ' + no.length : "") + '</p>' +
+    (sug.length ? '<div class="refbtns salall"><button type="button" class="wogo" id="salOkAll">Подтвердить все предложенные (' + sug.length + ')</button></div>' : "") +
+    (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
+    (ok.length ? '<details class="incmapd salok"' + (sal.okOpen || ok.some(d => salKey(d) === sal.open) ? " open" : "") + '><summary>Расход задан (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
+    '<p class="warn" id="salMsg" role="status"></p></div>';
+  salResult(ds);
+}
+function salForm(d){
+  const cur = d.m && !d.m.none ? d.m.comps : d.sug ? d.sug.comps : [];
+  const rows = (cur.length ? cur : [{ri: -1, q: 0}]).map(c => '<div class="salc"><input type="text" list="salRefs" data-f="p" value="' + (c.ri >= 0 ? esc(incLabel(sal.ref[c.ri])) : "") + '" placeholder="Позиция справочника" aria-label="Позиция">' +
+    '<input type="text" inputmode="decimal" data-f="q" value="' + (c.q ? mgrNum(Math.round(c.q * 100000) / 100000) : "") + '" placeholder="0,04" aria-label="Сколько на 1 блюдо"></div>').join("");
+  return '<form class="salf" data-k="' + esc(salKey(d)) + '"><p class="wnhint">Сколько каждой позиции уходит на одно блюдо — в единицах позиции (40 мл = 0,04 л; бутылка = 1).</p>' + rows +
+    '<button type="button" class="link" data-addc="1">+ позиция</button><div class="refbtns"><button type="submit" class="wogo">Сохранить</button><button type="button" class="link" data-cx="1">Отмена</button></div></form>';
+}
+/* сравнение: по каждой позиции — по продажам (только заданный расход) и по ревизии */
+function salResult(ds){
+  const C = sal.use.cols, f = +$("salFrom").value, t = +$("salTo").value;
+  if (!(t > f)){ $("salRes").innerHTML = '<p class="empty">Выберите ревизии: «по» позже, чем «с».</p>'; return; }
+  const exp = {};
+  ds.forEach(d => { if (d.m && !d.m.none) d.m.comps.forEach(c => { exp[c.ri] = (exp[c.ri] || 0) + c.q * d.qty; }); });
+  const refAt = {};
+  sal.ref.forEach((r, i) => { refAt[nmKey(r[0]) + "|" + nmKey(r[1])] = i; });
+  const act = {}, from = C[f].iso, to = C[t].iso;
+  sal.use.items.forEach(x => {
+    if (!x.key) return;
+    const ri = refAt[x.key];
+    if (ri == null || x.v[f] == null || x.v[t] == null) return;
+    const s = a => a.filter(y => y.iso > from && y.iso <= to).reduce((m, y) => m + y.q, 0);
+    act[ri] = {use: x.v[f] + s(x.inc) - x.v[t], wo: s(x.wo)};
+  });
+  const rows = [], nocount = [];
+  Object.keys(exp).forEach(k => {
+    const ri = +k, a = act[ri], r = sal.ref[ri], price = mgrN(r[7]);
+    if (!a){ nocount.push(r[1]); return; }
+    const diff = a.use - a.wo - exp[ri], tol = /^(шт|)$/.test(salU(r[2])) ? 1 : 0.1;
+    rows.push({r, e: exp[ri], u: a.use, w: a.wo, diff, money: price ? diff * price : 0, ok: Math.abs(diff) < tol});
+  });
+  rows.sort((a, b) => Math.abs(b.money) - Math.abs(a.money) || Math.abs(b.diff) - Math.abs(a.diff));
+  const short = rows.filter(x => !x.ok && x.diff > 0).reduce((m, x) => m + x.money, 0), over = rows.filter(x => !x.ok && x.diff < 0).reduce((m, x) => m - x.money, 0);
+  const pending = ds.filter(d => !d.m).length;
+  sal.res = {rows, short, over, from, to};
+  $("salRes").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + mgrRu(from).slice(0, 5) + " → " + mgrRu(to).slice(0, 5) + '</em><h3>Продажи против ревизии</h3></div>' +
+    '<p class="mgrsum salsum">Позиций: <b>' + rows.length + '</b> · недостача <b class="salshort">' + mgrNum(Math.round(short)) + ' ₸</b> · излишки <b>' + mgrNum(Math.round(over)) + ' ₸</b>' +
+      (pending ? ' · <span class="incg">' + mgrPl(pending, "блюдо", "блюда", "блюд") + ' без расхода — не учтены</span>' : "") + '</p>' +
+    (rows.length ? '<table class="saltab"><thead><tr><th>Позиция</th><th>Продажи</th><th>Ревизия</th><th>Разница</th></tr></thead><tbody>' + rows.map(x => {
+      const u = useU(x.r[2]);
+      return '<tr class="' + (x.ok ? "salok0" : x.diff > 0 ? "salneg" : "salpos") + '"><td class="n">' + esc(x.r[1]) + (x.w ? '<small class="mgrwhy">списано ' + mgrNum(r2(x.w)) + '</small>' : "") + '</td>' +
+        '<td class="v">' + mgrNum(r2(x.e)) + '</td><td class="v">' + mgrNum(r2(x.u - x.w)) + '</td>' +
+        '<td class="v"><b>' + (x.ok ? "сходится" : (x.diff > 0 ? "−" : "+") + mgrNum(r2(Math.abs(x.diff))) + " " + u) + '</b>' + (!x.ok && x.money ? '<small class="mgrwhy">' + mgrNum(Math.round(Math.abs(x.money))) + ' ₸</small>' : "") + '</td></tr>';
+    }).join("") + '</tbody></table>' : '<p class="empty">Задайте расход хотя бы у одного блюда — появится сравнение.</p>') +
+    (nocount.length ? '<details class="incmapd"><summary>Не посчитаны в этих ревизиях (' + nocount.length + ')</summary><p class="wnhint">' + nocount.map(esc).join(", ") +
+      (sal.kind === "d" ? " — в ежедневной ревизии их нет; сравните по месячной." : "") + '</p></details>' : "") +
+    '<p class="wnhint salnote">«−» — ушло больше, чем продано (недостача), «+» — меньше (излишек). Если за период заготовили премиксы про запас, их спирт — тоже «недостача».</p>' +
+    (rows.length ? '<p class="mgrfoot"><button type="button" class="link" id="salCopy">Скопировать итог</button></p>' : "") + '</div>';
+}
+async function salSave(list){
+  const d = await pubPost({mgr: "dishset", dishes: list});
+  if (!d) return false;
+  if (!d.ok){ $("salMsg").textContent = pubErr(d); return false; }
+  list.forEach(x => {
+    const e = {comps: x.none ? [] : x.ri, none: !!x.none, src: x.src, name: x.name};
+    sal.map[x.code ? "c:" + x.code : "n:" + nmKey(x.name)] = e;
+    sal.map["n:" + nmKey(x.name)] = e;
+  });
+  buzz(14);
+  return true;
+}
+const salDishOf = key => sal.sales.find(d => salKey(d) === key);
+const salPack = (d, comps, src, none) => ({name: d.name, code: d.code, src, none: !!none,
+  comps: (comps || []).map(c => ({sec: sal.ref[c.ri][0], n: sal.ref[c.ri][1], q: c.q, u: sal.ref[c.ri][2]})), ri: comps || []});
+$("salDish").addEventListener("click", async e => {
+  const b = e.target.closest("button");
+  if (!b || !sal) return;
+  if (b.id === "salOkAll"){
+    const list = sal.sales.filter(d => !salMapOf(d)).map(d => ({d, s: salSuggest(d)})).filter(x => x.s).map(x => salPack(x.d, x.s.comps, x.s.src));
+    b.disabled = true;
+    if (await salSave(list)) salDraw(); else b.disabled = false;
+    return;
+  }
+  if (b.dataset.ok){ const d = salDishOf(b.dataset.ok), s = d && salSuggest(d); if (s && await salSave([salPack(d, s.comps, s.src)])) salDraw(); return; }
+  if (b.dataset.no){ const d = salDishOf(b.dataset.no); if (d && await salSave([salPack(d, [], "вручную", true)])) salDraw(); return; }
+  if (b.dataset.ed){ sal.open = b.dataset.ed; return salDraw(); }
+  if (b.dataset.cx){ sal.open = ""; return salDraw(); }
+  if (b.dataset.addc){
+    const f = b.closest("form"), row = f.querySelector(".salc").cloneNode(true);
+    row.querySelectorAll("input").forEach(i => { i.value = ""; });
+    b.before(row); row.querySelector("input").focus();
+  }
+});
+$("salDish").addEventListener("toggle", e => { if (sal && e.target.classList && e.target.classList.contains("salok")) sal.okOpen = e.target.open; }, true);
+$("salDish").addEventListener("submit", async e => {
+  const f = e.target.closest("form.salf");
+  if (!f) return;
+  e.preventDefault();
+  const d = salDishOf(f.dataset.k);
+  if (!d) return;
+  const comps = [];
+  for (const row of f.querySelectorAll(".salc")){
+    const p = row.querySelector('[data-f="p"]').value.trim(), q = mgrN(row.querySelector('[data-f="q"]').value);
+    if (!p && !q) continue;
+    const ri = sal.ref.findIndex(x => incLabel(x) === p);
+    if (ri < 0 || !(q > 0)){ $("salMsg").textContent = "Выберите позицию из списка и укажите количество числом (0,04)."; return; }
+    comps.push({ri, q});
+  }
+  if (!comps.length){ $("salMsg").textContent = "Добавьте хотя бы одну позицию или нажмите «Не учитывать»."; return; }
+  if (await salSave([salPack(d, comps, "вручную")])){ sal.open = ""; salDraw(); }
+});
+$("salRes").addEventListener("click", async e => {
+  if (e.target.id !== "salCopy" || !sal || !sal.res) return;
+  const R = sal.res, t = ["Продажи против ревизии, " + mgrRu(R.from) + " — " + mgrRu(R.to),
+    "Недостача: " + mgrNum(Math.round(R.short)) + " ₸, излишки: " + mgrNum(Math.round(R.over)) + " ₸", ""]
+    .concat(R.rows.filter(x => !x.ok).map(x => "— " + x.r[1] + ": " + (x.diff > 0 ? "−" : "+") + mgrNum(r2(Math.abs(x.diff))) + " " + useU(x.r[2]) + (x.money ? " (" + mgrNum(Math.round(Math.abs(x.money))) + " ₸)" : ""))).join("\n");
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch (err) {}
+  e.target.textContent = ok ? "Скопировано ✓" : "Не скопировалось";
+  setTimeout(() => { e.target.textContent = "Скопировать итог"; }, 1800);
+});

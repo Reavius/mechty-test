@@ -758,6 +758,7 @@ function doPost(e) {
     if (p.mgr === "pubset") return jsonOut(mgrPubSet(p));
     if (p.mgr === "prices") return jsonOut(mgrPrices(p));
     if (/^report(set|send|auto)$/.test(p.mgr || "")) return jsonOut(mgrReportPost(p));
+    if (p.mgr === "dishset") return jsonOut(mgrDishSet(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1294,6 +1295,7 @@ function manager(p) {
   if (p.mgr === "usage") return mgrUsage(p);
   if (p.mgr === "pubraw") return mgrPubRaw();
   if (p.mgr === "report") return mgrReport(p);
+  if (p.mgr === "dishes") return mgrDishes();
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1820,6 +1822,65 @@ function mgrPrices(p) {
       pubDrop();
     }
     return { ok: true, n: n };
+  } finally { lock.releaseLock(); }
+}
+
+/* ── Продажи против ревизии (бар-менеджер) ──
+   Лист «Расход на блюдо» в таблице ревизии: сколько каждой позиции справочника уходит на одно блюдо R-Keeper
+   (строка — блюдо × позиция; у блюда без расхода — одна строка с позицией «—»). Заполняется на сайте
+   («Менеджер» → «Продажи»: подсказки из техкарт и меню, подтверждение) или прямо здесь. Отчёт о продажах и расчёт
+   разницы — на сайте, сюда не пишутся. */
+const DISH = "Расход на блюдо";
+const DISH_HEAD = ["Блюдо R-Keeper", "Код R-Keeper", "Раздел", "Позиция", "На 1 блюдо", "Ед.", "Как задано"];
+
+function dishSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(DISH);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(DISH);
+  n.getRange(1, 1, 1, DISH_HEAD.length).setValues([DISH_HEAD]).setFontWeight("bold");
+  n.getRange(1, 4).setNote("Позиция справочника; «—» — блюдо ничего не списывает (не учитывать)");
+  n.getRange(1, 5).setNote("В единицах позиции: литры, штуки, кг (40 мл = 0,04)");
+  n.setFrozenRows(1);
+  n.setColumnWidth(1, 220);
+  n.setColumnWidth(4, 220);
+  return n;
+}
+const dishKey = (name, code) => String(code || "").trim() ? "c:" + String(code).trim() : "n:" + nameKey(name);
+function mgrDishes() {
+  const sh = dishSheet(false), last = sh ? sh.getLastRow() : 0;
+  const rows = last >= 2 ? sh.getRange(2, 1, last - 1, DISH_HEAD.length).getValues().map(r => r.map(x => typeof x === "number" ? x : String(x).trim())) : [];
+  return { ok: true, rows: rows.filter(r => r[0] || r[1]) };
+}
+/* {dishes: [{name, code, comps: [{sec, n, q, u}], none, src}]} — строки этих блюд заменяются целиком */
+function mgrDishSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const list = (Array.isArray(p.dishes) ? p.dishes : []).slice(0, 500);
+  if (!list.length) return { error: "bad" };
+  const add = [], keys = new Set();
+  for (const d of list) {
+    const name = clean(d.name, 200), code = clean(d.code, 40), src = clean(d.src, 40);
+    if (!name && !code) return { error: "bad" };
+    keys.add(dishKey(name, code));
+    if (name) keys.add("n:" + nameKey(name));                           // то же блюдо, сохранённое раньше без кода
+    if (d.none) { add.push([name, code, "", "—", "", "", src]); continue; }
+    const comps = (Array.isArray(d.comps) ? d.comps : []).slice(0, 30).filter(c => c && c.n && num(c.q) > 0);
+    if (!comps.length) return { error: "bad" };
+    comps.forEach(c => add.push([name, code, clean(c.sec, 120), clean(c.n, 200), Math.round(num(c.q) * 100000) / 100000, clean(c.u, 20), src]));
+  }
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = dishSheet(true), last = sh.getLastRow(), w = DISH_HEAD.length;
+    const old = last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues() : [];
+    const keep = old.filter(r => (r[0] || r[1]) && !keys.has(dishKey(r[0], r[1])) && !keys.has("n:" + nameKey(r[0])));
+    const rows = keep.concat(add);
+    ensureRows(sh, rows.length + 1);
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, 4).setNumberFormat("@");
+      sh.getRange(2, 1, rows.length, w).setValues(rows);
+    }
+    if (old.length > rows.length) sh.getRange(rows.length + 2, 1, old.length - rows.length, w).setValues(Array.from({ length: old.length - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    return { ok: true, n: list.length };
   } finally { lock.releaseLock(); }
 }
 

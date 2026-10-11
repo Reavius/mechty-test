@@ -414,6 +414,7 @@
       <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
         <button type="button" data-t="sum" aria-pressed="true">Сводка списаний</button>
         <button type="button" data-t="use" aria-pressed="false">Расход</button>
+        <button type="button" data-t="sal" aria-pressed="false">Продажи</button>
         <button type="button" data-t="ord" aria-pressed="false">Автозаявка</button>
         <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
@@ -462,6 +463,28 @@
         <p class="mgrsum" id="useSum"></p>
         <p class="warn" id="useWarn" role="status"></p>
         <div id="useList"></div>
+      </div>
+
+      <div id="mgrSal" hidden>
+        <p class="wnhint mgrrhint">Продажи R-Keeper против ревизии: сколько каждой позиции <b>должно было уйти</b> по проданным блюдам и сколько
+          <b>ушло на самом деле</b> (было + приход − стало − списания) — разница в единицах и в тенге (по цене закупки из справочника).
+          Выберите две ревизии, выгрузите из R-Keeper «продажи по блюдам» за период между ними (Excel или CSV) и загрузите сюда.
+          Расход на блюдо сайт предложит сам — по техкартам и меню; подтвердите один раз, дальше он запомнится (лист «Расход на блюдо»).</p>
+        <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Период</h3></div><div class="wobody">
+          <div class="modes mgrkind" id="salKind" role="group" aria-label="Какая ревизия">
+            <button type="button" data-k="m" aria-pressed="true">Месячная</button>
+            <button type="button" data-k="d" aria-pressed="false">Ежедневная</button>
+          </div>
+          <div class="wo2 mgrd">
+            <div><label class="label" for="salFrom">С ревизии</label><select id="salFrom"></select></div>
+            <div><label class="label" for="salTo">По ревизию</label><select id="salTo"></select></div>
+          </div>
+          <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <p class="warn" id="salWarn" role="status"></p>
+        </div></div>
+        <div id="salDish"></div>
+        <div id="salRes"></div>
+        <datalist id="salRefs"></datalist>
       </div>
 
       <div id="mgrOrd" hidden>
