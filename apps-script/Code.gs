@@ -52,6 +52,8 @@ function doGet(e) {
     try { out = wnote(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.ck) {
     try { out = checklist(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.mgr) {
+    try { out = manager(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.mem) {
     try { out = { ok: true, mem: members() }; } catch (err) { console.error("mem: " + err); out = { error: "net" }; }
   } else {
@@ -741,6 +743,9 @@ function doPost(e) {
     journalPin();
     if (p.wo === "save") return jsonOut(woSave(p));
     if (p.wo === "rec") return jsonOut(woSave(p, true));
+    if (p.mgr === "login") return jsonOut(mgrLogin(p));
+    if (p.mgr === "out") return jsonOut(mgrLogout(p));
+    if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1199,6 +1204,192 @@ function checkRevision() {
   const ms = mrevSheet();
   Logger.log("Лист «" + ms.getName() + "»: позиций " + mrevRows(ms).filter(x => x.t === "i").length + ", месячная ревизия: " + JSON.stringify(mrevBlock()));
   Logger.log("Всё в порядке.");
+}
+
+/* ═════════════ Бар-менеджер ═════════════
+   Отдельный пароль менеджера. Задать или сменить: «Настройки проекта» (шестерёнка слева) → «Свойства скрипта» →
+   «Добавить свойство»: MGR_PASSWORD = пароль → «Сохранить». При первом входе пароль заменяется своим хэшем
+   (MGR_HASH), открытый — удаляется из свойств; при смене все прежние входы менеджера сбрасываются.
+   Вход — POST {mgr: "login", pw}: верный пароль → ключ на MGR_DAYS дней (здесь хранится только его хэш).
+   5 неверных паролей за 15 минут — пауза 15 минут. Данные — JSONP {mgr: "...", mk: ключ}. */
+const MGR_DAYS = 30;
+const MGR_MAX_KEYS = 20;                                               // столько телефонов менеджера помнится одновременно
+
+function sha(s) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s), Utilities.Charset.UTF_8)
+    .map(b => ((b + 256) % 256).toString(16).padStart(2, "0")).join("");
+}
+/* новый пароль из свойств → хэш; прежние ключи — недействительны */
+function mgrSetup(props) {
+  const pw = props.getProperty("MGR_PASSWORD");
+  if (!pw) return;
+  const salt = Utilities.getUuid();
+  props.setProperties({ MGR_SALT: salt, MGR_HASH: sha(salt + pw), MGR_KEYS: "{}" });
+  props.deleteProperty("MGR_PASSWORD");
+}
+function mgrKeys(props) {
+  let k = {};
+  try { k = JSON.parse(props.getProperty("MGR_KEYS") || "{}") || {}; } catch (e) {}
+  const now = Date.now();
+  Object.keys(k).forEach(h => { if (!(k[h] > now)) delete k[h]; });
+  return k;
+}
+function mgrLogin(p) {
+  const props = PropertiesService.getScriptProperties(), cache = CacheService.getScriptCache();
+  const lock = lockOrBusy(10000);
+  try {
+    mgrSetup(props);
+    const hash = props.getProperty("MGR_HASH");
+    if (!hash) return { error: "nomgr" };
+    const fails = Number(cache.get("mgrfail") || 0);
+    if (fails >= 5) return { error: "wait" };
+    if (sha(props.getProperty("MGR_SALT") + String(p.pw || "")) !== hash) {
+      cache.put("mgrfail", String(fails + 1), 900);
+      return { error: "pw" };
+    }
+    cache.remove("mgrfail");
+    const key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ""), k = mgrKeys(props);
+    k[sha(key)] = Date.now() + MGR_DAYS * 864e5;
+    const keep = Object.keys(k).sort((a, b) => k[b] - k[a]).slice(0, MGR_MAX_KEYS), out = {};
+    keep.forEach(h => { out[h] = k[h]; });
+    props.setProperty("MGR_KEYS", JSON.stringify(out));
+    return { ok: true, mk: key, until: k[sha(key)] };
+  } finally { lock.releaseLock(); }
+}
+function mgrLogout(p) {
+  const props = PropertiesService.getScriptProperties(), lock = lockOrBusy(10000);
+  try {
+    const k = mgrKeys(props);
+    delete k[sha(String(p.mk || ""))];
+    props.setProperty("MGR_KEYS", JSON.stringify(k));
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+function mgrOk(mk) {
+  if (!mk || String(mk).length > 100) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty("MGR_PASSWORD")) return false;                 // пароль сменили — войти заново
+  return !!(mgrKeys(props)[sha(String(mk))]);
+}
+
+/* данные для вкладки «Менеджер» */
+function manager(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  if (p.mgr === "wo") return mgrWo(p);
+  if (p.mgr === "ref") return mgrRef();
+  return { error: "action" };
+}
+/* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
+   [дата акта, №, наименование, ед., кол-во, причина, кто, файл, id]. Сводку считает сайт. */
+function mgrWo(p) {
+  const iso = d => { const m = String(d).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : "0000-00-00";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : "9999-99-99";
+  const out = { ok: true, from: from, to: to };
+  Object.keys(WO_KINDS).forEach(kind => {
+    const sh = woSheet(kind, false), last = sh ? sh.getLastRow() : 0, rows = [];
+    if (last >= 2) {
+      sh.getRange(2, 1, last - 1, WO_HEAD.length).getValues().forEach(r => {
+        const d = iso(String(r[0]).trim());
+        if (!d || d < from || d > to || !r[9]) return;
+        rows.push([String(r[0]).trim(), String(r[1]), String(r[2]), String(r[3]), num(r[4]), String(r[5]), String(r[6]), String(r[7]), String(r[9])]);
+      });
+    }
+    out[kind] = rows;
+  });
+  return out;
+}
+
+/* ── Справочник позиций (бар-менеджер) ──
+   Лист «Справочник» в таблице ревизии: строка на каждую позицию бланка месячной ревизии, по разделам.
+   Позиции и разделы берутся из бланка сами (новые дописываются вниз при каждом открытии справочника на сайте),
+   остальное заполняет менеджер — прямо здесь или на сайте («Менеджер» → «Справочник»).
+   Код R-Keeper — из столбца A бланка, если там число. Тара — объём или вес одной бутылки / упаковки в единицах
+   позиции (0,7 — бутылка 0,7 л); норма — сколько держать, в тех же единицах. */
+const REF = "Справочник";
+const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка"];
+const REF_F = ["u", "code", "tara", "norm", "sup", "price", "note"];      // столбцы C…I
+const refKey = (sec, n) => [sec, n].map(x => String(x).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ")).join("|");
+
+function refSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(REF);
+  if (sh || !create) return sh;
+  const nsh = ss.insertSheet(REF);
+  nsh.getRange(1, 1, 1, REF_HEAD.length).setValues([REF_HEAD]).setFontWeight("bold");
+  nsh.setFrozenRows(1);
+  nsh.setColumnWidth(1, 150);
+  nsh.setColumnWidth(2, 260);
+  return nsh;
+}
+/* позиции бланка по порядку: {sec, n, u, code}. Лист месячной ревизии (с дописанными позициями) или встроенный бланк */
+function refBlank() {
+  const ms = mrevSheet(true), out = [];
+  let rows;
+  if (ms && ms.getLastRow() >= 7) rows = ms.getRange(7, 1, ms.getLastRow() - 6, 3).getDisplayValues();
+  else rows = MREV_ROWS.map(x => x[1] === "h" ? [x[2], "", ""] : [x[2], x[3], x[4]]);
+  let sec = "";
+  rows.forEach(r => {
+    const a = String(r[0]).trim(), b = String(r[1]).trim(), c = String(r[2]).trim();
+    if (b && !a && !c && /^(Заготовки|Премиксы на коктейли)$/.test(b)) sec = b;
+    else if (b) out.push({ sec: sec, n: b, u: c, code: /^\d+$/.test(a) ? a : "" });
+    else if (a) sec = a;
+  });
+  return out;
+}
+/* новые позиции бланка — в справочник (под блокировкой) */
+function refSync() {
+  const blank = refBlank(), sh = refSheet(true), last = sh.getLastRow();
+  const have = new Set(last >= 2 ? sh.getRange(2, 1, last - 1, 2).getDisplayValues().map(r => refKey(r[0], r[1])) : []);
+  const add = [], seen = new Set();
+  blank.forEach(x => { const k = refKey(x.sec, x.n); if (!have.has(k) && !seen.has(k)) { seen.add(k); add.push(x); } });
+  if (add.length) {
+    ensureRows(sh, last + add.length);
+    sh.getRange(last + 1, 1, add.length, 4).setNumberFormat("@").setValues(add.map(x => [x.sec, x.n, x.u, x.code]));
+  }
+  return blank;
+}
+/* значения как текст: числа — с запятой и без оформления таблицы («9 500,00 ₸» → «9500») */
+function refVals(v) {
+  return v.map(r => r.map(x => typeof x === "number" ? String(Math.round(x * 1000) / 1000).replace(".", ",") : x instanceof Date ? "" : String(x)));
+}
+/* справочник для сайта: по порядку бланка; строки, которых в бланке уже нет, — в конце с пометкой */
+function mgrRef() {
+  const lock = lockOrBusy(15000);
+  let blank;
+  try { blank = refSync(); SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
+  const sh = refSheet(false), last = sh.getLastRow();
+  const v = last >= 2 ? refVals(sh.getRange(2, 1, last - 1, REF_HEAD.length).getValues()) : [];
+  const order = {};
+  blank.forEach((x, i) => { const k = refKey(x.sec, x.n); if (!(k in order)) order[k] = i; });
+  const rows = v.filter(r => String(r[1]).trim()).map(r => {
+    const k = refKey(r[0], r[1]);
+    return { o: k in order ? order[k] : 1e6, r: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [k in order ? 1 : 0]) };
+  });
+  rows.sort((a, b) => a.o - b.o);
+  return { ok: true, head: REF_HEAD, rows: rows.map(x => x.r) };
+}
+/* правка одной позиции с сайта: {sec, n, f: {u, code, tara, norm, sup, price, note}} */
+function mgrRefSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const f = p.f || {}, key = refKey(p.sec || "", p.n || "");
+  const numf = v => { const s = String(v == null ? "" : v).trim(); if (!s) return ""; const x = parseFloat(s.replace(",", ".")); return isFinite(x) && x >= 0 ? x : null; };
+  const vals = {
+    u: clean(f.u, 20), code: clean(f.code, 30), tara: numf(f.tara), norm: numf(f.norm),
+    sup: clean(f.sup, 80), price: numf(f.price), note: clean(f.note, 200)
+  };
+  if (vals.tara === null || vals.norm === null || vals.price === null) return { error: "bad" };
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = refSheet(true), last = sh.getLastRow();
+    const keys = last >= 2 ? sh.getRange(2, 1, last - 1, 2).getDisplayValues().map(r => refKey(r[0], r[1])) : [];
+    const i = keys.indexOf(key);
+    if (i < 0) return { error: "gone" };
+    sh.getRange(i + 2, 3, 1, 2).setNumberFormat("@");                     // ед. и код — текстом
+    sh.getRange(i + 2, 3, 1, REF_F.length).setValues([REF_F.map(k => vals[k])]);
+    SpreadsheetApp.flush();
+    const r = refVals(sh.getRange(i + 2, 1, 1, REF_HEAD.length).getValues())[0];
+    return { ok: true, row: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [1]) };
+  } finally { lock.releaseLock(); }
 }
 
 /* ── Ежемесячная копия таблиц ──

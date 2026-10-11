@@ -73,13 +73,13 @@ h1{
   background:var(--bg);padding-block:16px 14px;margin-top:34px;
   border-bottom:1px solid var(--line);
 }
-#q{
+#q,#gq{
   width:100%;font-family:var(--sans);font-size:16px;font-weight:500;
   padding:12px 15px;border:1px solid var(--line);border-radius:10px;
   background:var(--surface);color:var(--fg);
 }
-#q::placeholder{color:var(--muted)}
-#q:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-color:transparent}
+#q::placeholder,#gq::placeholder{color:var(--muted)}
+#q:focus-visible,#gq:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-color:transparent}
 
 .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
 .chips button{
@@ -92,6 +92,41 @@ h1{
 .chips button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .chips button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:transparent}
 .chips b{font-variant-numeric:tabular-nums;font-weight:500;margin-left:5px}
+
+/* ── для гостей: язык, вкладки «Меню» / «Состав и аллергены», меню ── */
+.ghead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 18px}
+.ghead .mark{margin:0}
+.lang{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:99px;background:var(--surface);padding:2px}
+.lang button{
+  font-family:var(--sans);font-size:12px;font-weight:700;letter-spacing:.08em;
+  padding:6px 12px;border:0;border-radius:99px;background:transparent;color:var(--muted);cursor:pointer;
+}
+.lang button[aria-pressed="true"]{background:var(--accent);color:var(--bg)}
+.lang button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.modes.gtabs{margin:26px 0 0}
+
+.mdesc{margin:0 0 15px;flex:1;align-self:flex-start;font-size:14.5px;line-height:1.45}
+.mfoot{
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding-top:12px;border-top:1px solid var(--line);
+}
+.mvp{display:flex;align-items:baseline;gap:9px;white-space:nowrap}
+.mvp small,.mv{color:var(--muted);font-size:12px;white-space:nowrap}
+.mvp b,.mp{font-size:17px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.mlink{font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none}
+.mlink:hover{text-decoration:underline;text-underline-offset:3px}
+.mlink:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mlist{list-style:none;margin:4px 0 0;padding:0}
+.mrow{
+  display:grid;grid-template-columns:minmax(0,1fr) auto 5em;align-items:baseline;gap:2px 14px;
+  padding:12px 0;border-bottom:1px solid var(--line);
+}
+.mname{font-size:15.5px;font-weight:600}
+.mn small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.mn .mlink{display:inline-block;margin-top:5px}
+.mv{text-align:right}
+.mp{text-align:right}
+.msec{margin-top:36px}
 
 /* ── sections ───────────────────────────── */
 section{margin-top:40px}
@@ -601,3 +636,37 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 /* значок новых строк в заметке — на кнопке «Списания» */
 .nbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;
   background:var(--red);color:#fff;font:700 11px/1 var(--sans);vertical-align:1px}
+
+/* ── Бар-менеджер ── */
+.mgrkind{margin-top:14px;grid-template-columns:repeat(3,1fr)}
+.mgrsum{margin:22px 2px 0;font-size:14px;color:var(--muted)}
+.mgrsum b{color:var(--fg)}
+.mgrt h3{font-size:22px}
+.mgrt td.n small.mgrwhy{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
+.mgrt .link.more{margin:12px auto 14px}
+.mgrfoot{margin:20px 2px 0;font-size:13px;color:var(--muted);text-align:center}
+.mgrskel{margin-top:14px}
+.mgrd{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.mgrd input[type="date"]{min-width:0;padding-inline:10px}
+.mgrtabs{margin:0 0 6px}
+.mgrrhint{margin:14px 2px 12px}
+.refsec{margin-top:22px}
+.reft{font-family:var(--sans);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 2px 8px}
+.refl{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.refl li:first-child{border-top:0}
+.refrow{display:block;width:100%;text-align:left;background:none;border:0;color:var(--fg);font:inherit;padding:11px 16px;cursor:pointer}
+.refrow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.refn{display:block;font-size:14.5px;font-weight:600;overflow-wrap:anywhere}
+.refrow small{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+.refrow small em{font-style:normal;color:var(--flag)}
+.refli.open{background:var(--surface-2)}
+.refli.open .refrow .refn{color:var(--accent)}
+.refli.saved .refrow small::after{content:" · сохранено ✓";color:var(--accent)}
+.refed{padding:0 16px 16px}
+.refed .label{display:block;margin:10px 0 5px}
+.refed input,.refed select{width:100%;font-size:16px;min-width:0}
+.refgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}
+.refbtns{display:flex;align-items:center;gap:16px}
+.refbtns .wogo{flex:1;margin-top:12px}
+.refbtns .link{margin-top:12px}
+.refed .label{letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
