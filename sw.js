@@ -3,11 +3,11 @@
    Сеть есть, но еле дышит (слабый сигнал в баре): страница ждёт сеть не дольше 4 секунд, дальше — сохранённая копия,
    и тогда весь её код тоже из кэша (версии не смешиваются); свежая версия скачивается в фоне — к следующему открытию.
    Запросы к Google (журнал, ревизия) не кэшируются. */
-const CACHE = "mechty-v35";
+const CACHE = "mechty-v36";
 const SLOW = 4000;
 const STALE = new Set();                                      // вкладки, открытые из сохранённой копии
 const CODE = ["css/app.css", "js/core.js", "js/data.js", "js/card.js", "js/auth.js", "js/ttk.js", "js/wo.js", "js/lart.js", "js/labels.js",
-  "js/rev.js", "js/mrev.js", "js/order.js", "js/calc.js", "js/swipe.js", "fx.js"];
+  "js/rev.js", "js/mrev.js", "js/order.js", "js/open.js", "js/calc.js", "js/swipe.js", "fx.js"];
 const CORE = ["./", "index.html", "manifest.webmanifest", ...CODE, "vendor/qrcode.js", "vendor/gsap.min.js", "vendor/ScrollTrigger.min.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon-32.png"];
 

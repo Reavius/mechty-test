@@ -101,6 +101,7 @@
       <button type="button" data-s="ttk"  aria-pressed="true">Технологическая карта</button>
       <button type="button" data-s="calc" aria-pressed="false">Калькулятор</button>
       <button type="button" data-s="order" aria-pressed="false">Заявка</button>
+      <button type="button" data-s="open"  aria-pressed="false">Чеклист</button>
       <button type="button" data-s="zone"  aria-pressed="false">Взять на бар</button>
       <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
       <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
@@ -377,6 +378,11 @@
     <div id="olist"></div>
   </div>
 
+  <div id="secOpen" hidden>
+    <p class="cktop" id="ckInfo"></p>
+    <div id="ckList"></div>
+  </div>
+
   <div id="secZone" hidden>
     <div class="result tcard osum">
       <div class="tname"><em id="zcount"></em><h2 class="h3">Взять на бар</h2></div>
@@ -445,6 +451,7 @@
 <script src="js/rev.js" defer></script>
 <script src="js/mrev.js" defer></script>
 <script src="js/order.js" defer></script>
+<script src="js/open.js" defer></script>
 <script src="js/calc.js" defer></script>
 <script src="js/swipe.js" defer></script>
 

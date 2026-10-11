@@ -190,6 +190,7 @@ function enter(p, name, email){
   showView("bt");
   if (!logged){ logged = true; report(); }
   woKick(true);                                               // акты, не ушедшие на Диск раньше, — сразу
+  wnBadgeStart();                                             // новое в заметке к списанию — цифрой на кнопке
 }
 
 async function goBt(){

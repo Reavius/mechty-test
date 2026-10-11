@@ -105,6 +105,7 @@ function woLeave(){
   if (!me) try { localStorage.removeItem(WL); } catch (e) {}  // вышли из аккаунта — копии истории на телефоне не остаётся
   if (woReady){ woSigReset(); woLoad(); woDoneUi(); $("woWarn").textContent = ""; }   // woLoad: поле вставки — из черновика этого бармена
   wnItems = []; wnMineList = null; wnState = "load"; wnSeq++; wnSyncP = null; wnBusy = false; if (woReady) wnDraw();
+  if (!me) wnBadgeDraw(0);                                     // вышли — значок не остаётся
 }
 
 function woSetKind(k){
@@ -873,6 +874,43 @@ async function wnSyncRun(){
   if (wnState === "ok") wnItems = d.items;
   if (wnState === "ok" && Array.isArray(d.mine)){ wnMineList = d.mine; wnPrune(new Set(d.mine.map(x => x.id))); }
   else wnPrune(null);
+  wnSeenNow();
+}
+/* ── новые строки в заметке к списанию: красная цифра на кнопке «Списания» и на значке приложения ──
+   Сверка раз в 2 минуты, пока сайт открыт (на любой вкладке), и при возвращении на сайт. «Новые» — записанные
+   не мной и ещё не виденные на этом телефоне; открыли заметку списаний — просмотрены. */
+const WNSEEN = "mechty-wn-seen";
+let wnBadgeT = 0, wnBadgeN = 0;
+const wnSeen = () => new Set(wjson(WNSEEN, []));
+function wnBadgeDraw(n){
+  wnBadgeN = n;
+  const b = document.querySelector('#sect button[data-s="wo"]');
+  if (b){ let i = b.querySelector(".nbadge"); if (!n){ if (i) i.remove(); } else { if (!i){ i = document.createElement("b"); i.className = "nbadge"; b.appendChild(i); } i.textContent = n > 99 ? "99+" : n; i.setAttribute("aria-label", "новое в заметке: " + n); } }
+  try { if (navigator.setAppBadge) n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) {}
+}
+/* заметку списаний видно на экране — всё в ней просмотрено */
+function wnSeenNow(){
+  if (wkind !== "wo" || $("secWo").hidden || document.hidden || wnState !== "ok") return;
+  const seen = wnSeen(); wnItems.forEach(x => seen.add(x.id)); wsave(WNSEEN, [...seen].slice(-500));
+  wnBadgeDraw(0);
+}
+function wnBadgeCount(items){
+  const seen = wnSeen(), mine = me ? me.name : "";
+  return items.filter(x => !seen.has(x.id) && x.who !== mine).length;
+}
+async function wnBadgePoll(){
+  if (!TOKEN || !me || document.hidden) return;
+  if (wkind === "wo" && !$("secWo").hidden) return wnSeenNow();   // заметка на экране — сверяет её wnSync
+  const who = me.name, d = await api({wn: "list", rn: who, k: "wo"});
+  if (!me || me.name !== who || !d.ok || !Array.isArray(d.items) || !wnKindOk(d, "wo")) return;
+  wnBadgeDraw(wnBadgeCount(d.items));
+}
+function wnBadgeStart(){
+  if (!wnBadgeT){
+    wnBadgeT = setInterval(wnBadgePoll, 120e3);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) wnBadgePoll(); });
+  }
+  setTimeout(wnBadgePoll, 3000);                              // после входа — не мешая первым запросам раздела
 }
 function wnInit(){
   wnDraw(); wnSync();
