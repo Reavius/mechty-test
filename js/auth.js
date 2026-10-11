@@ -11,12 +11,13 @@ try { localStorage.removeItem("mechty-key"); localStorage.removeItem("mechty-log
 
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
-async function deriveKey(pw){
+async function deriveKey(pw, extractable){
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     {name:"PBKDF2", salt:b64(BLOB.s), iterations:BLOB.n, hash:"SHA-256"},
-    base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+    base, {name:"AES-GCM", length:256}, !!extractable, ["decrypt"]);
 }
+const rawKey = raw => crypto.subtle.importKey("raw", b64(raw), {name:"AES-GCM"}, false, ["decrypt"]);
 
 async function openWith(key){
   try {
@@ -34,23 +35,37 @@ function idb(mode, fn){
     rq.onerror = () => reject(rq.error);
     rq.onsuccess = () => {
       const db = rq.result;
-      const tx = db.transaction("s", mode);
-      const q = fn(tx.objectStore("s"));
-      tx.oncomplete = () => { db.close(); resolve(q && q.result); };
-      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+      try {                                                    // ошибка внутри (ключ не сохраняется) — отказ, а не вечное ожидание
+        const tx = db.transaction("s", mode);
+        const q = fn(tx.objectStore("s"));
+        tx.oncomplete = () => { db.close(); resolve(q && q.result); };
+        tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+      } catch (e) { db.close(); reject(e); }
     };
   });
 }
-const saveSession = s => idb("readwrite", st => st.put(s, "session")).catch(() => {});
-const dropSession = () => idb("readwrite", st => st.delete("session")).catch(() => {});
+/* iPhone (Safari) на части версий не сохраняет неизвлекаемый ключ в IndexedDB или отдаёт его непригодным — тогда вход
+   спрашивался каждый раз. Поэтому рядом лежит копия ключа (raw, не пароль); нет IndexedDB — копия в localStorage. */
+const SESS = "mechty-sess";
+async function saveSession(s){
+  let ok = false;
+  try { await idb("readwrite", st => st.put(s, "session")); ok = true; }
+  catch (e) { try { const {key, ...rest} = s; await idb("readwrite", st => st.put(rest, "session")); ok = true; } catch (e2) {} }
+  try { if (ok) localStorage.removeItem(SESS); else { const {key, ...rest} = s; localStorage.setItem(SESS, JSON.stringify(rest)); } } catch (e) {}
+}
+const dropSession = () => { try { localStorage.removeItem(SESS); } catch (e) {} return idb("readwrite", st => st.delete("session")).catch(() => {}); };
 
+/* сохранённый вход → {name, email, p (рецептуры)} или null */
 async function loadSession(){
-  try {
-    const s = await idb("readonly", st => st.get("session"));
-    if (s && s.key && s.salt === BLOB.s && s.name && s.email) return s;
-    if (s) dropSession();
-  } catch (e) {}
-  return null;
+  let s = null;
+  try { s = await idb("readonly", st => st.get("session")); } catch (e) {}
+  if (!s) try { s = JSON.parse(localStorage.getItem(SESS) || "null"); } catch (e) {}
+  if (!s) return null;
+  if (s.salt !== BLOB.s || !s.name || !s.email){ dropSession(); return null; }
+  let p = s.key ? await openWith(s.key) : null;
+  if (!p && s.raw) try { p = await openWith(await rawKey(s.raw)); } catch (e) {}
+  if (!p){ dropSession(); return null; }
+  return {name: s.name, email: s.email, p};
 }
 
 /* ── журнал входов (Google Sheets через Apps Script) ──
@@ -124,6 +139,22 @@ const LOG_SHORT = 10, LOG_FULL = 25;
 let logOpen = false;
 $("logMore").addEventListener("click", () => { logOpen = !logOpen; drawLog(); });
 
+/* ── участники: все, кто когда-либо входил (почта — скрыта таблицей) ── */
+let memOpen = false;
+async function memDraw(){
+  $("memShow").textContent = memOpen ? "Скрыть" : "Показать"; $("mem").hidden = !memOpen;
+  if (!memOpen) return;
+  $("memScope").textContent = "· загружаем…"; $("mem").innerHTML = skel(4);
+  const d = await api({mem: 1});
+  if (!memOpen) return;
+  const list = d.ok && Array.isArray(d.mem) ? d.mem : null, mine = me ? me.name.toLowerCase() : "";
+  $("memScope").textContent = list ? "· " + list.length : d.ok ? "· после обновления Apps Script" : "· нет связи";
+  $("mem").innerHTML = list && list.length
+    ? list.map(x => '<li' + (String(x.n).toLowerCase() === mine ? ' class="me"' : '') + '><b>' + esc(x.n) + '</b><time>' + esc(x.m) + '</time></li>').join("")
+    : '<li class="none">' + (list ? "Пока никого" : d.ok ? "Список заработает после обновления Apps Script." : "Нет связи с таблицей.") + '</li>';
+}
+$("memShow").addEventListener("click", () => { memOpen = !memOpen; memDraw(); });
+
 function drawLog(){
   $("logScope").textContent = logState === "loading" ? "· загружаем…"
     : logState === "fail" && !shared ? "· нет связи"
@@ -164,11 +195,7 @@ function enter(p, name, email){
 async function goBt(){
   if (R) return showView("bt");
   const s = await loadSession();
-  if (s){
-    const p = await openWith(s.key);
-    if (p) return enter(p, s.name, s.email);
-    dropSession();
-  }
+  if (s) return enter(s.p, s.name, s.email);
   showView("bar");
   openLogin();
 }
@@ -210,8 +237,8 @@ $("gform").addEventListener("submit", async e => {
 
   $("go").disabled = true;
   $("gmsg").textContent = "Проверяем…";
-  const key = await deriveKey(pw);
-  const p = await openWith(key);
+  const xk = await deriveKey(pw, true), raw = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.exportKey("raw", xk))));
+  const key = await rawKey(raw), p = await openWith(key);
   $("go").disabled = false;
 
   if (!p){
@@ -225,7 +252,7 @@ $("gform").addEventListener("submit", async e => {
   fails = 0;
   $("gmsg").textContent = "";
   try { localStorage.setItem(WHO, JSON.stringify({n:name, e:email})); } catch (e2) {}
-  await saveSession({key, name, email, salt:BLOB.s});
+  await saveSession({key, raw, name, email, salt:BLOB.s});
   $("pw").value = "";
   logged = false;          // каждый вход по паролю — отдельная запись в журнале
   enter(p, name, email);
@@ -236,6 +263,7 @@ $("logout").addEventListener("click", async () => {
   await dropSession();
   R = null; ALL = []; K = []; KALL = []; Z = []; ZO = []; ZN = []; TOKEN = ""; me = null; shared = null; logged = false; logState = "idle";
   $("res").innerHTML = ""; $("tres").innerHTML = ""; $("olist").innerHTML = ""; $("zlist").innerHTML = ""; $("log").innerHTML = "";
+  memOpen = false; $("mem").innerHTML = ""; $("mem").hidden = true; $("memScope").textContent = ""; $("memShow").textContent = "Показать";
   if (typeof woLeave === "function") woLeave();                // подпись и акты прежнего бармена не остаются на форме
   leaveBt();
 });

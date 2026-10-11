@@ -10,12 +10,17 @@ function checklist(o){
   /* количество — свободным текстом («5 кг») или только числом (o.num) */
   const readQty = () => { const v = read("-q", "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }, writeQty = q => write("-q", q);
   const el = id => $(o.id + id), copyLabel = el("copy").textContent;
+  /* свои позиции (o.custom): чего нет в списке — «изюм 100 гр»; хранятся на устройстве, у каждой заявки свои */
+  const OWN = "Своё";
+  const readOwn = () => { const v = read("-c", "[]"); return Array.isArray(v) ? v.filter(x => typeof x === "string" && x) : []; }, writeOwn = a => write("-c", a);
+  const base = o.list;
+  o.list = () => { const L = base(), own = o.custom ? readOwn() : []; return own.length ? L.concat([{g: OWN, items: own, own: true}]) : L; };
 
   function fill(){
     const need = readNeed(), L = o.list();
     el("list").innerHTML = L.length
       ? L.map(g =>
-          '<div class="result tcard"><div class="tname"><em>' + g.items.length + ' поз.</em><h3>' + esc(g.g) + '</h3></div>' +
+          '<div class="result tcard"><div class="tname"><em>' + g.items.length + ' поз.</em><h3>' + esc(g.own ? "Своё — нет в списке" : g.g) + '</h3></div>' +
           '<ul class="olist">' + g.items.map(n =>
             '<li' + (need.has(n) ? ' class="on"' : '') + '><label><span>' + esc(n) + '</span>' +
             '<input type="checkbox" data-n="' + esc(n) + '"' + (need.has(n) ? ' checked' : '') +
@@ -47,6 +52,7 @@ function checklist(o){
     on ? need.add(name) : need.delete(name);
     writeNeed(need);
     if (!on){ const q = readQty(); if (name in q){ delete q[name]; writeQty(q); } }
+    if (!on && o.custom){ const own = readOwn(); if (own.includes(name)){ writeOwn(own.filter(x => x !== name)); return fill(); } }   // своё сняли — убрать совсем
     const box = [...el("list").querySelectorAll("input")].find(b => b.dataset.n === name);
     if (box){ box.checked = on; box.closest("li").classList.toggle("on", on); }
     drawSum();
@@ -88,6 +94,7 @@ function checklist(o){
     if (!confirm("Отменить все выбранные позиции?")) return;
     writeNeed(new Set());
     writeQty({});
+    if (o.custom) writeOwn([]);
     fill();
   });
 
@@ -113,6 +120,20 @@ function checklist(o){
     setTimeout(() => { el("copy").textContent = copyLabel; }, 2000);
   });
 
+  if (o.custom) el("new").addEventListener("submit", e => {
+    e.preventDefault();
+    const name = el("nn").value.replace(/\s+/g, " ").trim(), q = el("nq").value.replace(/\s+/g, " ").trim();
+    if (!name){ el("nn").focus(); return; }
+    const n0 = name.charAt(0).toUpperCase() + name.slice(1), low = n0.toLowerCase();
+    /* уже есть в списке (или среди своих) — просто отметить её */
+    const hit = o.list().flatMap(g => g.items).find(x => x.toLowerCase() === low);
+    if (!hit){ const own = readOwn(); own.push(n0); writeOwn(own); }
+    const n = hit || n0, need = readNeed(); need.add(n); writeNeed(need);
+    if (q){ const qq = readQty(); qq[n] = q; writeQty(qq); }
+    el("nn").value = ""; el("nq").value = "";
+    buzz(14); fill();
+  });
+
   return {fill};
 }
 
@@ -126,7 +147,7 @@ let okind = "prep";
 try { if (localStorage.getItem("mechty-okind") === "gen") okind = "gen"; localStorage.removeItem("mechty-order"); } catch (e) {}
 const OL = () => OKINDS[okind].list();
 
-const orderList = checklist({id: "o", key: () => OKINDS[okind].key, list: OL, pick: "Заказать", head: "Заявка",
+const orderList = checklist({id: "o", key: () => OKINDS[okind].key, list: OL, pick: "Заказать", head: "Заявка", custom: true,
   none: "Список заявки пока не загружен.", empty: "Пока пусто. Отметьте галочкой в списке ниже то, что нужно заказать."});
 
 $("okind").addEventListener("click", e => {
