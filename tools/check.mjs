@@ -32,6 +32,8 @@ ok(!missing.length, `файлы, на которые ссылается index.ht
 const scripts = [...html.matchAll(/<script src="(js\/[^"]+)"/g)].map(m => m[1]);
 ok(scripts.length === fs.readdirSync(path.join(ROOT, "js")).length, "все модули js/ подключены в index.html");
 ok(/http-equiv="Content-Security-Policy"/.test(html), "CSP на месте");
+const idsHtml = [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]), dupId = idsHtml.filter((x, i) => idsHtml.indexOf(x) !== i);
+ok(!dupId.length, "id элементов страницы не повторяются" + (dupId.length ? ": " + dupId.join(", ") : ""));
 
 /* 3. офлайн-кэш: всё из списка существует, все модули в списке */
 const sw = rd("sw.js");
@@ -80,6 +82,28 @@ const LICON = vm.runInNewContext("(" + lab.match(/const LICON = (\{[\s\S]*?\});/
 ok(Object.values(LICON).every(n => has("labels/" + n + ".png")), "значки этикеток на месте");
 const strays = Object.keys(LICON).filter(k => !ids.includes(k));
 ok(!strays.length, "значки этикеток привязаны к существующим позициям" + (strays.length ? ": " + strays.join(", ") : ""));
+
+/* 6а. меню для гостей: ссылки на карту живые, у всего есть английский */
+{
+  const el = new Proxy({}, { get: (o, k) => k in o ? o[k] : (k === "value" ? "" : () => {}), set: (o, k, v) => { o[k] = v; return true; } });
+  const ctx = vm.createContext({ data: pub, $: () => el, esc: String, phwh: () => "", buzz() {}, requestAnimationFrame() {},
+    document: { documentElement: {}, querySelectorAll: () => [] }, location: { search: "", hash: "", pathname: "/" }, history: {},
+    navigator: { languages: ["en"] }, window: {}, localStorage: { getItem: () => null, setItem() {} }, URLSearchParams });
+  let M = null;
+  try { vm.runInContext(rd("js/menu.js"), ctx); M = vm.runInContext("({MENU, CARD_EN, mName, mDesc, cardItem})", ctx); } catch (e) { console.log("  js/menu.js: " + e.message); }
+  ok(M, "меню для гостей загружается (js/menu.js)");
+  if (M) {
+    const all = M.MENU.flatMap(c => c.secs.flatMap(s => s.items));
+    const dead = all.filter(x => x.c && !M.cardItem(x.c));
+    ok(!dead.length, `ссылки меню на «Состав и аллергены» ведут на позиции карты (${all.filter(x => x.c).length})` + (dead.length ? ": " + dead.map(x => x.c).join(", ") : ""));
+    ok(all.every(x => x.p && (x.n || x.c)), `у каждой позиции меню есть название и цена (${all.length})`);
+    const cyr = s => /[а-яё]/i.test(s);
+    const noEn = all.filter(x => cyr(M.mName(x, "en")) || cyr(M.mDesc(x, "en"))).map(x => M.mName(x, "ru"));
+    ok(!noEn.length, "у всех позиций меню есть английский" + (noEn.length ? ": " + noEn.join(", ") : ""));
+    const cardNoEn = items.filter(i => !i.lo && (!M.CARD_EN[i.id] || M.CARD_EN[i.id].some(cyr))).map(i => i.n);
+    ok(!cardNoEn.length, "у всех позиций карты есть английский (CARD_EN в js/menu.js)" + (cardNoEn.length ? ": " + cardNoEn.join(", ") : ""));
+  }
+}
 
 /* 7. закрытое не попало в репозиторий */
 const tracked = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n");

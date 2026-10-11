@@ -36,7 +36,15 @@ await page.route("https://script.google.com/**", r => {
   return r.fulfill({ contentType: "application/javascript", body: cb + "(" + JSON.stringify(body) + ")" });
 });
 
-await page.goto(BASE + "index.html");
+await page.goto(BASE + "index.html?lang=ru");
+await page.waitForSelector("#mout .mtile", { timeout: 10000 });
+// главная — меню; цены и ссылки на состав
+ok(await page.locator("#pMenu").isVisible(), "главная — меню");
+ok(await page.locator("#mout .mtile, #mout .mrow").count() >= 140, "меню: " + await page.locator("#mout .mtile, #mout .mrow").count() + " позиций");
+await page.fill("#gq", "негрони");
+ok(await page.locator("#mout .mtile").count() === 1, "поиск по меню");
+await page.fill("#gq", "");
+await page.click("#gTabs button[data-p=card]");
 await page.waitForSelector("#out article", { timeout: 10000 });
 const cards = await page.locator("#out article").count();
 ok(cards >= 30, `открытая карта: ${cards} позиций`);
@@ -54,7 +62,12 @@ await page.fill("#q", "");
 const ids = await page.evaluate(() => data.flatMap(g => g.items.map(i => i.id)));
 ok(new Set(ids).size === ids.length, `id позиций уникальны (${ids.length})`);
 await page.goto(BASE + "index.html#" + ids[0]); await page.waitForTimeout(600);
-ok(await page.locator("article.hit").count() === 1, "ссылка #id подсвечивает позицию");
+ok(await page.locator("article.hit").count() === 1 && await page.locator("#pCard").isVisible(), "ссылка #id открывает «Состав и аллергены» и подсвечивает позицию");
+// английский
+await page.click("#lang button[data-l=en]");
+const enTxt = await page.locator("#viewBar").innerText();
+ok(!/[а-яё]/i.test(enTxt), "гостевая часть по-английски без кириллицы");
+await page.click("#lang button[data-l=ru]");
 
 // вход
 await page.goto(BASE + "index.html#bartenders");

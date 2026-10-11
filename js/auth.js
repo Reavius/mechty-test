@@ -279,6 +279,7 @@ function showView(v){
   $("tabBar").removeAttribute("aria-current");
   $("tabBt").removeAttribute("aria-current");
   $(bt ? "tabBt" : "tabBar").setAttribute("aria-current", "page");
+  document.documentElement.lang = bt ? "ru" : LANG;             // «Бартендерам» — по-русски
   if (bt) window.scrollTo(0, 0);
 }
 
@@ -286,7 +287,9 @@ function route(){
   const h = decodeURIComponent(location.hash.slice(1));
   if (h === "bartenders") return goBt();
   showView("bar");
-  if (h) jumpTo(h);
+  if (h === "card") gPanel("card");
+  else if (h) jumpTo(h);
+  else gBack();
 }
 /* повторный клик по «Бартендерам», когда адрес уже #bartenders */
 $("tabBar").addEventListener("click", () => { if (!location.hash) showView("bar"); });

@@ -6,15 +6,15 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
-<title>Бар «Мечты» — барный гид</title>
-<meta name="description" content="Барный гид бара «Мечты»: коктейли, премиксы, шоты и полуфабрикаты — состав, аллергены и срок годности. Для команды — техкарты, калькулятор, заявки и ревизия.">
+<title>Бар «Мечты» — меню</title>
+<meta name="description" content="Меню бара «Мечты» на русском и английском: коктейли, вино, крепкое, пиво, кофе и чай; состав и аллергены коктейлей. Для команды — техкарты, калькулятор, заявки и ревизия.">
 <!-- превью ссылки в Telegram, WhatsApp, ВКонтакте -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Бар «Мечты»">
 <meta property="og:locale" content="ru_RU">
 <meta property="og:url" content="https://mechty-bar.netlify.app/">
-<meta property="og:title" content="Бар «Мечты» — барный гид">
-<meta property="og:description" content="Коктейли, премиксы и шоты бара: состав, аллергены, срок годности. Для команды — техкарты, заявки и ревизия.">
+<meta property="og:title" content="Бар «Мечты» — меню">
+<meta property="og:description" content="Меню бара: коктейли, вино, крепкое, пиво, кофе и чай; состав и аллергены. Menu in English.">
 <meta property="og:image" content="https://mechty-bar.netlify.app/og.jpg">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
@@ -66,30 +66,50 @@
   </div>
 </nav>
 
-<!-- ── Карта заготовок (открыта всем) ─────────────────────────── -->
+<!-- ── Для гостей (открыто всем): меню и «Состав и аллергены», RU/EN ── -->
 <main class="wrap" id="viewBar">
   <header>
-    <p class="mark">Бар «Мечты»</p>
-    <h1>Коктейльная<br>карта</h1>
-    <p class="lede">Коктейли, премиксы, шоты и полуфабрикаты собственного производства: состав, аллергены и срок годности.</p>
-
-    <dl class="meta">
-      <div>
-        <dt>Даты партии</dt>
-        <dd>Указаны на ярлыке каждой ёмкости</dd>
+    <div class="ghead">
+      <p class="mark" id="gMark">Бар «Мечты»</p>
+      <div class="lang" id="lang" role="group" aria-label="Язык">
+        <button type="button" data-l="ru" aria-pressed="true">RU</button>
+        <button type="button" data-l="en" aria-pressed="false">EN</button>
       </div>
-    </dl>
+    </div>
+    <h1 id="gTitle">Меню</h1>
+    <p class="lede" id="gLede">Коктейли, вино, крепкое, пиво, безалкогольные напитки, кофе и чай.</p>
+    <div class="modes gtabs" id="gTabs" role="group" aria-label="Раздел">
+      <button type="button" data-p="menu" aria-pressed="true">Меню</button>
+      <button type="button" data-p="card" aria-pressed="false">Состав и аллергены</button>
+    </div>
   </header>
 
-  <div class="controls">
-    <input id="q" type="search" placeholder="Поиск по названию или ингредиенту" autocomplete="off" aria-label="Поиск по названию или ингредиенту">
-    <div class="chips" id="chips" role="group" aria-label="Фильтр по разделам"></div>
+  <div id="pMenu">
+    <div class="controls">
+      <input id="gq" type="search" placeholder="Поиск по меню" autocomplete="off" aria-label="Поиск по меню">
+      <div class="chips" id="mchips" role="group" aria-label="Фильтр по разделам"></div>
+    </div>
+    <div id="mout"></div>
   </div>
 
-  <div id="out"></div>
+  <div id="pCard" hidden>
+    <dl class="meta">
+      <div>
+        <dt id="gBatch">Даты партии</dt>
+        <dd id="gBatchDd">Указаны на ярлыке каждой ёмкости</dd>
+      </div>
+    </dl>
+
+    <div class="controls">
+      <input id="q" type="search" placeholder="Поиск по названию или ингредиенту" autocomplete="off" aria-label="Поиск по названию или ингредиенту">
+      <div class="chips" id="chips" role="group" aria-label="Фильтр по разделам"></div>
+    </div>
+
+    <div id="out"></div>
+  </div>
 
   <footer>
-    <span>Технологические карты хранятся на производстве</span>
+    <span id="gFoot">Не является публичной офертой и носит рекламный характер.</span>
   </footer>
 </main>
 
@@ -442,6 +462,7 @@
 
 <script src="js/core.js" defer></script>
 <script src="js/data.js" defer></script>
+<script src="js/menu.js" defer></script>
 <script src="js/card.js" defer></script>
 <script src="js/auth.js" defer></script>
 <script src="js/ttk.js" defer></script>
