@@ -36,11 +36,11 @@ function mgrInit(){
   }
   mgrKindDraw();
   mgrTabDraw();
-  if (mgrTab === "ref") refLoad(); else mgrLoad();            // каждый раз при входе в раздел — свежие данные
+  mgrTabLoad();                                               // каждый раз при входе в раздел — свежие данные
 }
 /* ключ истёк или пароль сменили — снова форма входа */
 function mgrExpired(){
-  mgrs(MGR, null); mgrData = null; refRows = null;
+  mgrs(MGR, null); mgrData = null; refRows = null; ordData = null;
   $("mgrMsg").textContent = "Вход менеджера истёк или пароль сменили — войдите снова.";
   mgrInit();
 }
@@ -73,8 +73,8 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1;
-  $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = "";
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null;
+  $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
     fetch(ENDPOINT, {method: "POST", keepalive: true, headers: {"Content-Type": "text/plain;charset=utf-8"},
       body: JSON.stringify({token: TOKEN, mgr: "out", mk: k.mk})}).catch(() => {});
@@ -214,18 +214,20 @@ $("mgrCopy").addEventListener("click", async () => {
 });
 
 /* ── вкладки менеджера ── */
-let mgrTab = mgrj("mechty-mgr-tab", "sum") === "ref" ? "ref" : "sum";
+let mgrTab = ["sum", "ord", "ref"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
 function mgrTabDraw(){
   document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
   $("mgrSum").hidden = mgrTab !== "sum";
+  $("mgrOrd").hidden = mgrTab !== "ord";
   $("mgrRef").hidden = mgrTab !== "ref";
 }
+const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrLoad();
 $("mgrTabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-t]");
   if (!b || b.dataset.t === mgrTab) return;
   mgrTab = b.dataset.t; mgrs("mechty-mgr-tab", mgrTab);
   buzz(8); mgrTabDraw();
-  if (mgrTab === "ref") refLoad(); else mgrLoad();
+  mgrTabLoad();
 });
 
 /* ── справочник позиций ──
@@ -356,3 +358,110 @@ $("mgrRf").addEventListener("click", e => {
   refF = b.dataset.f; refOpen = -1; buzz(8); refDraw();
 });
 $("mgrRwarn").addEventListener("click", e => { if (e.target.id === "refRetry") refLoad(); });
+
+/* ── автозаявка ──
+   строка с сервера: {sec, n, u, code, tara, norm, sup, q — остаток или null, from: "d" | "m", date — ГГГГ-ММ-ДД} */
+let ordData = null, ordOff = new Set();
+const ORD_FROM = {d: "ежедн.", m: "месячн."};
+const ordKey = r => r.sec + "|" + r.n;
+/* сколько заказать: целой тарой, если она задана */
+function ordLine(r){
+  const need = r.norm - (r.q || 0);
+  if (!(need > 1e-9)) return null;
+  const u = String(r.u || "").trim().toLowerCase();
+  if (r.tara > 0){
+    const k = Math.ceil(need / r.tara - 1e-9);
+    const w = u === "шт" ? (r.tara === 1 ? "шт" : "уп.") : u === "кг" ? "уп." : "бут.";
+    return {k, text: k + " " + w + (r.tara !== 1 ? " по " + mgrNum(r.tara) + (u === "литр" || u === "л" ? " л" : u === "кг" ? " кг" : u === "шт" ? " шт" : "") : "")};
+  }
+  return {k: need, text: mgrNum(Math.ceil(need * 10 - 1e-9) / 10) + (u ? " " + u : "")};
+}
+async function ordLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  $("mgrOwarn").textContent = "";
+  if (!ordData) $("mgrOlist").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
+  const d = await api({mgr: "order", mk});
+  if (d.error === "mgr") return mgrExpired();
+  if (!d.ok){
+    if (!ordData) $("mgrOlist").innerHTML = "";
+    $("mgrOwarn").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)."
+      : 'Нет связи с таблицей. <button type="button" class="link" id="ordRetry">Повторить</button>';
+    return;
+  }
+  ordData = d;
+  ordDraw();
+}
+function ordGroups(){
+  const g = {}, none = [];
+  let ok = 0;
+  for (const r of ordData.rows){
+    if (r.q == null){ none.push(r); continue; }
+    const l = ordLine(r);
+    if (!l){ ok++; continue; }
+    const s = r.sup || "Без поставщика";
+    (g[s] = g[s] || []).push(Object.assign({l}, r));
+  }
+  const sups = Object.keys(g).sort((a, b) => (a === "Без поставщика") - (b === "Без поставщика") || a.localeCompare(b, "ru"));
+  return {g, sups, none, ok};
+}
+function ordDraw(){
+  const d = ordData, m = d.src.m, dd = d.src.d, src = [];
+  if (dd) src.push("ежедневная ревизия " + (dd.date ? mgrRu(dd.date) : "") + (dd.name ? " (" + esc(dd.name) + ")" : "") + " — " + mgrPl(dd.n, "позиция", "позиции", "позиций"));
+  if (m) src.push("месячная" + (m.title ? " «" + esc(m.title) + "»" : "") + (m.date ? " от " + mgrRu(m.date) : "") + (m.open ? " (идёт новая — взята прошлая)" : ""));
+  $("mgrOsrc").innerHTML = src.length ? "Остатки: " + src.join(" · ") : "Ревизий ещё нет — остатков нет.";
+  $("mgrOwarn").textContent = dd && dd.miss.length ? "Из ежедневной ревизии не нашлись в справочнике (назовите их так же, как в бланке месячной): " + dd.miss.join(", ") + "." : "";
+  if (!d.rows.length){
+    $("mgrOlist").innerHTML = '<p class="empty">Норма не задана ни у одной позиции. Заполните «Норму» и «Тару» в <button type="button" class="link" data-tab="ref">справочнике</button> — заявка посчитается сама.</p>';
+    $("mgrOcopy").disabled = true;
+    return;
+  }
+  const G = ordGroups();
+  const line = r => '<li class="' + (ordOff.has(ordKey(r)) ? "" : "on") + '"><label class="row1"><span><span class="ordn">' + esc(r.n) + '</span>' +
+    '<small class="mgrwhy">остаток ' + mgrNum(r.q) + ' · норма ' + mgrNum(r.norm) + (r.from ? ' · ' + ORD_FROM[r.from] + (r.date && r.date !== "0000-00-00" ? " " + mgrRu(r.date).slice(0, 5) : "") : "") + '</small></span>' +
+    '<b class="ordq">' + esc(r.l.text) + '</b><input type="checkbox" data-k="' + esc(ordKey(r)) + '"' + (ordOff.has(ordKey(r)) ? "" : " checked") + ' aria-label="' + esc(r.n) + '"></label></li>';
+  let html = '<p class="mgrsum">К заказу <b>' + mgrPl(G.sups.reduce((a, s) => a + G.g[s].length, 0), "позиция", "позиции", "позиций") + '</b> · в норме ' + G.ok +
+    (d.nonorm ? ' · без нормы ' + d.nonorm + ' (<button type="button" class="link" data-tab="ref">справочник</button>)' : "") + '</p>';
+  html += G.sups.map(s => '<div class="result tcard mgrt"><div class="tname"><em><button type="button" class="link" data-copy="' + esc(s) + '">Скопировать</button></em><h3>' + esc(s) + '</h3></div>' +
+    '<ul class="olist ordl">' + G.g[s].map(line).join("") + '</ul></div>').join("");
+  if (G.none.length) html += '<div class="result tcard mgrt"><div class="tname"><em>не посчитаны в ревизиях</em><h3>Нет остатка</h3></div><ul class="olist">' +
+    G.none.map(r => '<li><div class="row1"><span>' + esc(r.n) + '<small class="mgrwhy">норма ' + mgrNum(r.norm) + (r.sup ? " · " + esc(r.sup) : "") + '</small></span></div></li>').join("") + '</ul></div>';
+  if (!G.sups.length) html += '<p class="empty">Всё в норме — заказывать нечего.</p>';
+  $("mgrOlist").innerHTML = html;
+  $("mgrOcopy").disabled = !G.sups.length;
+}
+function ordText(only){
+  const G = ordGroups(), out = [];
+  for (const s of G.sups){
+    if (only && s !== only) continue;
+    const ls = G.g[s].filter(r => !ordOff.has(ordKey(r)));
+    if (!ls.length) continue;
+    out.push(s + ":", ...ls.map(r => "— " + r.n + " — " + r.l.text), "");
+  }
+  return out.join("\n").trim();
+}
+async function ordCopy(btn, only){
+  const t = ordText(only);
+  if (!t) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch (e) {}
+  const was = btn.textContent;
+  btn.textContent = ok ? "Скопировано ✓" : "Не скопировалось";
+  buzz(ok ? 14 : 8);
+  setTimeout(() => { btn.textContent = was; }, 1800);
+}
+$("mgrOlist").addEventListener("change", e => {
+  const c = e.target.closest("input[type=checkbox][data-k]");
+  if (!c) return;
+  if (c.checked) ordOff.delete(c.dataset.k); else ordOff.add(c.dataset.k);
+  c.closest("li").classList.toggle("on", c.checked);
+  buzz(8);
+});
+$("mgrOlist").addEventListener("click", e => {
+  const b = e.target.closest("button[data-copy]");
+  if (b) return ordCopy(b, b.dataset.copy);
+  const t = e.target.closest("button[data-tab]");
+  if (t){ mgrTab = t.dataset.tab; mgrs("mechty-mgr-tab", mgrTab); mgrTabDraw(); mgrTabLoad(); }
+});
+$("mgrOcopy").addEventListener("click", () => ordCopy($("mgrOcopy")));
+$("mgrOwarn").addEventListener("click", e => { if (e.target.id === "ordRetry") ordLoad(); });

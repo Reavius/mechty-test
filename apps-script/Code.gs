@@ -1277,6 +1277,7 @@ function manager(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   if (p.mgr === "wo") return mgrWo(p);
   if (p.mgr === "ref") return mgrRef();
+  if (p.mgr === "order") return mgrOrder();
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1390,6 +1391,63 @@ function mgrRefSet(p) {
     const r = refVals(sh.getRange(i + 2, 1, 1, REF_HEAD.length).getValues())[0];
     return { ok: true, row: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [1]) };
   } finally { lock.releaseLock(); }
+}
+
+/* ── Автозаявка (бар-менеджер) ──
+   К заказу = норма − последний остаток, по позициям справочника с нормой. Остаток — из той ревизии, что свежее:
+   ежедневной (лист «Итог», последний законченный пересчёт; позиции сопоставляются по названию) или месячной
+   (последняя закрытая; пока месячная идёт — прошлая). Округление до целой тары и группировку по поставщикам делает сайт. */
+const dmy = s => { const m = String(s || "").match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+const nameKey = s => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+
+function mgrOrder() {
+  const ref = mgrRef();
+  if (!ref.ok) return ref;
+  const out = { ok: true, src: { m: null, d: null }, rows: [], nonorm: 0 };
+  const stock = {};                                                    // ключ справочника → {q, from, date}
+  const put = (k, q, from, date) => { const s = stock[k]; if (!s || date > s.date) stock[k] = { q: q, from: from, date: date }; };
+
+  /* месячная: последняя закрытая (идёт — прошлая) */
+  const ms = mrevState(true);
+  if (ms && ms.block) {
+    const open = ms.block.open, date = open ? "" : dmy(ms.block.date);
+    out.src.m = { title: open ? ms.prev || "" : ms.block.title, date: date, open: open };
+    let sec = "";
+    ms.rows.forEach(x => {
+      if (x.t === "h" || x.t === "s") { sec = x.n; return; }
+      const q = open ? x.p : x.tot;
+      if (q != null) put(refKey(sec, x.n), q, "m", date || "0000-00-00");
+    });
+  }
+
+  /* ежедневная: последний законченный пересчёт листа «Итог» */
+  try {
+    const ts = revTotal(revBook()), open = revOpen(), col = open ? open.tc - 1 : ts.getLastColumn(), items = revPositions(ts);
+    if (col >= 2 && items.length) {
+      const hd = ts.getRange(1, col, 2, 1).getDisplayValues(), date = dmy(hd[0][0]);
+      const vals = ts.getRange(3, col, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
+      const byName = {};                                               // название → ключ справочника (только однозначные)
+      ref.rows.forEach(r => { const k = nameKey(r[1]); byName[k] = k in byName ? null : refKey(r[0], r[1]); });
+      const miss = [];
+      let n = 0;
+      items.forEach(x => {
+        const v = vals[x.row - 3], k = byName[nameKey(x.n)];
+        if (!k) { miss.push(x.n); return; }
+        if (v === "" || v == null) return;
+        n++; put(k, num(v), "d", date || "0000-00-00");
+      });
+      out.src.d = { date: date, name: String(hd[1][0] || ""), n: n, miss: miss };
+    }
+  } catch (e) { out.src.d = null; }
+
+  ref.rows.forEach(r => {
+    const norm = num(String(r[5]).replace(",", "."));
+    if (!String(r[5]).trim() || !(norm > 0)) { out.nonorm++; return; }
+    const s = stock[refKey(r[0], r[1])] || null;
+    out.rows.push({ sec: r[0], n: r[1], u: r[2], code: r[3], tara: num(String(r[4]).replace(",", ".")), norm: norm,
+      sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "" });
+  });
+  return out;
 }
 
 /* ── Ежемесячная копия таблиц ──

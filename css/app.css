@@ -670,3 +670,12 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .refbtns .wogo{flex:1;margin-top:12px}
 .refbtns .link{margin-top:12px}
 .refed .label{letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mgrtabs{grid-template-columns:repeat(3,1fr)}
+.ordl .row1{cursor:pointer}
+.ordl .row1 span{font-weight:600}
+.ordq{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted);font-size:13.5px}
+.ordl li.on .ordq{color:var(--accent)}
+.ordl li:not(.on) span{color:var(--muted)}
+.mgrt .tname em .link{font-size:11px;letter-spacing:.11em;text-transform:uppercase}
+.mgrt .row1 small.mgrwhy{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
+.ordl li:not(.on) .ordn{text-decoration:line-through}
