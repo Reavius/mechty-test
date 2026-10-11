@@ -413,7 +413,13 @@
     <div id="mgrBox" hidden>
       <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
         <button type="button" data-t="sum" aria-pressed="true">Сводка списаний</button>
+        <button type="button" data-t="use" aria-pressed="false">Расход</button>
+        <button type="button" data-t="sal" aria-pressed="false">Продажи</button>
+        <button type="button" data-t="ord" aria-pressed="false">Автозаявка</button>
+        <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
+        <button type="button" data-t="pub" aria-pressed="false">Гостям</button>
+        <button type="button" data-t="rep" aria-pressed="false">Отчёт</button>
       </div>
       <div id="mgrSum">
       <div class="result tcard wo">
@@ -439,6 +445,112 @@
       </div>
       <div id="mgrOut"></div>
       <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
+      </div>
+
+      <div id="mgrUse" hidden>
+        <p class="wnhint mgrrhint">Расход между двумя ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него объяснено актами.
+          Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов; у ежедневной — по тем же дням недели,
+          если истории хватает). Подсвечивается то, что заметно выше или ниже обычного, и остаток, выросший без прихода.</p>
+        <div class="modes mgrkind" id="useKind" role="group" aria-label="Какая ревизия">
+          <button type="button" data-k="d" aria-pressed="true">Ежедневная</button>
+          <button type="button" data-k="m" aria-pressed="false">Месячная</button>
+        </div>
+        <div class="quick" id="useSens" aria-label="Чувствительность">
+          <button type="button" data-s="0.3" aria-pressed="false">±30%</button>
+          <button type="button" data-s="0.5" aria-pressed="true">±50%</button>
+          <button type="button" data-s="1" aria-pressed="false">±100%</button>
+        </div>
+        <p class="mgrsum" id="useSum"></p>
+        <p class="warn" id="useWarn" role="status"></p>
+        <div id="useList"></div>
+      </div>
+
+      <div id="mgrSal" hidden>
+        <p class="wnhint mgrrhint">Продажи R-Keeper против ревизии: сколько каждой позиции <b>должно было уйти</b> по проданным блюдам и сколько
+          <b>ушло на самом деле</b> (было + приход − стало − списания) — разница в единицах и в тенге (по цене закупки из справочника).
+          Выберите две ревизии, выгрузите из R-Keeper «продажи по блюдам» за период между ними (Excel или CSV) и загрузите сюда.
+          Расход на блюдо сайт предложит сам — по техкартам и меню; подтвердите один раз, дальше он запомнится (лист «Расход на блюдо»).</p>
+        <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Период</h3></div><div class="wobody">
+          <div class="modes mgrkind" id="salKind" role="group" aria-label="Какая ревизия">
+            <button type="button" data-k="m" aria-pressed="true">Месячная</button>
+            <button type="button" data-k="d" aria-pressed="false">Ежедневная</button>
+          </div>
+          <div class="wo2 mgrd">
+            <div><label class="label" for="salFrom">С ревизии</label><select id="salFrom"></select></div>
+            <div><label class="label" for="salTo">По ревизию</label><select id="salTo"></select></div>
+          </div>
+          <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <p class="warn" id="salWarn" role="status"></p>
+        </div></div>
+        <div id="salDish"></div>
+        <div id="salRes"></div>
+        <datalist id="salRefs"></datalist>
+      </div>
+
+      <div id="mgrOrd" hidden>
+        <p class="wnhint mgrrhint">К заказу = <b>норма − остаток</b> по позициям справочника с нормой, с округлением до целой тары.
+          Остаток — из самой свежей ревизии: ежедневной или месячной; приход после неё прибавляется. Снимите галочку с того, что заказывать не нужно.</p>
+        <p class="mgrsum" id="mgrOsrc"></p>
+        <p class="warn" id="mgrOwarn" role="status"></p>
+        <div id="mgrOlist"></div>
+        <p class="mgrfoot"><button type="button" class="link" id="mgrOcopy" disabled>Скопировать заявку</button></p>
+      </div>
+
+      <div id="mgrInc" hidden>
+        <p class="wnhint mgrrhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
+          и сопоставит товары со справочником: по коду R-Keeper, по названию, которое уже встречалось, или подскажет похожее — проверьте.
+          Второй раз то же сопоставление подтверждать не нужно. Старый .xls откройте в Excel и сохраните как «Книга Excel (.xlsx)».</p>
+        <label class="wogo incfile">Загрузить накладные (Excel / CSV)<input type="file" id="incFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+        <p class="warn" id="incWarn" role="status"></p>
+        <div id="incImp" hidden></div>
+        <datalist id="incRefs"></datalist>
+        <div class="quick" id="incQuick">
+          <button type="button" data-r="d30" aria-pressed="true">30 дней</button>
+          <button type="button" data-r="m" aria-pressed="false">Этот месяц</button>
+          <button type="button" data-r="pm" aria-pressed="false">Прошлый месяц</button>
+        </div>
+        <p class="mgrsum" id="incSum"></p>
+        <div id="incList"></div>
+      </div>
+
+      <div id="mgrPub" hidden>
+        <div id="pubSeed" hidden>
+          <p class="wnhint mgrrhint">Сейчас меню для гостей и «Состав и аллергены» берутся из файлов сайта — менять их может только разработчик.
+            Перенесите их в таблицу: появятся листы «Меню», «Карта» и «Карта разделы» в таблице ревизии, и дальше вы правите их сами —
+            здесь или прямо в таблице. Гости увидят то же, что сейчас.</p>
+          <button type="button" class="wogo" id="pubSeedGo">Перенести меню и состав в таблицу</button>
+          <p class="warn" id="pubSeedMsg" role="status"></p>
+        </div>
+        <div id="pubEd" hidden>
+          <div class="modes mgrkind" id="pubMode" role="group" aria-label="Что править">
+            <button type="button" data-m="menu" aria-pressed="true">Меню</button>
+            <button type="button" data-m="card" aria-pressed="false">Состав</button>
+            <button type="button" data-m="price" aria-pressed="false">Цены R-Keeper</button>
+          </div>
+          <p class="wnhint mgrrhint" id="pubHint"></p>
+          <input id="pubQ" class="tq" type="search" placeholder="Поиск" autocomplete="off" aria-label="Поиск">
+          <label class="wogo incfile" id="pubFileL" hidden>Загрузить прейскурант R-Keeper (Excel / CSV)<input type="file" id="pubFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <p class="warn" id="pubWarn" role="status"></p>
+          <div id="pubList"></div>
+          <datalist id="pubChs"></datalist><datalist id="pubSecs"></datalist>
+        </div>
+      </div>
+
+      <div id="mgrRep" hidden>
+        <p class="wnhint mgrrhint">Каждый понедельник в 9:00 — письмо за прошлую неделю: странности последней ревизии, списания и проработки,
+          приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — как оно выглядит.</p>
+        <div class="result tcard wo"><div class="tname"><em id="repAuto"></em><h3>Письмо</h3></div><div class="wobody">
+          <label class="label" for="repTo">Кому (через запятую; пусто — владельцу таблицы)</label>
+          <input id="repTo" type="text" inputmode="email" autocomplete="off" placeholder="manager@example.com">
+          <div class="refbtns"><button type="button" class="wogo" id="repSave">Сохранить адреса</button><button type="button" class="link" id="repToggle"></button></div>
+          <p class="warn" id="repMsg" role="status"></p>
+        </div></div>
+        <div class="quick" id="repQuick">
+          <button type="button" data-r="pw" aria-pressed="true">Прошлая неделя</button>
+          <button type="button" data-r="tw" aria-pressed="false">Эта неделя</button>
+        </div>
+        <div class="repview" id="repView"></div>
+        <p class="mgrfoot"><button type="button" class="link" id="repSend" disabled>Отправить это письмо сейчас</button></p>
       </div>
 
       <div id="mgrRef" hidden>
@@ -536,6 +648,7 @@
 <script src="js/mrev.js" defer></script>
 <script src="js/order.js" defer></script>
 <script src="js/open.js" defer></script>
+<script src="js/xlsx.js" defer></script>
 <script src="js/mgr.js" defer></script>
 <script src="js/calc.js" defer></script>
 <script src="js/swipe.js" defer></script>

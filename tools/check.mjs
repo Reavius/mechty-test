@@ -87,7 +87,7 @@ ok(!strays.length, "значки этикеток привязаны к суще
 {
   const el = new Proxy({}, { get: (o, k) => k in o ? o[k] : (k === "value" ? "" : () => {}), set: (o, k, v) => { o[k] = v; return true; } });
   const ctx = vm.createContext({ data: pub, $: () => el, esc: String, phwh: () => "", buzz() {}, requestAnimationFrame() {},
-    document: { documentElement: {}, querySelectorAll: () => [] }, location: { search: "", hash: "", pathname: "/" }, history: {},
+    document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {}, createElement: () => el, head: el }, location: { search: "", hash: "", pathname: "/" }, history: {},
     navigator: { languages: ["en"] }, window: {}, localStorage: { getItem: () => null, setItem() {} }, URLSearchParams });
   let M = null;
   try { vm.runInContext(rd("js/menu.js"), ctx); M = vm.runInContext("({MENU, CARD_EN, mName, mDesc, cardItem})", ctx); } catch (e) { console.log("  js/menu.js: " + e.message); }

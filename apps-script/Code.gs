@@ -40,7 +40,9 @@ function doGet(e) {
   const cb = /^[A-Za-z_$][\w$]{0,63}$/.test(p.callback || "") ? p.callback : "";
   let out;
 
-  if (!tokenOk(p.token)) {
+  if (p.pub) {                                                           // меню и состав для гостей — без пароля
+    try { out = pubGet(); } catch (err) { console.error("pub: " + err); out = { error: "net" }; }
+  } else if (!tokenOk(p.token)) {
     out = { error: "denied" };
   } else if (p.rev) {
     try { out = revision(p); } catch (err) { out = { error: String(err && err.message || err) }; }
@@ -164,7 +166,12 @@ function checklist(p) {
   const lock = lockOrBusy(10000);
   try {
     const st = ckState();
-    if (String(p.on) === "1") { if (!st.s[id]) st.s[id] = { w: who, t: Date.now() }; }
+    if (String(p.on) === "1") {
+      if (!st.s[id]) {
+        st.s[id] = { w: who, t: Date.now() };
+        if (id === "fin") try { openLog(st.day, who, p.left); } catch (e) { console.error("openLog: " + e); }   // для еженедельного отчёта
+      }
+    }
     else delete st.s[id];
     PropertiesService.getScriptProperties().setProperty(CK_KEY, JSON.stringify(st));
     return { ok: true, day: st.day, s: st.s };
@@ -746,6 +753,12 @@ function doPost(e) {
     if (p.mgr === "login") return jsonOut(mgrLogin(p));
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
+    if (p.mgr === "in") return jsonOut(mgrIn(p));
+    if (p.mgr === "pubseed") return jsonOut(mgrPubSeed(p));
+    if (p.mgr === "pubset") return jsonOut(mgrPubSet(p));
+    if (p.mgr === "prices") return jsonOut(mgrPrices(p));
+    if (/^report(set|send|auto)$/.test(p.mgr || "")) return jsonOut(mgrReportPost(p));
+    if (p.mgr === "dishset") return jsonOut(mgrDishSet(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1277,6 +1290,12 @@ function manager(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   if (p.mgr === "wo") return mgrWo(p);
   if (p.mgr === "ref") return mgrRef();
+  if (p.mgr === "order") return mgrOrder();
+  if (p.mgr === "inlist") return mgrInList(p);
+  if (p.mgr === "usage") return mgrUsage(p);
+  if (p.mgr === "pubraw") return mgrPubRaw();
+  if (p.mgr === "report") return mgrReport(p);
+  if (p.mgr === "dishes") return mgrDishes();
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1307,12 +1326,15 @@ function mgrWo(p) {
    Код R-Keeper — из столбца A бланка, если там число. Тара — объём или вес одной бутылки / упаковки в единицах
    позиции (0,7 — бутылка 0,7 л); норма — сколько держать, в тех же единицах. */
 const REF = "Справочник";
-const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка"];
+const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка",
+  "Название в R-Keeper", "Коэф. R-Keeper"];                               // J, K — запоминает загрузка прихода
 const REF_F = ["u", "code", "tara", "norm", "sup", "price", "note"];      // столбцы C…I
 const refKey = (sec, n) => [sec, n].map(x => String(x).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ")).join("|");
 
 function refSheet(create) {
   const ss = revBook(), sh = ss.getSheetByName(REF);
+  if (sh && create && sh.getLastColumn() < REF_HEAD.length)           // лист из прошлой версии — дописать шапку J, K
+    sh.getRange(1, 1, 1, REF_HEAD.length).setValues([REF_HEAD]).setFontWeight("bold");
   if (sh || !create) return sh;
   const nsh = ss.insertSheet(REF);
   nsh.getRange(1, 1, 1, REF_HEAD.length).setValues([REF_HEAD]).setFontWeight("bold");
@@ -1352,6 +1374,9 @@ function refSync() {
 function refVals(v) {
   return v.map(r => r.map(x => typeof x === "number" ? String(Math.round(x * 1000) / 1000).replace(".", ",") : x instanceof Date ? "" : String(x)));
 }
+/* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке, название R-Keeper, коэф.] */
+const refRow = (r, inBlank) => [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()),
+  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim()]);
 /* справочник для сайта: по порядку бланка; строки, которых в бланке уже нет, — в конце с пометкой */
 function mgrRef() {
   const lock = lockOrBusy(15000);
@@ -1363,7 +1388,7 @@ function mgrRef() {
   blank.forEach((x, i) => { const k = refKey(x.sec, x.n); if (!(k in order)) order[k] = i; });
   const rows = v.filter(r => String(r[1]).trim()).map(r => {
     const k = refKey(r[0], r[1]);
-    return { o: k in order ? order[k] : 1e6, r: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [k in order ? 1 : 0]) };
+    return { o: k in order ? order[k] : 1e6, r: refRow(r, k in order) };
   });
   rows.sort((a, b) => a.o - b.o);
   return { ok: true, head: REF_HEAD, rows: rows.map(x => x.r) };
@@ -1388,8 +1413,659 @@ function mgrRefSet(p) {
     sh.getRange(i + 2, 3, 1, REF_F.length).setValues([REF_F.map(k => vals[k])]);
     SpreadsheetApp.flush();
     const r = refVals(sh.getRange(i + 2, 1, 1, REF_HEAD.length).getValues())[0];
-    return { ok: true, row: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [1]) };
+    return { ok: true, row: refRow(r, true) };
   } finally { lock.releaseLock(); }
+}
+
+/* ── Автозаявка (бар-менеджер) ──
+   К заказу = норма − последний остаток, по позициям справочника с нормой. Остаток — из той ревизии, что свежее:
+   ежедневной (лист «Итог», последний законченный пересчёт; позиции сопоставляются по названию) или месячной
+   (последняя закрытая; пока месячная идёт — прошлая). Приход из «Журнала прихода» после даты этой ревизии прибавляется
+   к остатку. Округление до целой тары и группировку по поставщикам делает сайт. */
+const dmy = s => { const m = String(s || "").match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+const nameKey = s => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+
+function mgrOrder() {
+  const ref = mgrRef();
+  if (!ref.ok) return ref;
+  const out = { ok: true, src: { m: null, d: null }, rows: [], nonorm: 0 };
+  const stock = {};                                                    // ключ справочника → {q, from, date}
+  const put = (k, q, from, date) => { const s = stock[k]; if (!s || date > s.date) stock[k] = { q: q, from: from, date: date }; };
+
+  /* месячная: последняя закрытая (идёт — прошлая) */
+  const ms = mrevState(true);
+  if (ms && ms.block) {
+    const open = ms.block.open, date = open ? "" : dmy(ms.block.date);
+    out.src.m = { title: open ? ms.prev || "" : ms.block.title, date: date, open: open };
+    let sec = "";
+    ms.rows.forEach(x => {
+      if (x.t === "h" || x.t === "s") { sec = x.n; return; }
+      const q = open ? x.p : x.tot;
+      if (q != null) put(refKey(sec, x.n), q, "m", date || "0000-00-00");
+    });
+  }
+
+  /* ежедневная: последний законченный пересчёт листа «Итог» */
+  try {
+    const ts = revTotal(revBook()), open = revOpen(), col = open ? open.tc - 1 : ts.getLastColumn(), items = revPositions(ts);
+    if (col >= 2 && items.length) {
+      const hd = ts.getRange(1, col, 2, 1).getDisplayValues(), date = dmy(hd[0][0]);
+      const vals = ts.getRange(3, col, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
+      const byName = {};                                               // название → ключ справочника (только однозначные)
+      ref.rows.forEach(r => { const k = nameKey(r[1]); byName[k] = k in byName ? null : refKey(r[0], r[1]); });
+      const miss = [];
+      let n = 0;
+      items.forEach(x => {
+        const v = vals[x.row - 3], k = byName[nameKey(x.n)];
+        if (!k) { miss.push(x.n); return; }
+        if (v === "" || v == null) return;
+        n++; put(k, num(v), "d", date || "0000-00-00");
+      });
+      out.src.d = { date: date, name: String(hd[1][0] || ""), n: n, miss: miss };
+    }
+  } catch (e) { out.src.d = null; }
+
+  const inc = inByKey();                                               // пришло после ревизии — тоже на баре
+  ref.rows.forEach(r => {
+    const norm = num(String(r[5]).replace(",", "."));
+    if (!String(r[5]).trim() || !(norm > 0)) { out.nonorm++; return; }
+    const s = stock[refKey(r[0], r[1])] || null;
+    const inq = s && s.date > "0000-00-00" ? (inc[refKey(r[0], r[1])] || []).filter(x => x.iso > s.date).reduce((a, x) => a + x.q, 0) : 0;
+    out.rows.push({ sec: r[0], n: r[1], u: r[2], code: r[3], tara: num(String(r[4]).replace(",", ".")), norm: norm,
+      sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "", inq: Math.round(inq * 1000) / 1000 });
+  });
+  return out;
+}
+
+/* ── Приход (бар-менеджер) ──
+   Накладные R-Keeper загружаются на сайте (Excel / CSV), сайт сопоставляет строки с позициями справочника и шлёт сюда.
+   Лист «Журнал прихода» в таблице ревизии: строка на строку накладной, количество — уже в единицах позиции
+   (кол-во R-Keeper × коэффициент). Одна и та же строка накладной второй раз не записывается (id).
+   В справочник запоминаются название и коэффициент R-Keeper (J, K), код — если пуст, цена закупки — за единицу позиции. */
+const IN_SHEET = "Журнал прихода";
+const IN_HEAD = ["Дата", "№ накладной", "Поставщик", "Раздел", "Позиция", "Кол-во", "Ед. изм.", "Цена за ед.", "Сумма",
+  "Код R-Keeper", "Название в R-Keeper", "Кол-во в R-Keeper", "Ед. R-Keeper", "Коэф.", "Загрузил", "Записано", "id"];
+
+function inSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(IN_SHEET);
+  if (sh || !create) return sh;
+  const nsh = ss.insertSheet(IN_SHEET);
+  nsh.getRange(1, 1, 1, IN_HEAD.length).setValues([IN_HEAD]).setFontWeight("bold");
+  nsh.setFrozenRows(1);
+  nsh.setColumnWidth(5, 220);
+  nsh.setColumnWidth(11, 220);
+  return nsh;
+}
+const ruDate = s => { const v = String(s || "").trim(), m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + "." + m[2] + "." + m[1] : /^\d{2}\.\d{2}\.\d{4}$/.test(v) ? v : ""; };
+
+/* запись прихода: {rows: [{date, no, sup, code, rkn, rku, rkq, price, sum, sec, n, k}], who} */
+function mgrIn(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const src = (Array.isArray(p.rows) ? p.rows : []).slice(0, 1000), who = clean(p.who, 80);
+  const rows = [];
+  for (const r of src) {
+    const date = ruDate(r.date), rkq = num(r.rkq), k = num(r.k), n = clean(r.n, 200);
+    if (!date || !(rkq > 0) || !(k > 0) || !n) return { error: "bad" };
+    rows.push({ date: date, no: clean(r.no, 40), sup: clean(r.sup, 120), code: clean(r.code, 40), rkn: clean(r.rkn, 200),
+      rku: clean(r.rku, 20), rkq: rkq, price: num(r.price), sum: num(r.sum), sec: clean(r.sec, 120), n: n, k: k });
+  }
+  if (!rows.length) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    const rs = refSheet(true), rl = rs.getLastRow();
+    const rv = rl >= 2 ? rs.getRange(2, 1, rl - 1, REF_HEAD.length).getValues() : [];
+    const at = {};
+    rv.forEach((r, i) => { at[refKey(r[0], r[1])] = i; });
+    const sh = inSheet(true), last = sh.getLastRow();
+    const ids = new Set(last >= 2 ? sh.getRange(2, IN_HEAD.length, last - 1, 1).getValues().map(r => String(r[0])) : []);
+    const stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm"), add = [], touched = {}, miss = [];
+    let dup = 0;
+    rows.forEach(r => {
+      const i = at[refKey(r.sec, r.n)];
+      if (i == null) { miss.push(r.n); return; }
+      const id = sha([r.date, r.no, r.sup, r.code, r.rkn, r.rkq, r.price].join("|")).slice(0, 20);
+      if (ids.has(id)) { dup++; return; }
+      ids.add(id);
+      const q = Math.round(r.rkq * r.k * 1000) / 1000, pu = r.price > 0 ? Math.round(r.price / r.k * 100) / 100 : "";
+      add.push([r.date, r.no, r.sup, rv[i][0], rv[i][1], q, rv[i][2], pu, r.sum || (r.price > 0 ? Math.round(r.price * r.rkq * 100) / 100 : ""),
+        r.code, r.rkn, r.rkq, r.rku, r.k, who, stamp, id]);
+      const ref = rv[i];                                                // справочник: запомнить, как эта позиция зовётся в R-Keeper
+      if (r.rkn) ref[9] = r.rkn;
+      ref[10] = r.k;
+      if (r.code && !String(ref[3]).trim()) ref[3] = r.code;
+      if (pu !== "") ref[7] = pu;
+      touched[i] = 1;
+    });
+    if (add.length) {
+      ensureRows(sh, last + add.length);
+      const top = last + 1;
+      sh.getRange(top, 1, add.length, 5).setNumberFormat("@");           // дата, №, поставщик, раздел, позиция — текстом
+      sh.getRange(top, 7, add.length, 1).setNumberFormat("@");
+      sh.getRange(top, 10, add.length, 2).setNumberFormat("@");
+      sh.getRange(top, 13, add.length, 1).setNumberFormat("@");
+      sh.getRange(top, 15, add.length, 3).setNumberFormat("@");
+      sh.getRange(top, 1, add.length, IN_HEAD.length).setValues(add);
+    }
+    Object.keys(touched).forEach(i => {
+      const r = rv[i];
+      rs.getRange(+i + 2, 4).setNumberFormat("@").setValue(r[3]);
+      rs.getRange(+i + 2, 8).setValue(r[7]);
+      rs.getRange(+i + 2, 10, 1, 2).setValues([[r[9], r[10]]]);
+    });
+    SpreadsheetApp.flush();
+    return { ok: true, added: add.length, dup: dup, miss: miss };
+  } finally { lock.releaseLock(); }
+}
+/* приход за период (ГГГГ-ММ-ДД): [дата, №, поставщик, раздел, позиция, кол-во, ед., цена за ед., сумма] */
+function mgrInList(p) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : "0000-00-00";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : "9999-99-99";
+  const sh = inSheet(false), last = sh ? sh.getLastRow() : 0, rows = [];
+  if (last >= 2) sh.getRange(2, 1, last - 1, 9).getValues().forEach(r => {
+    const d = dmy(r[0]);
+    if (!d || d < from || d > to) return;
+    rows.push([String(r[0]).trim(), String(r[1]), String(r[2]), String(r[3]), String(r[4]), num(r[5]), String(r[6]), r[7] === "" ? "" : num(r[7]), r[8] === "" ? "" : num(r[8])]);
+  });
+  return { ok: true, from: from, to: to, rows: rows };
+}
+/* приход по позициям: ключ справочника → [{iso, q}] */
+function inByKey() {
+  const sh = inSheet(false), last = sh ? sh.getLastRow() : 0, out = {};
+  if (last >= 2) sh.getRange(2, 1, last - 1, 6).getValues().forEach(r => {
+    const d = dmy(r[0]);
+    if (!d) return;
+    (out[refKey(r[3], r[4])] = out[refKey(r[3], r[4])] || []).push({ iso: d, q: num(r[5]) });
+  });
+  return out;
+}
+
+/* ── Расход и странности (бар-менеджер) ──
+   История пересчётов по позициям: ежедневная ревизия (лист «Итог», последние 60 законченных пересчётов) или месячная
+   (закрытые «Итоги» листа «Месячная ревизия», последние 24). К каждой позиции — приход («Журнал прихода») и
+   списания с проработками (журналы актов) в единицах позиции; расход, «обычный» расход и странности считает сайт. */
+const USE_D = 60, USE_M = 24;
+
+/* количество из акта — в единицах позиции; несовместимые единицы — null */
+function woConv(q, wu, pu) {
+  const w = String(wu || "").trim().toLowerCase(), u = String(pu || "").trim().toLowerCase();
+  const L = /^(л|литр)$/, KG = /^кг$/;
+  if (L.test(u)) return L.test(w) ? q : w === "мл" ? q / 1000 : null;
+  if (KG.test(u)) return KG.test(w) ? q : /^(г|гр)$/.test(w) ? q / 1000 : null;
+  if (u === "шт" || u === "") return w === "шт" || w === "бут" ? q : null;
+  return w === u ? q : null;
+}
+function mgrUsage(p) {
+  const kind = p.kind === "m" ? "m" : "d", ref = mgrRef();
+  if (!ref.ok) return ref;
+  const byName = {}, refU = {};
+  ref.rows.forEach(r => { const k = nameKey(r[1]), key = refKey(r[0], r[1]); byName[k] = k in byName ? null : key; refU[key] = r[2]; });
+  const val = v => v === "" || v == null || isNaN(num(v)) ? null : Math.round(num(v) * 1000) / 1000;
+  let cols = [], items = [];
+  if (kind === "d") {
+    const ts = revTotal(revBook()), open = revOpen(), last = open ? open.tc - 1 : ts.getLastColumn(), pos = revPositions(ts);
+    const first = Math.max(2, last - USE_D + 1);
+    if (last >= first && pos.length) {
+      const w = last - first + 1, hd = ts.getRange(1, first, 2, w).getDisplayValues();
+      const v = ts.getRange(3, first, pos[pos.length - 1].row - 2, w).getValues();
+      const ok = [];
+      for (let c = 0; c < w; c++) { const iso = dmy(hd[0][c]); if (iso) { ok.push(c); cols.push({ iso: iso, who: String(hd[1][c] || "") }); } }
+      items = pos.map(x => {
+        const key = byName[nameKey(x.n)] || "";
+        return { n: x.n, sec: "", key: key, u: key ? refU[key] : unitOf(x.n), v: ok.map(c => val(v[x.row - 3][c])) };
+      });
+    }
+  } else {
+    const sh = mrevSheet(true), b = mrevBlock();
+    if (sh && sh.getLastColumn() >= 4 && sh.getLastRow() >= 7) {
+      const lc = sh.getLastColumn(), h = sh.getRange(3, 1, 4, lc).getDisplayValues(), openId = b && b.open ? b.total : "";
+      let tc = [];
+      for (let c = 3; c < lc; c++) {
+        const id = String(h[1][c]).trim(), iso = dmy(h[3][c]);
+        if (String(h[2][c]).trim() === "Итог" && id && id !== openId && iso) tc.push({ c: c + 1, iso: iso, who: String(h[0][c]).trim() });
+      }
+      tc.sort((a, x) => a.iso.localeCompare(x.iso));
+      tc = tc.slice(-USE_M);
+      if (tc.length) {
+        const c0 = Math.min.apply(null, tc.map(x => x.c)), c1 = Math.max.apply(null, tc.map(x => x.c));
+        const v = sh.getRange(7, c0, sh.getLastRow() - 6, c1 - c0 + 1).getValues();
+        cols = tc.map(x => ({ iso: x.iso, who: x.who }));
+        let sec = "";
+        mrevRows(sh).forEach(x => {
+          if (x.t !== "i") { sec = x.n; return; }
+          const key = refKey(sec, x.n);
+          items.push({ n: x.n, sec: sec, key: key, u: key in refU ? refU[key] : x.u, v: tc.map(t => val(v[x.r - 7][t.c - c0])) });
+        });
+      }
+    }
+  }
+  /* приход и списания — только для позиций из справочника */
+  const inc = inByKey(), wo = {};
+  Object.keys(WO_KINDS).forEach(k => {
+    const sh = woSheet(k, false), last = sh ? sh.getLastRow() : 0;
+    if (last < 2) return;
+    sh.getRange(2, 1, last - 1, 5).getValues().forEach(r => {
+      const iso = dmy(r[0]), key = byName[nameKey(r[2])];
+      if (!iso || !key) return;
+      const q = woConv(num(r[4]), r[3], refU[key]);
+      if (q != null && q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000 });
+    });
+  });
+  items.forEach(x => { x.inc = x.key ? inc[x.key] || [] : []; x.wo = x.key ? wo[x.key] || [] : []; });
+  return { ok: true, kind: kind, cols: cols, items: items.filter(x => x.v.some(y => y != null)) };
+}
+
+/* ═════════════ Для гостей: меню и «Состав и аллергены» из таблицы ═════════════
+   Листы в таблице ревизии: «Меню» (строка — позиция меню, по порядку), «Карта» (позиции «Состава и аллергенов»)
+   и «Карта разделы». Создаются кнопкой «Перенести в таблицу» на сайте («Менеджер» → «Гостям») из того, что сейчас
+   в файлах сайта. Дальше правятся здесь или на сайте. Гости получают их без пароля (pub=1), ответ помнится 5 минут —
+   правка прямо в таблице видна гостям через 5 минут, правка с сайта — сразу. Пустое «Название EN» — гость
+   увидит русское. Пустое название или описание в меню у коктейля со ссылкой на карту — берутся из карты.
+   «Скрыть» = да — позиция не показывается, но остаётся в таблице. */
+const PUB_M = "Меню", PUB_C = "Карта", PUB_G = "Карта разделы", PUB_TTL = 300;
+const PUB_MH = ["Глава", "Глава EN", "Раздел", "Раздел EN", "Плитки", "Название", "Название EN", "Описание", "Описание EN",
+  "Объём", "Ед.", "Цена", "id в карте", "Код R-Keeper", "Скрыть", "uid"];
+const PUB_CH = ["Раздел", "id", "Название", "Название EN", "Состав для гостей", "Состав EN", "Полный состав (этикетка, через ;)",
+  "Аллергены", "Аллергены EN", "Объём подачи", "Фото", "Значок этикетки", "Название на этикетке", "Только этикетка", "Скрыть"];
+const PUB_GH = ["key", "Название", "Кратко", "Правило", "Срок", "Хранение", "Подача", "Без этикеток", "Название EN", "Кратко EN", "Правило EN"];
+const PUB_NOTES = {
+  "Плитки": "да — раздел показывается карточками с фото (коктейли)", "Ед.": "мл (пусто) или шт",
+  "id в карте": "id позиции в листе «Карта» — у позиции появится ссылка «Состав и аллергены», а пустые название и описание берутся оттуда",
+  "Код R-Keeper": "заполняется сам при загрузке цен из R-Keeper", "Скрыть": "да — не показывать гостям", "uid": "служебный, не менять",
+  "id": "латиницей, не менять — на него ведут QR-коды этикеток", "Полный состав (этикетка, через ;)": "как на этикетке: через точку с запятой",
+  "Аллергены": "«Не выявлены» или перечень", "Объём подачи": "мл — для разделов с подачей", "Фото": "photos/имя.webp",
+  "Значок этикетки": "имя значка, например i-pear", "Только этикетка": "да — только для этикеток, гостям не показывать"};
+const yes = v => /^(да|1|true|x|\+)$/i.test(String(v).trim());
+const TRL = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
+  п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya" };
+const pubId = n => String(n).toLowerCase().split("").map(c => c in TRL ? TRL[c] : c).join("").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "item";
+
+function pubSheet(name, head, create) {
+  const ss = revBook(), sh = ss.getSheetByName(name);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(name);
+  n.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight("bold");
+  head.forEach((h, i) => { if (PUB_NOTES[h]) n.getRange(1, i + 1).setNote(PUB_NOTES[h]); });
+  n.setFrozenRows(1);
+  return n;
+}
+function pubRows(sh, w) {
+  const last = sh ? sh.getLastRow() : 0;
+  return last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues().map(r => r.map(x => typeof x === "number" ? x : x instanceof Date ? "" : String(x).trim())) : [];
+}
+/* всё для гостей: меню, разделы и позиции карты (скрытые — без них) */
+function pubGet() {
+  const cache = CacheService.getScriptCache(), c = cache.get("pub");
+  if (c) return JSON.parse(c);
+  const ms = pubSheet(PUB_M, PUB_MH, false), cs = pubSheet(PUB_C, PUB_CH, false), gs = pubSheet(PUB_G, PUB_GH, false);
+  if (!ms && !cs) return { ok: true, none: 1 };
+  const menu = pubRows(ms, PUB_MH.length).filter(r => (r[5] || r[12]) && !yes(r[14])).map(r => r.slice(0, 14));
+  const ids = {}, items = pubRows(cs, PUB_CH.length).filter(r => r[2] && !yes(r[14])).map(r => {
+    let id = r[1] || pubId(r[2]);
+    while (ids[id]) id += "-2";
+    ids[id] = 1; r[1] = id;
+    return r.slice(0, 14);
+  });
+  const groups = pubRows(gs, PUB_GH.length).filter(r => r[0]);
+  const out = { ok: true, menu: menu, groups: groups, items: items };
+  out.v = sha(JSON.stringify(out)).slice(0, 12);
+  const j = JSON.stringify(out);
+  if (j.length < 95000) cache.put("pub", j, PUB_TTL);
+  return out;
+}
+const pubDrop = () => CacheService.getScriptCache().remove("pub");
+
+/* для редактора менеджера: всё, со скрытыми; строкам меню без uid и позициям без id — выдать (под блокировкой) */
+function mgrPubRaw() {
+  const ms = pubSheet(PUB_M, PUB_MH, false), cs = pubSheet(PUB_C, PUB_CH, false), gs = pubSheet(PUB_G, PUB_GH, false);
+  if (!ms && !cs) return { ok: true, none: 1 };
+  const lock = lockOrBusy(15000);
+  try {
+    const menu = pubRows(ms, PUB_MH.length), items = pubRows(cs, PUB_CH.length);
+    let fix = false;
+    menu.forEach(r => { if (!r[15] && (r[5] || r[12])) { r[15] = Utilities.getUuid().slice(0, 8); fix = true; } });
+    if (fix) ms.getRange(2, 16, menu.length, 1).setValues(menu.map(r => [r[15]]));
+    const ids = {};
+    let fixc = false;
+    items.forEach(r => { if (!r[2]) return; let id = r[1] || pubId(r[2]); while (ids[id] && ids[id] !== r) id += "-2"; if (id !== r[1]) { r[1] = id; fixc = true; } ids[id] = r; });
+    if (fixc) cs.getRange(2, 2, items.length, 1).setValues(items.map(r => [r[1]]));
+    if (fix || fixc) pubDrop();
+    return { ok: true, menu: menu, items: items, groups: pubRows(gs, PUB_GH.length) };
+  } finally { lock.releaseLock(); }
+}
+
+/* перенос из файлов сайта: {menu: [[…PUB_MH без uid]], items: [[…PUB_CH]], groups: [[…PUB_GH]]} — только если листов ещё нет */
+function mgrPubSeed(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const menu = Array.isArray(p.menu) ? p.menu.slice(0, 2000) : [], items = Array.isArray(p.items) ? p.items.slice(0, 1000) : [],
+    groups = Array.isArray(p.groups) ? p.groups.slice(0, 50) : [];
+  if (!menu.length || !items.length || !groups.length) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    if (pubSheet(PUB_M, PUB_MH, false) || pubSheet(PUB_C, PUB_CH, false)) return { error: "exists" };
+    const cell = (v, n) => typeof v === "number" ? v : clean(v, n || 300);
+    const put = (sh, rows, w) => {
+      if (!rows.length) return;
+      ensureRows(sh, rows.length + 1);
+      sh.getRange(2, 1, rows.length, w).setNumberFormat("@");
+      sh.getRange(2, 1, rows.length, w).setValues(rows.map(r => Array.from({ length: w }, (_, i) => cell(r[i] == null ? "" : r[i]))));
+    };
+    const ms = pubSheet(PUB_M, PUB_MH, true), cs = pubSheet(PUB_C, PUB_CH, true), gs = pubSheet(PUB_G, PUB_GH, true);
+    put(ms, menu.map(r => r.slice(0, 15).concat([Utilities.getUuid().slice(0, 8)])), PUB_MH.length);
+    ms.getRange(2, 12, menu.length, 1).setNumberFormat("General").setValues(menu.map(r => [typeof r[11] === "number" ? r[11] : cell(r[11], 30)]));
+    put(cs, items, PUB_CH.length);
+    put(gs, groups, PUB_GH.length);
+    SpreadsheetApp.flush();
+    pubDrop();
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+/* правка с сайта: {t: "m"|"c", act: "set"|"add"|"del", key: uid или id, after: uid/id, row: [...]} — лист переписывается целиком */
+function mgrPubSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const isM = p.t === "m", head = isM ? PUB_MH : PUB_CH, w = head.length, kc = isM ? 15 : 1;
+  const row = Array.isArray(p.row) ? Array.from({ length: w }, (_, i) => { const v = p.row[i]; return typeof v === "number" ? v : clean(v == null ? "" : v, 400); }) : null;
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = pubSheet(isM ? PUB_M : PUB_C, head, false);
+    if (!sh) return { error: "none" };
+    const rows = pubRows(sh, w), at = rows.findIndex(r => String(r[kc]) === String(p.key || "")), n0 = rows.length;
+    if (p.act === "del") { if (at < 0) return { error: "gone" }; rows.splice(at, 1); }
+    else if (p.act === "set") {
+      if (at < 0 || !row) return { error: at < 0 ? "gone" : "bad" };
+      row[kc] = rows[at][kc];                                            // uid / id не меняются
+      rows[at] = row;
+    } else if (p.act === "add") {
+      if (!row) return { error: "bad" };
+      if (isM) row[15] = Utilities.getUuid().slice(0, 8);
+      else {
+        let id = /^[a-z0-9-]{1,40}$/.test(row[1]) ? row[1] : pubId(row[2]);
+        while (rows.some(r => r[1] === id)) id += "-2";
+        row[1] = id;
+      }
+      const after = rows.findIndex(r => String(r[kc]) === String(p.after || ""));
+      rows.splice(after < 0 ? rows.length : after + 1, 0, row);
+    } else return { error: "action" };
+    if (rows.length) {
+      ensureRows(sh, rows.length + 1);
+      sh.getRange(2, 1, rows.length, w).setNumberFormat("@").setValues(rows);
+      if (isM) sh.getRange(2, 12, rows.length, 1).setNumberFormat("General").setValues(rows.map(r => [r[11]]));
+    }
+    if (n0 > rows.length) sh.getRange(rows.length + 2, 1, n0 - rows.length, w).setValues(Array.from({ length: n0 - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    pubDrop();
+    return { ok: true, key: p.act === "add" ? row[kc] : p.key };
+  } finally { lock.releaseLock(); }
+}
+/* цены из прейскуранта R-Keeper: {rows: [{uid, price, code}]} */
+function mgrPrices(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const up = (Array.isArray(p.rows) ? p.rows : []).slice(0, 2000).filter(r => r && r.uid && num(r.price) > 0);
+  if (!up.length) return { error: "bad" };
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = pubSheet(PUB_M, PUB_MH, false);
+    if (!sh) return { error: "none" };
+    const rows = pubRows(sh, PUB_MH.length), by = {};
+    rows.forEach((r, i) => { by[r[15]] = i; });
+    let n = 0;
+    up.forEach(u => {
+      const i = by[u.uid];
+      if (i == null) return;
+      rows[i][11] = Math.round(num(u.price) * 100) / 100;
+      if (u.code && !rows[i][13]) rows[i][13] = clean(u.code, 40);
+      n++;
+    });
+    if (n) {
+      sh.getRange(2, 12, rows.length, 1).setValues(rows.map(r => [r[11]]));
+      sh.getRange(2, 14, rows.length, 1).setNumberFormat("@").setValues(rows.map(r => [r[13]]));
+      SpreadsheetApp.flush();
+      pubDrop();
+    }
+    return { ok: true, n: n };
+  } finally { lock.releaseLock(); }
+}
+
+/* ── Продажи против ревизии (бар-менеджер) ──
+   Лист «Расход на блюдо» в таблице ревизии: сколько каждой позиции справочника уходит на одно блюдо R-Keeper
+   (строка — блюдо × позиция; у блюда без расхода — одна строка с позицией «—»). Заполняется на сайте
+   («Менеджер» → «Продажи»: подсказки из техкарт и меню, подтверждение) или прямо здесь. Отчёт о продажах и расчёт
+   разницы — на сайте, сюда не пишутся. */
+const DISH = "Расход на блюдо";
+const DISH_HEAD = ["Блюдо R-Keeper", "Код R-Keeper", "Раздел", "Позиция", "На 1 блюдо", "Ед.", "Как задано"];
+
+function dishSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(DISH);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(DISH);
+  n.getRange(1, 1, 1, DISH_HEAD.length).setValues([DISH_HEAD]).setFontWeight("bold");
+  n.getRange(1, 4).setNote("Позиция справочника; «—» — блюдо ничего не списывает (не учитывать)");
+  n.getRange(1, 5).setNote("В единицах позиции: литры, штуки, кг (40 мл = 0,04)");
+  n.setFrozenRows(1);
+  n.setColumnWidth(1, 220);
+  n.setColumnWidth(4, 220);
+  return n;
+}
+const dishKey = (name, code) => String(code || "").trim() ? "c:" + String(code).trim() : "n:" + nameKey(name);
+function mgrDishes() {
+  const sh = dishSheet(false), last = sh ? sh.getLastRow() : 0;
+  const rows = last >= 2 ? sh.getRange(2, 1, last - 1, DISH_HEAD.length).getValues().map(r => r.map(x => typeof x === "number" ? x : String(x).trim())) : [];
+  return { ok: true, rows: rows.filter(r => r[0] || r[1]) };
+}
+/* {dishes: [{name, code, comps: [{sec, n, q, u}], none, src}]} — строки этих блюд заменяются целиком */
+function mgrDishSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const list = (Array.isArray(p.dishes) ? p.dishes : []).slice(0, 500);
+  if (!list.length) return { error: "bad" };
+  const add = [], keys = new Set();
+  for (const d of list) {
+    const name = clean(d.name, 200), code = clean(d.code, 40), src = clean(d.src, 40);
+    if (!name && !code) return { error: "bad" };
+    keys.add(dishKey(name, code));
+    if (name) keys.add("n:" + nameKey(name));                           // то же блюдо, сохранённое раньше без кода
+    if (d.none) { add.push([name, code, "", "—", "", "", src]); continue; }
+    const comps = (Array.isArray(d.comps) ? d.comps : []).slice(0, 30).filter(c => c && c.n && num(c.q) > 0);
+    if (!comps.length) return { error: "bad" };
+    comps.forEach(c => add.push([name, code, clean(c.sec, 120), clean(c.n, 200), Math.round(num(c.q) * 100000) / 100000, clean(c.u, 20), src]));
+  }
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = dishSheet(true), last = sh.getLastRow(), w = DISH_HEAD.length;
+    const old = last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues() : [];
+    const keep = old.filter(r => (r[0] || r[1]) && !keys.has(dishKey(r[0], r[1])) && !keys.has("n:" + nameKey(r[0])));
+    const rows = keep.concat(add);
+    ensureRows(sh, rows.length + 1);
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, 4).setNumberFormat("@");
+      sh.getRange(2, 1, rows.length, w).setValues(rows);
+    }
+    if (old.length > rows.length) sh.getRange(rows.length + 2, 1, old.length - rows.length, w).setValues(Array.from({ length: old.length - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    return { ok: true, n: list.length };
+  } finally { lock.releaseLock(); }
+}
+
+/* ═════════════ Еженедельный отчёт на почту ═════════════
+   Каждый понедельник в 9:00 по Астане — письмо за прошлую неделю (пн–вс): списания и проработки, ревизии и странности
+   последней, приход, что ниже нормы, открытия смен и входы. Получатели — «Менеджер» → «Отчёт» (свойство REPORT_EMAIL,
+   через запятую; пусто — владелец таблицы). Там же — предпросмотр, «Отправить сейчас» и включение по понедельникам.
+   Если сайт пишет, что нет разрешения: выберите installWeeklyReport в списке функций вверху и нажмите «Выполнить» —
+   Google спросит доступ к почте; таймер включится. Открытия смен — лист «Открытия смен» (пишет чеклист по «Бар готов»). */
+const OPEN_SHEET = "Открытия смен", REPORT_PROP = "REPORT_EMAIL", REPORT_FN = "weeklyReport";
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
+
+function openLog(day, who, left) {
+  journalPin();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(OPEN_SHEET);
+  if (!sh) { sh = ss.insertSheet(OPEN_SHEET); sh.appendRow(["День", "Время", "Кто", "Не отмечено"]); sh.setFrozenRows(1); }
+  const d = String(day).split("-").reverse().join(".");
+  sh.appendRow(["'" + d, "'" + Utilities.formatDate(new Date(), TZ, "HH:mm"), who, left === "" || left == null ? "" : num(left)]);
+}
+/* прошлая неделя по Астане: понедельник — воскресенье, ГГГГ-ММ-ДД */
+function reportWeek(now) {
+  const t = new Date((now || new Date()).getTime() + 5 * 3600e3), dow = (t.getUTCDay() + 6) % 7;
+  const mon = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - dow), iso = x => new Date(x).toISOString().slice(0, 10);
+  return { from: iso(mon - 7 * 864e5), to: iso(mon - 864e5) };
+}
+const reportTo = () => String(PropertiesService.getScriptProperties().getProperty(REPORT_PROP) || "").split(/[,;\s]+/).filter(x => EMAIL_RE.test(x));
+const reportOn = () => { try { return ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === REPORT_FN); } catch (e) { return null; } };
+const hx = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const r3 = x => Math.round(x * 1000) / 1000, fmtN = x => String(r3(x)).replace(".", ",");
+
+/* странности последней ежедневной ревизии — так же, как на сайте («Расход»), чувствительность ±50% */
+function reportOdd() {
+  const u = mgrUsage({ kind: "d" }), C = u.cols, out = { odd: [], date: "", prev: "" };
+  if (!u.ok || C.length < 2) return out;
+  const L = C.length - 1, days = (a, b) => Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 864e5));
+  const med = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  out.date = C[L].iso; out.prev = C[L - 1].iso;
+  u.items.forEach(x => {
+    const ps = [];
+    for (let i = 1; i < C.length; i++) {
+      if (x.v[i] == null) continue;
+      let j = i - 1;
+      while (j >= 0 && x.v[j] == null) j--;
+      if (j < 0) continue;
+      const from = C[j].iso, to = C[i].iso, sum = a => a.filter(y => y.iso > from && y.iso <= to).reduce((s, y) => s + y.q, 0);
+      const use = x.v[j] + sum(x.inc) - x.v[i], woq = sum(x.wo);
+      ps.push({ i: i, to: to, d: days(from, to), use: use, net: use - woq });
+    }
+    const last = ps[ps.length - 1];
+    if (!last || last.i !== L) return;
+    let base = ps.slice(0, -1);
+    const wd = new Date(last.to).getUTCDay(), same = base.filter(p => new Date(p.to).getUTCDay() === wd);
+    if (same.length >= 3) base = same;
+    base = base.slice(-8);
+    const unit = /^(шт)$/.test(String(x.u).trim()) || !String(x.u).trim() ? "шт" : String(x.u).trim() === "литр" ? "л" : String(x.u).trim();
+    const tol = unit === "шт" ? 1 : 0.1, exp = base.length >= 2 ? Math.max(0, med(base.map(p => p.net / p.d)) * last.d) : null;
+    let f = "";
+    if (last.use < -tol) f = "остаток вырос на " + fmtN(-last.use) + " " + unit + (x.key ? " без прихода" : "");
+    else if (exp != null && last.net > exp * 1.5 && last.net - exp > tol) f = "расход " + fmtN(last.use) + " " + unit + " — выше обычного" + (exp > 0 ? " на " + Math.round((last.net / exp - 1) * 100) + "%" : "");
+    else if (exp != null && exp > tol && last.net < exp * 0.5 && exp - last.net > tol) f = "расход " + fmtN(last.use) + " " + unit + " — ниже обычного (~" + fmtN(exp) + ")";
+    if (f) out.odd.push({ n: x.n, f: f });
+  });
+  return out;
+}
+function reportData(from, to) {
+  const d = { from: from, to: to }, inR = iso => iso && iso >= from && iso <= to;
+  /* списания и проработки */
+  const wo = mgrWo({ from: from, to: to }), acts = {}, why = {}, items = {}, who = {};
+  ["wo", "pr"].forEach(k => (wo[k] || []).forEach(r => {
+    const a = k + r[8];
+    acts[a] = acts[a] || { k: k, who: r[6] };
+    why[r[5] || "без причины"] = (why[r[5] || "без причины"] || 0) + 1;
+    const ik = String(r[2]).trim().toLowerCase() + "|" + String(r[3]).trim();
+    (items[ik] = items[ik] || { n: String(r[2]).trim(), u: String(r[3]).trim(), q: 0, c: 0 }).q += num(r[4]); items[ik].c++;
+    (who[r[6] || "—"] = who[r[6] || "—"] || new Set()).add(a);
+  }));
+  d.wo = { acts: Object.values(acts), rows: (wo.wo || []).length + (wo.pr || []).length,
+    why: Object.keys(why).map(k => [k, why[k]]).sort((a, b) => b[1] - a[1]),
+    items: Object.values(items).sort((a, b) => b.c - a.c || b.q - a.q).slice(0, 10),
+    who: Object.keys(who).map(k => [k, who[k].size]).sort((a, b) => b[1] - a[1]) };
+  /* ревизии */
+  d.revs = [];
+  try {
+    const ts = revTotal(revBook()), lc = ts.getLastColumn();
+    if (lc >= 2) { const h = ts.getRange(1, 2, 2, lc - 1).getDisplayValues(); h[0].forEach((x, i) => { if (inR(dmy(x))) d.revs.push({ date: x, who: h[1][i] }); }); }
+  } catch (e) {}
+  try { d.odd = reportOdd(); } catch (e) { d.odd = { odd: [], date: "", prev: "" }; }
+  /* приход */
+  const inl = mgrInList({ from: from, to: to }), sup = {}, inv = {};
+  inl.rows.forEach(r => { const s = r[2] || "поставщик не указан"; sup[s] = (sup[s] || 0) + (typeof r[8] === "number" ? r[8] : 0); inv[r[0] + "|" + r[1] + "|" + r[2]] = s; });
+  d.inc = { n: Object.keys(inv).length, sup: Object.keys(sup).map(k => [k, sup[k], Object.values(inv).filter(x => x === k).length]).sort((a, b) => b[1] - a[1]) };
+  /* ниже нормы */
+  try {
+    const o = mgrOrder();
+    d.low = (o.rows || []).filter(r => r.q != null && r.norm - r.q - (r.inq || 0) > 1e-9)
+      .map(r => ({ n: r.n, sup: r.sup || "без поставщика", need: r3(r.norm - r.q - (r.inq || 0)), u: r.u })).slice(0, 40);
+    d.nonorm = o.nonorm || 0;
+  } catch (e) { d.low = []; d.nonorm = 0; }
+  /* открытия смен и входы */
+  d.open = [];
+  const os = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OPEN_SHEET);
+  if (os && os.getLastRow() >= 2) os.getRange(2, 1, os.getLastRow() - 1, 4).getDisplayValues().forEach(r => { if (inR(dmy(r[0]))) d.open.push(r); });
+  d.logins = {};
+  try {
+    const js = sheet(), last = js.getLastRow();
+    if (last >= 1) js.getRange(1, 1, Math.min(last, 1500), 2).getValues().forEach(r => {
+      if (!(r[0] instanceof Date)) return;
+      const iso = Utilities.formatDate(r[0], TZ, "yyyy-MM-dd");
+      if (inR(iso)) d.logins[r[1]] = (d.logins[r[1]] || 0) + 1;
+    });
+  } catch (e) {}
+  return d;
+}
+/* письмо: простые таблицы со встроенными стилями — так его покажет любая почта */
+function reportHtml(d) {
+  const ru = iso => String(iso).split("-").reverse().join("."), H = "font:600 15px Arial,sans-serif;margin:22px 0 8px;color:#222";
+  const tb = (head, rows) => rows.length ? '<table style="border-collapse:collapse;width:100%;max-width:640px;font:14px Arial,sans-serif">' +
+    '<tr>' + head.map((x, i) => '<th style="text-align:' + (i ? "right" : "left") + ';padding:6px 8px;border-bottom:2px solid #ddd;color:#666;font-size:12px">' + hx(x) + '</th>').join("") + '</tr>' +
+    rows.map(r => '<tr>' + r.map((x, i) => '<td style="text-align:' + (i ? "right" : "left") + ';padding:6px 8px;border-bottom:1px solid #eee">' + hx(x) + '</td>').join("") + '</tr>').join("") + '</table>' : '<p style="color:#888;font:14px Arial,sans-serif;margin:0">Нет.</p>';
+  const nwo = d.wo.acts.filter(a => a.k === "wo").length, npr = d.wo.acts.filter(a => a.k === "pr").length;
+  let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
+    '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — неделя ' + hx(ru(d.from)) + ' — ' + hx(ru(d.to)) + '</h2>' +
+    '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · открытий смен ' + d.open.length + '</p>';
+  h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
+    tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f]));
+  h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
+    '<h3 style="' + H + '">Чаще всего списывали</h3>' + tb(["Позиция", "Всего", "Раз"], d.wo.items.map(x => [x.n, fmtN(x.q) + (x.u ? " " + x.u : ""), x.c])) +
+    '<h3 style="' + H + '">Акты по барменам</h3>' + tb(["Кто", "Актов"], d.wo.who);
+  h += '<h3 style="' + H + '">Приход</h3>' + tb(["Поставщик", "Сумма, ₸", "Накладных"], d.inc.sup.map(x => [x[0], x[1] ? fmtN(Math.round(x[1])) : "", x[2]]));
+  h += '<h3 style="' + H + '">Ниже нормы сейчас</h3>' + tb(["Позиция", "Не хватает", "Поставщик"], d.low.map(x => [x.n, fmtN(x.need) + (x.u ? " " + x.u : ""), x.sup])) +
+    (d.nonorm ? '<p style="color:#888;margin:6px 0 0">Без нормы в справочнике: ' + d.nonorm + ' позиций.</p>' : "");
+  h += '<h3 style="' + H + '">Ревизии</h3>' + tb(["Дата", "Кто"], d.revs.map(x => [x.date, x.who])) +
+    '<h3 style="' + H + '">Открытия смен («Бар готов»)</h3>' + tb(["День", "Время", "Кто", "Не отмечено"], d.open) +
+    '<h3 style="' + H + '">Входы в «Бартендерам»</h3>' + tb(["Кто", "Входов"], Object.keys(d.logins).map(k => [k, d.logins[k]]).sort((a, b) => b[1] - a[1]));
+  return h + '<p style="color:#aaa;font-size:12px;margin:24px 0 0">Подробнее — на сайте: «Бартендерам» → «Менеджер».</p></div>';
+}
+function reportSend(from, to) {
+  const d = reportData(from, to), list = reportTo();
+  const rcpt = list.length ? list.join(",") : Session.getEffectiveUser().getEmail();
+  if (!rcpt) return { error: "noto" };
+  MailApp.sendEmail({ to: rcpt, subject: "Бар «Мечты» — отчёт за " + from.split("-").reverse().join(".") + " — " + to.split("-").reverse().join("."),
+    htmlBody: reportHtml(d), name: "Бар «Мечты»" });
+  return { ok: true, to: rcpt };
+}
+/* по таймеру — каждый понедельник */
+function weeklyReport() {
+  MEMO = {};
+  const w = reportWeek();
+  reportSend(w.from, w.to);
+}
+/* один раз из редактора: разрешения (почта, таймеры) и таймер на понедельник 9:00 по Астане */
+function installWeeklyReport() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN).forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create();
+  Logger.log("Отчёт включён: каждый понедельник в 9:00. Получатели: " + (reportTo().join(", ") || Session.getEffectiveUser().getEmail()) +
+    ". Писем сегодня ещё можно отправить: " + MailApp.getRemainingDailyQuota());
+}
+
+/* для сайта */
+function mgrReport(p) {
+  const w = reportWeek(), from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : w.from, to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : w.to;
+  return { ok: true, from: from, to: to, html: reportHtml(reportData(from, to)), emails: reportTo(), auto: reportOn() };
+}
+const authErr = e => /authoriz|permission|разрешен|доступ/i.test(String(e && e.message || e));
+function mgrReportPost(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  if (p.mgr === "reportset") {
+    const list = String(p.emails || "").split(/[,;\s]+/).filter(Boolean);
+    if (list.some(x => !EMAIL_RE.test(x)) || list.length > 10) return { error: "email" };
+    PropertiesService.getScriptProperties().setProperty(REPORT_PROP, list.join(","));
+    return { ok: true, emails: list };
+  }
+  if (p.mgr === "reportsend") {
+    const w = reportWeek(), from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : w.from, to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : w.to;
+    try { return reportSend(from, to); } catch (e) { console.error("reportsend: " + e); return { error: authErr(e) ? "auth" : String(e && e.message || e) }; }
+  }
+  if (p.mgr === "reportauto") {
+    try {
+      ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN).forEach(t => ScriptApp.deleteTrigger(t));
+      if (String(p.on) === "1") ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create();
+      return { ok: true, auto: String(p.on) === "1" };
+    } catch (e) { console.error("reportauto: " + e); return { error: authErr(e) ? "auth" : String(e && e.message || e) }; }
+  }
+  return { error: "action" };
 }
 
 /* ── Ежемесячная копия таблиц ──

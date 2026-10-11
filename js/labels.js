@@ -58,12 +58,21 @@ const lcur = () => { const v = $("lpos").value; return lall().find(x => x.it.id 
 const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "") + "#" + id;
 const ldmy = d => String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + String(d.getFullYear()).slice(2);
 
+/* список позиций (меню и состав могли обновиться из таблицы — тогда список строится заново) */
+function labOpts(){
+  const cur = $("lpos").value;
+  $("lpos").innerHTML = data.filter(g => !g.nolabel).map(g => '<optgroup label="' + esc(g.cat) + '">' +
+    g.items.map(it => '<option value="' + esc(it.id) + '">' + esc(it.n) + '</option>').join("") + '</optgroup>').join("");
+  let v = cur;
+  try { v = v || localStorage.getItem("mechty-lpos"); } catch (e) {}
+  if (v && lall().some(x => x.it.id === v)) $("lpos").value = v;
+}
+function labRefresh(){ if (labReady){ labOpts(); labDraw(); } }
+const licon = it => it.icon || LICON[it.id];
 function labInit(){
   if (!labReady){
     labReady = true;
-    $("lpos").innerHTML = data.filter(g => !g.nolabel).map(g => '<optgroup label="' + esc(g.cat) + '">' +
-      g.items.map(it => '<option value="' + esc(it.id) + '">' + esc(it.n) + '</option>').join("") + '</optgroup>').join("");
-    try { const v = localStorage.getItem("mechty-lpos"); if (v && lall().some(x => x.it.id === v)) $("lpos").value = v; } catch (e) {}
+    labOpts();
     $("lsize").innerHTML = LSIZES.map((s, i) => '<button type="button" data-i="' + i + '" aria-pressed="' + (i === lsize) + '">' + s[0] + '×' + s[1] + '</button>').join("");
     $("lpos").addEventListener("change", labDraw);
     $("lsize").addEventListener("click", e => {
@@ -174,7 +183,7 @@ async function labDraw(){
   try { localStorage.setItem("mechty-lpos", it.id); } catch (e) {}
   const [mw, mh] = LSIZES[lsize], W = mw * LPX, H = mh * LPX;
   try { await document.fonts.load('700 40px "PT Serif"'); await document.fonts.load('400 40px "PT Serif"'); } catch (e) {}
-  const [vine, corner, icon] = await Promise.all([lart("vine"), lart("corner"), lart(LICON[it.id])]);
+  const [vine, corner, icon] = await Promise.all([lart("vine"), lart("corner"), lart(licon(it))]);
 
   const m = Math.min(W, H) * .07;                           // поля лицевой
 
@@ -194,7 +203,7 @@ async function labDraw(){
   const gapY = H - 2 * lineY;                               // просвет между линиями
   const fsMax = gapY / 2.15;                                // крупно: на печати 50×30 мелкий текст не читается
   ctx.font = "400 " + fsMax + 'px "PT Serif", Georgia, serif';
-  const isz = /^i-/.test(LICON[it.id] || "") ? 1.25 : 1;   // контурные значки визуально мельче — чуть крупнее
+  const isz = /^i-/.test(licon(it) || "") ? 1.25 : 1;   // контурные значки визуально мельче — чуть крупнее
   const iconH = icon ? fsMax * 1.05 * isz : 0, iconW = icon ? icon.width * iconH / icon.height : 0;
   const gapX = icon ? fsMax * .25 : 0;
   const room = (W - 2 * m) * .97 - iconW - gapX;
