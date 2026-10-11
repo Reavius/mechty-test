@@ -73,8 +73,8 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null;
-  $("useList").innerHTML = ""; $("pubList").innerHTML = "";
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null;
+  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = "";
   $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
@@ -216,7 +216,7 @@ $("mgrCopy").addEventListener("click", async () => {
 });
 
 /* ── вкладки менеджера ── */
-let mgrTab = ["sum", "use", "ord", "inc", "ref", "pub"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
+let mgrTab = ["sum", "use", "ord", "inc", "ref", "pub", "rep"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
 function mgrTabDraw(){
   document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
   $("mgrSum").hidden = mgrTab !== "sum";
@@ -224,9 +224,10 @@ function mgrTabDraw(){
   $("mgrOrd").hidden = mgrTab !== "ord";
   $("mgrInc").hidden = mgrTab !== "inc";
   $("mgrPub").hidden = mgrTab !== "pub";
+  $("mgrRep").hidden = mgrTab !== "rep";
   $("mgrRef").hidden = mgrTab !== "ref";
 }
-const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrTab === "pub" ? pubLoad() : mgrLoad();
+const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrTab === "pub" ? pubLoad() : mgrTab === "rep" ? repLoad() : mgrLoad();
 $("mgrTabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-t]");
   if (!b || b.dataset.t === mgrTab) return;
@@ -1092,3 +1093,73 @@ $("pubList").addEventListener("click", async e => {
   $("pubWarn").textContent = "Цены обновлены: " + d.n + ". Гости увидят их сразу.";
   pubPr = null; buzz(14); pubFetch(); pubLoad();
 });
+
+/* ── еженедельный отчёт ── предпросмотр письма (HTML с сервера, всё экранировано там), получатели, таймер */
+let repData = null, repRange = "pw", repBusy = false;
+function repPeriod(){
+  if (repRange !== "tw") return {};
+  const t = mgrToday(), dow = (new Date(t + "T00:00:00Z").getUTCDay() + 6) % 7;
+  return {from: mgrShift(t, -dow), to: t};
+}
+async function repLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  document.querySelectorAll("#repQuick button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.r === repRange)));
+  $("repMsg").textContent = "";
+  $("repView").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
+  $("repSend").disabled = true;
+  const d = await api(Object.assign({mgr: "report", mk}, repPeriod()));
+  if (d.error === "mgr") return mgrExpired();
+  if (!d.ok){
+    $("repView").innerHTML = "";
+    $("repMsg").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : 'Нет связи с таблицей. <button type="button" class="link" id="repRetry">Повторить</button>';
+    return;
+  }
+  repData = d;
+  if (document.activeElement !== $("repTo")) $("repTo").value = (d.emails || []).join(", ");
+  repAutoDraw();
+  $("repView").innerHTML = d.html;
+  $("repSend").disabled = false;
+  $("repSend").textContent = "Отправить письмо за " + mgrRu(d.from).slice(0, 5) + " — " + mgrRu(d.to).slice(0, 5) + " сейчас";
+}
+function repAutoDraw(){
+  const a = repData && repData.auto;
+  $("repAuto").textContent = a === true ? "по понедельникам — включено" : a === false ? "по понедельникам — выключено" : "";
+  $("repToggle").textContent = a === true ? "Выключить по понедельникам" : "Включить по понедельникам";
+}
+const REP_AUTH = "Нет разрешения на почту или таймеры. Откройте Apps Script, выберите в списке функций вверху installWeeklyReport и нажмите «Выполнить» — Google спросит доступ; после этого всё заработает.";
+async function repPost(body, btn){
+  if (repBusy) return null;
+  repBusy = true; if (btn) btn.disabled = true;
+  let d = null;
+  try {
+    const r = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({token: TOKEN, mk: mgrKey()}, body))});
+    d = await r.json();
+  } catch (e) { d = {error: "net"}; }
+  repBusy = false; if (btn) btn.disabled = false;
+  if (d && d.error === "mgr"){ mgrExpired(); return null; }
+  if (d && !d.ok) $("repMsg").textContent = d.error === "auth" ? REP_AUTH : d.error === "email" ? "Проверьте адреса: через запятую, не больше 10." :
+    d.error === "action" ? "Нужна новая версия Apps Script." : d.error === "net" ? "Нет связи — попробуйте ещё раз." : "Не получилось: " + d.error;
+  return d && d.ok ? d : null;
+}
+$("repSave").addEventListener("click", async () => {
+  const d = await repPost({mgr: "reportset", emails: $("repTo").value}, $("repSave"));
+  if (d){ $("repTo").value = d.emails.join(", "); $("repMsg").textContent = d.emails.length ? "Адреса сохранены." : "Адресов нет — письмо будет уходить владельцу таблицы."; buzz(14); }
+});
+$("repToggle").addEventListener("click", async () => {
+  const on = !(repData && repData.auto === true);
+  const d = await repPost({mgr: "reportauto", on: on ? "1" : "0"}, $("repToggle"));
+  if (d){ repData.auto = d.auto; repAutoDraw(); $("repMsg").textContent = d.auto ? "Включено: письмо будет приходить каждый понедельник в 9:00." : "Выключено."; buzz(14); }
+});
+$("repSend").addEventListener("click", async () => {
+  if (!repData) return;
+  $("repMsg").textContent = "Отправляем…";
+  const d = await repPost({mgr: "reportsend", from: repData.from, to: repData.to}, $("repSend"));
+  if (d){ $("repMsg").textContent = "Отправлено: " + d.to + "."; buzz(14); }
+});
+$("repQuick").addEventListener("click", e => {
+  const b = e.target.closest("button[data-r]");
+  if (!b || b.dataset.r === repRange) return;
+  repRange = b.dataset.r; buzz(8); repLoad();
+});
+$("repMsg").addEventListener("click", e => { if (e.target.id === "repRetry") repLoad(); });

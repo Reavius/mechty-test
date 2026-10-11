@@ -166,7 +166,12 @@ function checklist(p) {
   const lock = lockOrBusy(10000);
   try {
     const st = ckState();
-    if (String(p.on) === "1") { if (!st.s[id]) st.s[id] = { w: who, t: Date.now() }; }
+    if (String(p.on) === "1") {
+      if (!st.s[id]) {
+        st.s[id] = { w: who, t: Date.now() };
+        if (id === "fin") try { openLog(st.day, who, p.left); } catch (e) { console.error("openLog: " + e); }   // для еженедельного отчёта
+      }
+    }
     else delete st.s[id];
     PropertiesService.getScriptProperties().setProperty(CK_KEY, JSON.stringify(st));
     return { ok: true, day: st.day, s: st.s };
@@ -752,6 +757,7 @@ function doPost(e) {
     if (p.mgr === "pubseed") return jsonOut(mgrPubSeed(p));
     if (p.mgr === "pubset") return jsonOut(mgrPubSet(p));
     if (p.mgr === "prices") return jsonOut(mgrPrices(p));
+    if (/^report(set|send|auto)$/.test(p.mgr || "")) return jsonOut(mgrReportPost(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1287,6 +1293,7 @@ function manager(p) {
   if (p.mgr === "inlist") return mgrInList(p);
   if (p.mgr === "usage") return mgrUsage(p);
   if (p.mgr === "pubraw") return mgrPubRaw();
+  if (p.mgr === "report") return mgrReport(p);
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1814,6 +1821,190 @@ function mgrPrices(p) {
     }
     return { ok: true, n: n };
   } finally { lock.releaseLock(); }
+}
+
+/* ═════════════ Еженедельный отчёт на почту ═════════════
+   Каждый понедельник в 9:00 по Астане — письмо за прошлую неделю (пн–вс): списания и проработки, ревизии и странности
+   последней, приход, что ниже нормы, открытия смен и входы. Получатели — «Менеджер» → «Отчёт» (свойство REPORT_EMAIL,
+   через запятую; пусто — владелец таблицы). Там же — предпросмотр, «Отправить сейчас» и включение по понедельникам.
+   Если сайт пишет, что нет разрешения: выберите installWeeklyReport в списке функций вверху и нажмите «Выполнить» —
+   Google спросит доступ к почте; таймер включится. Открытия смен — лист «Открытия смен» (пишет чеклист по «Бар готов»). */
+const OPEN_SHEET = "Открытия смен", REPORT_PROP = "REPORT_EMAIL", REPORT_FN = "weeklyReport";
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
+
+function openLog(day, who, left) {
+  journalPin();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(OPEN_SHEET);
+  if (!sh) { sh = ss.insertSheet(OPEN_SHEET); sh.appendRow(["День", "Время", "Кто", "Не отмечено"]); sh.setFrozenRows(1); }
+  const d = String(day).split("-").reverse().join(".");
+  sh.appendRow(["'" + d, "'" + Utilities.formatDate(new Date(), TZ, "HH:mm"), who, left === "" || left == null ? "" : num(left)]);
+}
+/* прошлая неделя по Астане: понедельник — воскресенье, ГГГГ-ММ-ДД */
+function reportWeek(now) {
+  const t = new Date((now || new Date()).getTime() + 5 * 3600e3), dow = (t.getUTCDay() + 6) % 7;
+  const mon = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - dow), iso = x => new Date(x).toISOString().slice(0, 10);
+  return { from: iso(mon - 7 * 864e5), to: iso(mon - 864e5) };
+}
+const reportTo = () => String(PropertiesService.getScriptProperties().getProperty(REPORT_PROP) || "").split(/[,;\s]+/).filter(x => EMAIL_RE.test(x));
+const reportOn = () => { try { return ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === REPORT_FN); } catch (e) { return null; } };
+const hx = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const r3 = x => Math.round(x * 1000) / 1000, fmtN = x => String(r3(x)).replace(".", ",");
+
+/* странности последней ежедневной ревизии — так же, как на сайте («Расход»), чувствительность ±50% */
+function reportOdd() {
+  const u = mgrUsage({ kind: "d" }), C = u.cols, out = { odd: [], date: "", prev: "" };
+  if (!u.ok || C.length < 2) return out;
+  const L = C.length - 1, days = (a, b) => Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 864e5));
+  const med = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  out.date = C[L].iso; out.prev = C[L - 1].iso;
+  u.items.forEach(x => {
+    const ps = [];
+    for (let i = 1; i < C.length; i++) {
+      if (x.v[i] == null) continue;
+      let j = i - 1;
+      while (j >= 0 && x.v[j] == null) j--;
+      if (j < 0) continue;
+      const from = C[j].iso, to = C[i].iso, sum = a => a.filter(y => y.iso > from && y.iso <= to).reduce((s, y) => s + y.q, 0);
+      const use = x.v[j] + sum(x.inc) - x.v[i], woq = sum(x.wo);
+      ps.push({ i: i, to: to, d: days(from, to), use: use, net: use - woq });
+    }
+    const last = ps[ps.length - 1];
+    if (!last || last.i !== L) return;
+    let base = ps.slice(0, -1);
+    const wd = new Date(last.to).getUTCDay(), same = base.filter(p => new Date(p.to).getUTCDay() === wd);
+    if (same.length >= 3) base = same;
+    base = base.slice(-8);
+    const unit = /^(шт)$/.test(String(x.u).trim()) || !String(x.u).trim() ? "шт" : String(x.u).trim() === "литр" ? "л" : String(x.u).trim();
+    const tol = unit === "шт" ? 1 : 0.1, exp = base.length >= 2 ? Math.max(0, med(base.map(p => p.net / p.d)) * last.d) : null;
+    let f = "";
+    if (last.use < -tol) f = "остаток вырос на " + fmtN(-last.use) + " " + unit + (x.key ? " без прихода" : "");
+    else if (exp != null && last.net > exp * 1.5 && last.net - exp > tol) f = "расход " + fmtN(last.use) + " " + unit + " — выше обычного" + (exp > 0 ? " на " + Math.round((last.net / exp - 1) * 100) + "%" : "");
+    else if (exp != null && exp > tol && last.net < exp * 0.5 && exp - last.net > tol) f = "расход " + fmtN(last.use) + " " + unit + " — ниже обычного (~" + fmtN(exp) + ")";
+    if (f) out.odd.push({ n: x.n, f: f });
+  });
+  return out;
+}
+function reportData(from, to) {
+  const d = { from: from, to: to }, inR = iso => iso && iso >= from && iso <= to;
+  /* списания и проработки */
+  const wo = mgrWo({ from: from, to: to }), acts = {}, why = {}, items = {}, who = {};
+  ["wo", "pr"].forEach(k => (wo[k] || []).forEach(r => {
+    const a = k + r[8];
+    acts[a] = acts[a] || { k: k, who: r[6] };
+    why[r[5] || "без причины"] = (why[r[5] || "без причины"] || 0) + 1;
+    const ik = String(r[2]).trim().toLowerCase() + "|" + String(r[3]).trim();
+    (items[ik] = items[ik] || { n: String(r[2]).trim(), u: String(r[3]).trim(), q: 0, c: 0 }).q += num(r[4]); items[ik].c++;
+    (who[r[6] || "—"] = who[r[6] || "—"] || new Set()).add(a);
+  }));
+  d.wo = { acts: Object.values(acts), rows: (wo.wo || []).length + (wo.pr || []).length,
+    why: Object.keys(why).map(k => [k, why[k]]).sort((a, b) => b[1] - a[1]),
+    items: Object.values(items).sort((a, b) => b.c - a.c || b.q - a.q).slice(0, 10),
+    who: Object.keys(who).map(k => [k, who[k].size]).sort((a, b) => b[1] - a[1]) };
+  /* ревизии */
+  d.revs = [];
+  try {
+    const ts = revTotal(revBook()), lc = ts.getLastColumn();
+    if (lc >= 2) { const h = ts.getRange(1, 2, 2, lc - 1).getDisplayValues(); h[0].forEach((x, i) => { if (inR(dmy(x))) d.revs.push({ date: x, who: h[1][i] }); }); }
+  } catch (e) {}
+  try { d.odd = reportOdd(); } catch (e) { d.odd = { odd: [], date: "", prev: "" }; }
+  /* приход */
+  const inl = mgrInList({ from: from, to: to }), sup = {}, inv = {};
+  inl.rows.forEach(r => { const s = r[2] || "поставщик не указан"; sup[s] = (sup[s] || 0) + (typeof r[8] === "number" ? r[8] : 0); inv[r[0] + "|" + r[1] + "|" + r[2]] = s; });
+  d.inc = { n: Object.keys(inv).length, sup: Object.keys(sup).map(k => [k, sup[k], Object.values(inv).filter(x => x === k).length]).sort((a, b) => b[1] - a[1]) };
+  /* ниже нормы */
+  try {
+    const o = mgrOrder();
+    d.low = (o.rows || []).filter(r => r.q != null && r.norm - r.q - (r.inq || 0) > 1e-9)
+      .map(r => ({ n: r.n, sup: r.sup || "без поставщика", need: r3(r.norm - r.q - (r.inq || 0)), u: r.u })).slice(0, 40);
+    d.nonorm = o.nonorm || 0;
+  } catch (e) { d.low = []; d.nonorm = 0; }
+  /* открытия смен и входы */
+  d.open = [];
+  const os = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OPEN_SHEET);
+  if (os && os.getLastRow() >= 2) os.getRange(2, 1, os.getLastRow() - 1, 4).getDisplayValues().forEach(r => { if (inR(dmy(r[0]))) d.open.push(r); });
+  d.logins = {};
+  try {
+    const js = sheet(), last = js.getLastRow();
+    if (last >= 1) js.getRange(1, 1, Math.min(last, 1500), 2).getValues().forEach(r => {
+      if (!(r[0] instanceof Date)) return;
+      const iso = Utilities.formatDate(r[0], TZ, "yyyy-MM-dd");
+      if (inR(iso)) d.logins[r[1]] = (d.logins[r[1]] || 0) + 1;
+    });
+  } catch (e) {}
+  return d;
+}
+/* письмо: простые таблицы со встроенными стилями — так его покажет любая почта */
+function reportHtml(d) {
+  const ru = iso => String(iso).split("-").reverse().join("."), H = "font:600 15px Arial,sans-serif;margin:22px 0 8px;color:#222";
+  const tb = (head, rows) => rows.length ? '<table style="border-collapse:collapse;width:100%;max-width:640px;font:14px Arial,sans-serif">' +
+    '<tr>' + head.map((x, i) => '<th style="text-align:' + (i ? "right" : "left") + ';padding:6px 8px;border-bottom:2px solid #ddd;color:#666;font-size:12px">' + hx(x) + '</th>').join("") + '</tr>' +
+    rows.map(r => '<tr>' + r.map((x, i) => '<td style="text-align:' + (i ? "right" : "left") + ';padding:6px 8px;border-bottom:1px solid #eee">' + hx(x) + '</td>').join("") + '</tr>').join("") + '</table>' : '<p style="color:#888;font:14px Arial,sans-serif;margin:0">Нет.</p>';
+  const nwo = d.wo.acts.filter(a => a.k === "wo").length, npr = d.wo.acts.filter(a => a.k === "pr").length;
+  let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
+    '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — неделя ' + hx(ru(d.from)) + ' — ' + hx(ru(d.to)) + '</h2>' +
+    '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · открытий смен ' + d.open.length + '</p>';
+  h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
+    tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f]));
+  h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
+    '<h3 style="' + H + '">Чаще всего списывали</h3>' + tb(["Позиция", "Всего", "Раз"], d.wo.items.map(x => [x.n, fmtN(x.q) + (x.u ? " " + x.u : ""), x.c])) +
+    '<h3 style="' + H + '">Акты по барменам</h3>' + tb(["Кто", "Актов"], d.wo.who);
+  h += '<h3 style="' + H + '">Приход</h3>' + tb(["Поставщик", "Сумма, ₸", "Накладных"], d.inc.sup.map(x => [x[0], x[1] ? fmtN(Math.round(x[1])) : "", x[2]]));
+  h += '<h3 style="' + H + '">Ниже нормы сейчас</h3>' + tb(["Позиция", "Не хватает", "Поставщик"], d.low.map(x => [x.n, fmtN(x.need) + (x.u ? " " + x.u : ""), x.sup])) +
+    (d.nonorm ? '<p style="color:#888;margin:6px 0 0">Без нормы в справочнике: ' + d.nonorm + ' позиций.</p>' : "");
+  h += '<h3 style="' + H + '">Ревизии</h3>' + tb(["Дата", "Кто"], d.revs.map(x => [x.date, x.who])) +
+    '<h3 style="' + H + '">Открытия смен («Бар готов»)</h3>' + tb(["День", "Время", "Кто", "Не отмечено"], d.open) +
+    '<h3 style="' + H + '">Входы в «Бартендерам»</h3>' + tb(["Кто", "Входов"], Object.keys(d.logins).map(k => [k, d.logins[k]]).sort((a, b) => b[1] - a[1]));
+  return h + '<p style="color:#aaa;font-size:12px;margin:24px 0 0">Подробнее — на сайте: «Бартендерам» → «Менеджер».</p></div>';
+}
+function reportSend(from, to) {
+  const d = reportData(from, to), list = reportTo();
+  const rcpt = list.length ? list.join(",") : Session.getEffectiveUser().getEmail();
+  if (!rcpt) return { error: "noto" };
+  MailApp.sendEmail({ to: rcpt, subject: "Бар «Мечты» — отчёт за " + from.split("-").reverse().join(".") + " — " + to.split("-").reverse().join("."),
+    htmlBody: reportHtml(d), name: "Бар «Мечты»" });
+  return { ok: true, to: rcpt };
+}
+/* по таймеру — каждый понедельник */
+function weeklyReport() {
+  MEMO = {};
+  const w = reportWeek();
+  reportSend(w.from, w.to);
+}
+/* один раз из редактора: разрешения (почта, таймеры) и таймер на понедельник 9:00 по Астане */
+function installWeeklyReport() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN).forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create();
+  Logger.log("Отчёт включён: каждый понедельник в 9:00. Получатели: " + (reportTo().join(", ") || Session.getEffectiveUser().getEmail()) +
+    ". Писем сегодня ещё можно отправить: " + MailApp.getRemainingDailyQuota());
+}
+
+/* для сайта */
+function mgrReport(p) {
+  const w = reportWeek(), from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : w.from, to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : w.to;
+  return { ok: true, from: from, to: to, html: reportHtml(reportData(from, to)), emails: reportTo(), auto: reportOn() };
+}
+const authErr = e => /authoriz|permission|разрешен|доступ/i.test(String(e && e.message || e));
+function mgrReportPost(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  if (p.mgr === "reportset") {
+    const list = String(p.emails || "").split(/[,;\s]+/).filter(Boolean);
+    if (list.some(x => !EMAIL_RE.test(x)) || list.length > 10) return { error: "email" };
+    PropertiesService.getScriptProperties().setProperty(REPORT_PROP, list.join(","));
+    return { ok: true, emails: list };
+  }
+  if (p.mgr === "reportsend") {
+    const w = reportWeek(), from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : w.from, to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : w.to;
+    try { return reportSend(from, to); } catch (e) { console.error("reportsend: " + e); return { error: authErr(e) ? "auth" : String(e && e.message || e) }; }
+  }
+  if (p.mgr === "reportauto") {
+    try {
+      ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN).forEach(t => ScriptApp.deleteTrigger(t));
+      if (String(p.on) === "1") ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create();
+      return { ok: true, auto: String(p.on) === "1" };
+    } catch (e) { console.error("reportauto: " + e); return { error: authErr(e) ? "auth" : String(e && e.message || e) }; }
+  }
+  return { error: "action" };
 }
 
 /* ── Ежемесячная копия таблиц ──

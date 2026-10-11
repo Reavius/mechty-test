@@ -418,6 +418,7 @@
         <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
         <button type="button" data-t="pub" aria-pressed="false">Гостям</button>
+        <button type="button" data-t="rep" aria-pressed="false">Отчёт</button>
       </div>
       <div id="mgrSum">
       <div class="result tcard wo">
@@ -510,6 +511,23 @@
           <div id="pubList"></div>
           <datalist id="pubChs"></datalist><datalist id="pubSecs"></datalist>
         </div>
+      </div>
+
+      <div id="mgrRep" hidden>
+        <p class="wnhint mgrrhint">Каждый понедельник в 9:00 — письмо за прошлую неделю: странности последней ревизии, списания и проработки,
+          приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — как оно выглядит.</p>
+        <div class="result tcard wo"><div class="tname"><em id="repAuto"></em><h3>Письмо</h3></div><div class="wobody">
+          <label class="label" for="repTo">Кому (через запятую; пусто — владельцу таблицы)</label>
+          <input id="repTo" type="text" inputmode="email" autocomplete="off" placeholder="manager@example.com">
+          <div class="refbtns"><button type="button" class="wogo" id="repSave">Сохранить адреса</button><button type="button" class="link" id="repToggle"></button></div>
+          <p class="warn" id="repMsg" role="status"></p>
+        </div></div>
+        <div class="quick" id="repQuick">
+          <button type="button" data-r="pw" aria-pressed="true">Прошлая неделя</button>
+          <button type="button" data-r="tw" aria-pressed="false">Эта неделя</button>
+        </div>
+        <div class="repview" id="repView"></div>
+        <p class="mgrfoot"><button type="button" class="link" id="repSend" disabled>Отправить это письмо сейчас</button></p>
       </div>
 
       <div id="mgrRef" hidden>

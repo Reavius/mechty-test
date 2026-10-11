@@ -104,7 +104,7 @@ async function ckFlush(){
       if (!q.length) break;
       const a = q[0];
       if (a.day !== ckDayNow()){ cks(CKQ, q.slice(1)); continue; }     // вчерашняя отметка — уже не нужна
-      const d = await api({ck: "set", id: a.id, on: a.on ? "1" : "0", rn: a.w});
+      const d = await api(Object.assign({ck: "set", id: a.id, on: a.on ? "1" : "0", rn: a.w}, a.left != null ? {left: a.left} : {}));
       if (d.error === "net" || d.error === "denied"){ ckState = "net"; break; }
       if (d.ok && !d.s){ ckState = "old"; break; }
       cks(CKQ, ckj(CKQ, []).filter(x => x.n !== a.n));
@@ -135,7 +135,9 @@ $("ckList").addEventListener("change", e => {
   if (!box || !me) return;
   buzz(box.checked ? 14 : 8);
   const q = ckj(CKQ, []);
-  q.push({id: box.dataset.id, on: box.checked, w: me.name, t: Date.now(), day: ckDayNow(), n: Math.random()});
+  const e2 = {id: box.dataset.id, on: box.checked, w: me.name, t: Date.now(), day: ckDayNow(), n: Math.random()};
+  if (e2.id === CK_FIN && e2.on){ const s = ckView(); e2.left = CK.flatMap(g => g.items).filter(x => !s[x[0]]).length; }   // для еженедельного отчёта
+  q.push(e2);
   cks(CKQ, q);
   ckDraw(); ckFlush();
 });

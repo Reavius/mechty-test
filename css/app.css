@@ -734,3 +734,6 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 @media (min-width:641px){.mgrtabs{grid-template-columns:repeat(4,1fr)}}
 .pubf > div > .label,.pubf > div > input{display:block}
 .refl label.pubchk{justify-content:flex-start;padding:11px 14px}
+.repview{margin-top:14px;background:#fff;border-radius:14px;padding:18px 16px;overflow-x:auto;color:#222}
+.repview:empty{display:none}
+.repview .mgrskel{background:transparent}
