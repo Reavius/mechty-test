@@ -261,6 +261,7 @@ $("gform").addEventListener("submit", async e => {
 });
 
 $("logout").addEventListener("click", async () => {
+  if (typeof mgrLeave === "function") mgrLeave();              // ключ менеджера не остаётся следующему на этом телефоне
   await dropSession();
   R = null; ALL = []; K = []; KALL = []; Z = []; ZO = []; ZN = []; TOKEN = ""; me = null; shared = null; logged = false; logState = "idle";
   $("res").innerHTML = ""; $("tres").innerHTML = ""; $("olist").innerHTML = ""; $("zlist").innerHTML = ""; $("log").innerHTML = "";

@@ -126,6 +126,7 @@
       <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
       <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
       <button type="button" data-s="wo"    aria-pressed="false">Списания</button>
+      <button type="button" data-s="mgr"   aria-pressed="false">Менеджер</button>
     </div>
     <h1 id="btTitle">Технологическая<br>карта</h1>
     <p class="lede" id="btLede">Граммовки, посуда, метод и украшение для каждого напитка и заготовки.</p>
@@ -302,7 +303,7 @@
       <p class="oempty"><span id="llink"></span></p>
       <div class="otools"><button type="button" class="link" id="lcopy">Скопировать ссылку</button></div>
     </div>
-    <p class="rule" style="margin-top:14px">QR-код и ссылка ведут на позицию в открытой коктейльной карте. В приложении Niimbot: «Поделиться» → Niimbot, или сохраните картинку и вставьте её в шаблон как изображение.</p>
+    <p class="rule" style="margin-top:14px">QR-код и ссылка ведут на позицию во вкладке «Состав и аллергены». В приложении Niimbot: «Поделиться» → Niimbot, или сохраните картинку и вставьте её в шаблон как изображение.</p>
   </div>
 
   <div id="secRev" hidden>
@@ -398,6 +399,44 @@
     <div id="olist"></div>
   </div>
 
+  <div id="secMgr" hidden>
+    <form class="result tcard wo" id="mgrIn" autocomplete="off" novalidate hidden>
+      <div class="tname"><em>Только для менеджера</em><h2 class="h3">Вход менеджера</h2></div>
+      <div class="wobody">
+        <label class="label" for="mgrPw">Пароль менеджера</label>
+        <input id="mgrPw" type="password" autocomplete="current-password" required>
+        <p class="warn" id="mgrMsg" role="status"></p>
+        <button type="submit" class="wogo" id="mgrGo">Войти</button>
+      </div>
+    </form>
+
+    <div id="mgrBox" hidden>
+      <div class="result tcard wo">
+        <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
+        <div class="wobody">
+          <div class="wo2 mgrd">
+            <div><label class="label" for="mgrFrom">С</label><input id="mgrFrom" type="date"></div>
+            <div><label class="label" for="mgrTo">По</label><input id="mgrTo" type="date"></div>
+          </div>
+          <div class="quick" id="mgrQuick">
+            <button type="button" data-r="w">7 дней</button>
+            <button type="button" data-r="m">Этот месяц</button>
+            <button type="button" data-r="pm">Прошлый месяц</button>
+            <button type="button" data-r="d30">30 дней</button>
+          </div>
+          <div class="modes mgrkind" id="mgrKind" role="group" aria-label="Вид актов">
+            <button type="button" data-k="all" aria-pressed="true">Всё</button>
+            <button type="button" data-k="wo" aria-pressed="false">Списания</button>
+            <button type="button" data-k="pr" aria-pressed="false">Проработки</button>
+          </div>
+          <p class="warn" id="mgrWarn" role="status"></p>
+        </div>
+      </div>
+      <div id="mgrOut"></div>
+      <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button> · <button type="button" class="link" id="mgrOff">Выйти из менеджера</button></p>
+    </div>
+  </div>
+
   <div id="secOpen" hidden>
     <p class="cktop" id="ckInfo"></p>
     <div id="ckList"></div>
@@ -432,7 +471,7 @@
   </div>
 
   <footer>
-    <span>Состав, сроки и аллергены — в <a class="link" href="#">коктейльной карте</a></span>
+    <span>Меню для гостей — на <a class="link" href="#">главной</a>, состав, сроки и аллергены — во вкладке «<a class="link" href="#card">Состав и аллергены</a>»</span>
     <span>Вход сохраняется на этом устройстве до «Выйти»</span>
   </footer>
 </main>
@@ -473,6 +512,7 @@
 <script src="js/mrev.js" defer></script>
 <script src="js/order.js" defer></script>
 <script src="js/open.js" defer></script>
+<script src="js/mgr.js" defer></script>
 <script src="js/calc.js" defer></script>
 <script src="js/swipe.js" defer></script>
 

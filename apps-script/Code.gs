@@ -52,6 +52,8 @@ function doGet(e) {
     try { out = wnote(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.ck) {
     try { out = checklist(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.mgr) {
+    try { out = manager(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.mem) {
     try { out = { ok: true, mem: members() }; } catch (err) { console.error("mem: " + err); out = { error: "net" }; }
   } else {
@@ -741,6 +743,8 @@ function doPost(e) {
     journalPin();
     if (p.wo === "save") return jsonOut(woSave(p));
     if (p.wo === "rec") return jsonOut(woSave(p, true));
+    if (p.mgr === "login") return jsonOut(mgrLogin(p));
+    if (p.mgr === "out") return jsonOut(mgrLogout(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1199,6 +1203,99 @@ function checkRevision() {
   const ms = mrevSheet();
   Logger.log("Лист «" + ms.getName() + "»: позиций " + mrevRows(ms).filter(x => x.t === "i").length + ", месячная ревизия: " + JSON.stringify(mrevBlock()));
   Logger.log("Всё в порядке.");
+}
+
+/* ═════════════ Бар-менеджер ═════════════
+   Отдельный пароль менеджера. Задать или сменить: «Настройки проекта» (шестерёнка слева) → «Свойства скрипта» →
+   «Добавить свойство»: MGR_PASSWORD = пароль → «Сохранить». При первом входе пароль заменяется своим хэшем
+   (MGR_HASH), открытый — удаляется из свойств; при смене все прежние входы менеджера сбрасываются.
+   Вход — POST {mgr: "login", pw}: верный пароль → ключ на MGR_DAYS дней (здесь хранится только его хэш).
+   5 неверных паролей за 15 минут — пауза 15 минут. Данные — JSONP {mgr: "...", mk: ключ}. */
+const MGR_DAYS = 30;
+const MGR_MAX_KEYS = 20;                                               // столько телефонов менеджера помнится одновременно
+
+function sha(s) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s), Utilities.Charset.UTF_8)
+    .map(b => ((b + 256) % 256).toString(16).padStart(2, "0")).join("");
+}
+/* новый пароль из свойств → хэш; прежние ключи — недействительны */
+function mgrSetup(props) {
+  const pw = props.getProperty("MGR_PASSWORD");
+  if (!pw) return;
+  const salt = Utilities.getUuid();
+  props.setProperties({ MGR_SALT: salt, MGR_HASH: sha(salt + pw), MGR_KEYS: "{}" });
+  props.deleteProperty("MGR_PASSWORD");
+}
+function mgrKeys(props) {
+  let k = {};
+  try { k = JSON.parse(props.getProperty("MGR_KEYS") || "{}") || {}; } catch (e) {}
+  const now = Date.now();
+  Object.keys(k).forEach(h => { if (!(k[h] > now)) delete k[h]; });
+  return k;
+}
+function mgrLogin(p) {
+  const props = PropertiesService.getScriptProperties(), cache = CacheService.getScriptCache();
+  const lock = lockOrBusy(10000);
+  try {
+    mgrSetup(props);
+    const hash = props.getProperty("MGR_HASH");
+    if (!hash) return { error: "nomgr" };
+    const fails = Number(cache.get("mgrfail") || 0);
+    if (fails >= 5) return { error: "wait" };
+    if (sha(props.getProperty("MGR_SALT") + String(p.pw || "")) !== hash) {
+      cache.put("mgrfail", String(fails + 1), 900);
+      return { error: "pw" };
+    }
+    cache.remove("mgrfail");
+    const key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ""), k = mgrKeys(props);
+    k[sha(key)] = Date.now() + MGR_DAYS * 864e5;
+    const keep = Object.keys(k).sort((a, b) => k[b] - k[a]).slice(0, MGR_MAX_KEYS), out = {};
+    keep.forEach(h => { out[h] = k[h]; });
+    props.setProperty("MGR_KEYS", JSON.stringify(out));
+    return { ok: true, mk: key, until: k[sha(key)] };
+  } finally { lock.releaseLock(); }
+}
+function mgrLogout(p) {
+  const props = PropertiesService.getScriptProperties(), lock = lockOrBusy(10000);
+  try {
+    const k = mgrKeys(props);
+    delete k[sha(String(p.mk || ""))];
+    props.setProperty("MGR_KEYS", JSON.stringify(k));
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+function mgrOk(mk) {
+  if (!mk || String(mk).length > 100) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty("MGR_PASSWORD")) return false;                 // пароль сменили — войти заново
+  return !!(mgrKeys(props)[sha(String(mk))]);
+}
+
+/* данные для вкладки «Менеджер» */
+function manager(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  if (p.mgr === "wo") return mgrWo(p);
+  return { error: "action" };
+}
+/* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
+   [дата акта, №, наименование, ед., кол-во, причина, кто, файл, id]. Сводку считает сайт. */
+function mgrWo(p) {
+  const iso = d => { const m = String(d).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : "0000-00-00";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : "9999-99-99";
+  const out = { ok: true, from: from, to: to };
+  Object.keys(WO_KINDS).forEach(kind => {
+    const sh = woSheet(kind, false), last = sh ? sh.getLastRow() : 0, rows = [];
+    if (last >= 2) {
+      sh.getRange(2, 1, last - 1, WO_HEAD.length).getValues().forEach(r => {
+        const d = iso(String(r[0]).trim());
+        if (!d || d < from || d > to || !r[9]) return;
+        rows.push([String(r[0]).trim(), String(r[1]), String(r[2]), String(r[3]), num(r[4]), String(r[5]), String(r[6]), String(r[7]), String(r[9])]);
+      });
+    }
+    out[kind] = rows;
+  });
+  return out;
 }
 
 /* ── Ежемесячная копия таблиц ──

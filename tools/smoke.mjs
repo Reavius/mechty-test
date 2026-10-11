@@ -144,6 +144,8 @@ if (PW) {
   await page.click('#wokind [data-k="pr"]'); await page.waitForTimeout(200);
   ok(await page.textContent("#woTitle") === "Акт проработки" && await page.textContent("#woRows .woy") === "Проработка", "списания: акт проработки");
   await page.click('#wokind [data-k="wo"]');
+  await page.click('[data-s="mgr"]'); await page.waitForTimeout(200);
+  ok(await page.isVisible("#mgrIn") && !(await page.isVisible("#mgrBox")), "менеджер: без пароля менеджера — только форма входа");
 }
 
 ok(errs.length === 0, "без ошибок в консоли" + (errs.length ? ": " + errs.join(" | ") : ""));

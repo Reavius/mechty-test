@@ -636,3 +636,15 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 /* значок новых строк в заметке — на кнопке «Списания» */
 .nbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;
   background:var(--red);color:#fff;font:700 11px/1 var(--sans);vertical-align:1px}
+
+/* ── Бар-менеджер ── */
+.mgrkind{margin-top:14px;grid-template-columns:repeat(3,1fr)}
+.mgrsum{margin:22px 2px 0;font-size:14px;color:var(--muted)}
+.mgrsum b{color:var(--fg)}
+.mgrt h3{font-size:22px}
+.mgrt td.n small.mgrwhy{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
+.mgrt .link.more{margin:12px auto 14px}
+.mgrfoot{margin:20px 2px 0;font-size:13px;color:var(--muted);text-align:center}
+.mgrskel{margin-top:14px}
+.mgrd{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.mgrd input[type="date"]{min-width:0;padding-inline:10px}
