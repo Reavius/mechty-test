@@ -50,6 +50,8 @@ function doGet(e) {
     try { out = writeoffs(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.wn) {
     try { out = wnote(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.ck) {
+    try { out = checklist(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.mem) {
     try { out = { ok: true, mem: members() }; } catch (err) { console.error("mem: " + err); out = { error: "net" }; }
   } else {
@@ -139,6 +141,34 @@ function recent() {
   }
   data.sort((a, b) => b.t - a.t);
   return data.slice(0, SHOW);
+}
+
+/* Чеклист открытия — общий для всех: отметка (id пункта → кто и когда) хранится в свойствах скрипта на текущий
+   «день бара»: он начинается в 06:00 по Астане, ночная смена дорабатывает со своими отметками. Новый день — список пуст. */
+const CK_KEY = "CK";
+const ckDay = () => Utilities.formatDate(new Date(Date.now() - 6 * 3600e3), TZ, "yyyy-MM-dd");
+function ckState() {
+  let st = null;
+  try { st = JSON.parse(PropertiesService.getScriptProperties().getProperty(CK_KEY) || "null"); } catch (e) { st = null; }
+  const day = ckDay();
+  return st && st.day === day && st.s && typeof st.s === "object" ? st : { day: day, s: {} };
+}
+function checklist(p) {
+  const act = String(p.ck);
+  if (act === "list") { const st = ckState(); return { ok: true, day: st.day, s: st.s }; }
+  if (act !== "set") return { error: "action" };
+  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 24), who = clean(p.rn, 60);
+  if (!id || !who) return { error: "bad" };
+  const lock = lockOrBusy(10000);
+  try {
+    const st = ckState();
+    if (String(p.on) === "1") { if (!st.s[id]) st.s[id] = { w: who, t: Date.now() }; }
+    else delete st.s[id];
+    PropertiesService.getScriptProperties().setProperty(CK_KEY, JSON.stringify(st));
+    return { ok: true, day: st.day, s: st.s };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* Участники — все, кто когда-либо входил: по одному на почту (фамилия — из последнего входа), по алфавиту.
