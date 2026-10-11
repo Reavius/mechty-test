@@ -73,8 +73,8 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null;
-  $("useList").innerHTML = "";
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null;
+  $("useList").innerHTML = ""; $("pubList").innerHTML = "";
   $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
@@ -216,16 +216,17 @@ $("mgrCopy").addEventListener("click", async () => {
 });
 
 /* ── вкладки менеджера ── */
-let mgrTab = ["sum", "use", "ord", "inc", "ref"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
+let mgrTab = ["sum", "use", "ord", "inc", "ref", "pub"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
 function mgrTabDraw(){
   document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
   $("mgrSum").hidden = mgrTab !== "sum";
   $("mgrUse").hidden = mgrTab !== "use";
   $("mgrOrd").hidden = mgrTab !== "ord";
   $("mgrInc").hidden = mgrTab !== "inc";
+  $("mgrPub").hidden = mgrTab !== "pub";
   $("mgrRef").hidden = mgrTab !== "ref";
 }
-const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrLoad();
+const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrTab === "pub" ? pubLoad() : mgrLoad();
 $("mgrTabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-t]");
   if (!b || b.dataset.t === mgrTab) return;
@@ -816,3 +817,278 @@ $("useList").addEventListener("click", e => {
   useOpen = useOpen === i ? -1 : i; buzz(8); useDraw();
 });
 $("useWarn").addEventListener("click", e => { if (e.target.id === "useRetry") useLoad(); });
+
+/* ── гостям: меню и «Состав и аллергены» из таблицы ──
+   строка меню: [глава, глава EN, раздел, раздел EN, плитки, название, EN, описание, EN, объём, ед., цена, id в карте, код R-Keeper, скрыть, uid]
+   строка карты: [раздел, id, название, EN, состав для гостей, EN, полный состав, аллергены, EN, объём подачи, фото, значок, на этикетке, только этикетка, скрыть] */
+let pubRaw = null, pubMode = "menu", pubOpen = "", pubBusy = false, pubPr = null;
+const PUB_HINT = {
+  menu: "Нажмите на позицию — правка; «+ Добавить» — новая позиция в разделе. Новый раздел или главу — впишите их название в «Где в меню». Порядок и массовые правки — в таблице ревизии, лист «Меню».",
+  card: "«Состав и аллергены» и этикетки. Полный состав — для этикетки, через точку с запятой. id новой позиции появится сам; на него ведёт QR-код этикетки. Разделы — лист «Карта разделы».",
+  price: "Выгрузите из R-Keeper меню с ценами (прейскурант) в Excel или CSV. Сайт сопоставит блюда с меню — по коду R-Keeper или названию — и покажет, какие цены изменятся. Отметьте нужные и примените."};
+const pubCardName = id => { const r = pubRaw && pubRaw.items.find(x => x[1] === id); return r ? r[2] : ""; };
+const pubNum = v => typeof v === "number" ? v : /^\s*\d+([.,]\d+)?\s*$/.test(String(v)) ? parseFloat(String(v).replace(",", ".")) : v;
+
+async function pubLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  $("pubWarn").textContent = "";
+  if (!pubRaw) $("pubList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
+  const d = await api({mgr: "pubraw", mk});
+  if (d.error === "mgr") return mgrExpired();
+  if (!d.ok){
+    if (!pubRaw) $("pubList").innerHTML = "";
+    $("pubWarn").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)."
+      : 'Нет связи с таблицей. <button type="button" class="link" id="pubRetry">Повторить</button>';
+    return;
+  }
+  $("pubSeed").hidden = !d.none; $("pubEd").hidden = !!d.none;
+  if (d.none){ pubRaw = null; return; }
+  pubRaw = d; pubDraw();
+}
+/* перенос: то, что сейчас в файлах сайта, — строками таблицы */
+function pubSeedRows(){
+  const P = PUB0, card = {};
+  P.data.forEach(g => g.items.forEach(it => { card[it.id] = it; }));
+  const menu = [];
+  P.menu.forEach(c => c.secs.forEach(s => s.items.forEach(x => {
+    const ci = x.c ? card[x.c] : null, en = x.c ? P.en[x.c] : null;
+    menu.push([c.ru, c.en, s.ru, s.en, s.tiles ? "да" : "", x.n || (ci ? ci.n : ""), x.e || (en ? en[0] : "") || "", x.d || (ci ? ci.m || "" : ""),
+      x.de || (x.d ? enWords(x.d) : "") || (en ? en[1] : "") || "", x.v == null ? "" : x.v, x.u === "pcs" ? "шт" : "", x.p, x.c || "", "", ""]);
+  })));
+  const items = [], groups = [];
+  P.data.forEach(g => {
+    const ge = P.gen[g.key] || [];
+    groups.push([g.key, g.cat, g.short, g.rule || "", g.srok || "", g.store || "", g.serve ? "да" : "", g.nolabel ? "да" : "", ge[0] || "", ge[1] || "", ge[2] || ""]);
+    g.items.forEach(it => { const e = P.en[it.id] || [];
+      items.push([g.key, it.id, it.n, e[0] || "", it.m || "", e[1] || "", (it.c || []).join("; "), it.al || "", "", it.vol == null ? "" : it.vol,
+        it.img || "", (typeof LICON !== "undefined" && LICON[it.id]) || "", it.ln || "", it.lo ? "да" : "", ""]); });
+  });
+  return {menu, items, groups};
+}
+async function pubPost(body){
+  let d = null;
+  try {
+    const r = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({token: TOKEN, mk: mgrKey()}, body))});
+    d = await r.json();
+  } catch (e) { d = {error: "net"}; }
+  if (d && d.error === "mgr"){ mgrExpired(); return null; }
+  return d;
+}
+const pubErr = d => d && d.error === "action" ? "Нужна новая версия Apps Script." : d && d.error === "gone" ? "Этой строки в таблице уже нет — обновите." :
+  d && d.error === "exists" ? "Листы уже есть в таблице." : d && d.error === "bad" ? "Проверьте поля." : "Не сохранилось — нет связи. Нажмите ещё раз.";
+$("pubSeedGo").addEventListener("click", async () => {
+  if (pubBusy) return;
+  pubBusy = true; $("pubSeedGo").disabled = true; $("pubSeedMsg").textContent = "Переносим…";
+  const d = await pubPost(Object.assign({mgr: "pubseed"}, pubSeedRows()));
+  pubBusy = false; $("pubSeedGo").disabled = false;
+  if (!d) return;
+  if (!d.ok && d.error !== "exists"){ $("pubSeedMsg").textContent = pubErr(d); return; }
+  $("pubSeedMsg").textContent = ""; buzz(14);
+  pubFetch(); pubLoad();
+});
+function pubDraw(){
+  document.querySelectorAll("#pubMode button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === pubMode)));
+  $("pubHint").textContent = PUB_HINT[pubMode];
+  $("pubQ").hidden = pubMode === "price"; $("pubFileL").hidden = pubMode !== "price";
+  if (pubMode === "price") return pubPriceDraw();
+  const q = $("pubQ").value.trim().toLowerCase().replace(/ё/g, "е"), hit = s => !q || String(s).toLowerCase().replace(/ё/g, "е").includes(q);
+  let html = "";
+  if (pubMode === "menu"){
+    $("pubChs").innerHTML = [...new Set(pubRaw.menu.map(r => r[0]))].map(x => '<option value="' + esc(x) + '">').join("");
+    $("pubSecs").innerHTML = [...new Set(pubRaw.menu.map(r => r[2]))].map(x => '<option value="' + esc(x) + '">').join("");
+    const secs = [];
+    pubRaw.menu.forEach(r => { const k = r[0] + "|" + r[2], s = secs[secs.length - 1]; if (!s || s.k !== k) secs.push({k, ch: r[0], sec: r[2], rows: [r]}); else s.rows.push(r); });
+    secs.forEach((s, si) => {
+      const rows = s.rows.filter(r => hit(r[5] + " " + r[6] + " " + pubCardName(r[12]) + " " + s.sec));
+      if (q && !rows.length) return;
+      html += '<section class="refsec"><h3 class="reft">' + esc(s.ch) + ' · ' + esc(s.sec) + '</h3><ul class="olist refl">' + rows.map(r => {
+        const name = r[5] || pubCardName(r[12]) || "—", open = pubOpen === r[15];
+        return '<li class="refli' + (open ? " open" : "") + (pubYes(r[14]) ? " pubhid" : "") + '"><button type="button" class="refrow" data-k="' + esc(r[15]) + '"><span class="refn">' + esc(name) + '</span>' +
+          '<small>' + [r[9] !== "" ? esc(r[9]) + " " + (/^шт/i.test(r[10]) ? "шт" : "мл") : "", r[11] !== "" ? esc(r[11]) : '<em>нет цены</em>', r[12] ? "состав: " + esc(r[12]) : "", pubYes(r[14]) ? "<em>скрыто</em>" : ""].filter(Boolean).join(" · ") + '</small></button>' +
+          (open ? pubMenuForm(r) : "") + '</li>';
+      }).join("") +
+        (pubOpen === "new:" + si ? '<li class="refli open">' + pubMenuForm(null, s, si) + '</li>' : '<li><button type="button" class="link pubadd" data-add="' + si + '">+ Добавить в «' + esc(s.sec) + '»</button></li>') + '</ul></section>';
+    });
+  } else {
+    const gname = {};
+    pubRaw.groups.forEach(g => { gname[g[0]] = g[1]; });
+    const keys = [...new Set(pubRaw.groups.map(g => g[0]).concat(pubRaw.items.map(r => r[0])))];
+    keys.forEach(k => {
+      const rows = pubRaw.items.filter(r => r[0] === k && hit(r[2] + " " + r[3] + " " + r[4] + " " + r[1]));
+      if (q && !rows.length) return;
+      html += '<section class="refsec"><h3 class="reft">' + esc(gname[k] || k) + '</h3><ul class="olist refl">' + rows.map(r => {
+        const open = pubOpen === "c:" + r[1];
+        return '<li class="refli' + (open ? " open" : "") + (pubYes(r[14]) ? " pubhid" : "") + '"><button type="button" class="refrow" data-k="c:' + esc(r[1]) + '"><span class="refn">' + esc(r[2]) + '</span>' +
+          '<small>' + [esc(r[1]), esc(r[7] || "аллергены не указаны"), pubYes(r[13]) ? "только этикетка" : "", pubYes(r[14]) ? "<em>скрыто</em>" : ""].filter(Boolean).join(" · ") + '</small></button>' +
+          (open ? pubCardForm(r) : "") + '</li>';
+      }).join("") +
+        (pubOpen === "cnew:" + k ? '<li class="refli open">' + pubCardForm(null, k) + '</li>' : '<li><button type="button" class="link pubadd" data-cadd="' + esc(k) + '">+ Добавить в «' + esc(gname[k] || k) + '»</button></li>') + '</ul></section>';
+    });
+  }
+  $("pubList").innerHTML = html || '<p class="empty">Ничего не найдено.</p>';
+}
+const pf = (id, label, val, attrs) => '<div><label class="label" for="' + id + '">' + label + '</label><input id="' + id + '" value="' + esc(val == null ? "" : val) + '" ' + (attrs || 'type="text"') + '></div>';
+const pchk = (id, label, on) => '<label class="toggle pubchk"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + '> ' + label + '</label>';
+const psel = (id, label, opts, val) => '<div><label class="label" for="' + id + '">' + label + '</label><select id="' + id + '">' +
+  (opts.includes(val) ? opts : opts.concat([val])).map(o => '<option value="' + esc(o) + '"' + (o === val ? " selected" : "") + '>' + esc(o || "—") + '</option>').join("") + '</select></div>';
+function pubMenuForm(r, s){
+  const x = r || [s.ch, (s.rows[0] || [])[1] || "", s.sec, (s.rows[0] || [])[3] || "", (s.rows[0] || [])[4] || "", "", "", "", "", "", (s.rows[0] || [])[10] || "", "", "", "", "", ""];
+  const ids = [""].concat(pubRaw.items.map(i => i[1]));
+  return '<form class="refed pubf" data-t="m" autocomplete="off" novalidate><div class="refgrid">' +
+    pf("pmN", "Название", x[5], 'type="text" maxlength="120"' + (x[12] ? ' placeholder="' + esc(pubCardName(x[12])) + '"' : "")) + pf("pmE", "Название EN", x[6], 'type="text" maxlength="120"') +
+    '</div>' + pf("pmD", "Описание", x[7]) + pf("pmDe", "Описание EN", x[8]) + '<div class="refgrid">' +
+    pf("pmV", "Объём", x[9], 'type="text" inputmode="decimal" maxlength="20" placeholder="200"') + psel("pmU", "Ед.", ["мл", "шт"], /^шт/i.test(x[10]) ? "шт" : "мл") +
+    pf("pmP", "Цена", x[11], 'type="text" inputmode="decimal" maxlength="20"') + psel("pmC", "Состав (id)", ids, x[12] || "") +
+    '</div><details class="incmapd"><summary>Где в меню: ' + esc(x[0]) + ' · ' + esc(x[2]) + '</summary><div class="refgrid">' +
+    pf("pmCh", "Глава", x[0], 'type="text" list="pubChs" maxlength="60"') + pf("pmChE", "Глава EN", x[1], 'type="text" maxlength="60"') +
+    pf("pmS", "Раздел", x[2], 'type="text" list="pubSecs" maxlength="80"') + pf("pmSE", "Раздел EN", x[3], 'type="text" maxlength="80"') +
+    '</div>' + pchk("pmT", "Раздел карточками с фото", pubYes(x[4])) + '</details>' +
+    pchk("pmH", "Скрыть от гостей", pubYes(x[14])) +
+    '<p class="warn" id="pubMsg" role="status"></p><div class="refbtns"><button type="submit" class="wogo">Сохранить</button>' +
+    (r ? '<button type="button" class="link pubdel" data-del="1">Удалить</button>' : "") + '<button type="button" class="link" data-cancel="1">Отмена</button></div></form>';
+}
+function pubCardForm(r, key){
+  const x = r || [key, "", "", "", "", "", "", "Не выявлены", "", "", "", "", "", "", ""];
+  const photos = [""].concat(Object.keys(PHW).map(k => "photos/" + k + ".webp")), icons = [""].concat(typeof LART !== "undefined" ? Object.keys(LART).filter(k => k !== "vine" && k !== "corner") : []);
+  return '<form class="refed pubf" data-t="c" autocomplete="off" novalidate>' +
+    '<div><label class="label" for="pcG">Раздел</label><select id="pcG">' + pubRaw.groups.map(g => '<option value="' + esc(g[0]) + '"' + (g[0] === x[0] ? " selected" : "") + '>' + esc(g[1] || g[0]) + '</option>').join("") + '</select></div>' +
+    '<div class="refgrid">' + pf("pcN", "Название", x[2], 'type="text" maxlength="120" required') + pf("pcNe", "Название EN", x[3], 'type="text" maxlength="120"') + '</div>' +
+    pf("pcM", "Состав для гостей", x[4]) + pf("pcMe", "Состав EN", x[5]) +
+    pf("pcC", "Состав на этикетке (через ;)", x[6]) + pf("pcA", "Аллергены", x[7]) + pf("pcAe", "Аллергены EN", x[8]) + '<div class="refgrid">' +
+    pf("pcV", "Подача, мл", x[9], 'type="text" inputmode="numeric" maxlength="10"') + pf("pcL", "На этикетке", x[12], 'type="text" maxlength="40" placeholder="как название"') +
+    psel("pcI", "Фото", photos, x[10] || "") + psel("pcK", "Значок", icons, x[11] || "") + '</div>' +
+    pchk("pcLo", "Только для этикеток (гостям не показывать)", pubYes(x[13])) + pchk("pcH", "Скрыть", pubYes(x[14])) +
+    '<p class="warn" id="pubMsg" role="status"></p><div class="refbtns"><button type="submit" class="wogo">Сохранить</button>' +
+    (r ? '<button type="button" class="link pubdel" data-del="1">Удалить</button>' : "") + '<button type="button" class="link" data-cancel="1">Отмена</button></div></form>';
+}
+$("pubMode").addEventListener("click", e => {
+  const b = e.target.closest("button[data-m]");
+  if (!b || b.dataset.m === pubMode) return;
+  pubMode = b.dataset.m; pubOpen = ""; buzz(8); pubDraw();
+});
+let pubT = 0;
+$("pubQ").addEventListener("input", () => { clearTimeout(pubT); pubT = setTimeout(pubDraw, 120); });
+$("pubWarn").addEventListener("click", e => { if (e.target.id === "pubRetry") pubLoad(); });
+$("pubList").addEventListener("click", async e => {
+  const b = e.target.closest("button.refrow");
+  if (b){ pubOpen = pubOpen === b.dataset.k ? "" : b.dataset.k; buzz(8); return pubDraw(); }
+  const a = e.target.closest("button[data-add], button[data-cadd]");
+  if (a){ pubOpen = a.dataset.add != null ? "new:" + a.dataset.add : "cnew:" + a.dataset.cadd; return pubDraw(); }
+  if (e.target.closest("[data-cancel]")){ pubOpen = ""; return pubDraw(); }
+  const del = e.target.closest("[data-del]");
+  if (del && !pubBusy){
+    const isM = !pubOpen.startsWith("c:"), key = isM ? pubOpen : pubOpen.slice(2);
+    if (!confirm(isM ? "Удалить позицию из меню? (Можно просто скрыть.)" : "Удалить позицию из «Состава»? QR-коды на этикетках перестанут на неё вести. (Можно просто скрыть.)")) return;
+    pubBusy = true; $("pubMsg").textContent = "Удаляем…";
+    const d = await pubPost({mgr: "pubset", t: isM ? "m" : "c", act: "del", key});
+    pubBusy = false;
+    if (!d) return;
+    if (!d.ok){ $("pubMsg").textContent = pubErr(d); return; }
+    pubOpen = ""; buzz(14); pubFetch(); pubLoad();
+  }
+});
+$("pubList").addEventListener("submit", async e => {
+  const f = e.target.closest("form.pubf");
+  if (!f) return;
+  e.preventDefault();
+  if (pubBusy) return;
+  const v = id => $(id).value.trim(), on = id => $(id).checked ? "да" : "";
+  let body;
+  if (f.dataset.t === "m"){
+    const isNew = pubOpen.startsWith("new:"), r = isNew ? null : pubRaw.menu.find(x => x[15] === pubOpen);
+    if (!v("pmN") && !v("pmC")){ $("pubMsg").textContent = "Впишите название или выберите ссылку на состав."; return; }
+    if (!v("pmCh") || !v("pmS")){ $("pubMsg").textContent = "Укажите главу и раздел («Где в меню»)."; return; }
+    const row = [v("pmCh"), v("pmChE"), v("pmS"), v("pmSE"), on("pmT"), v("pmN"), v("pmE"), v("pmD"), v("pmDe"), pubNum(v("pmV")), v("pmU") === "шт" ? "шт" : "",
+      pubNum(v("pmP")), v("pmC"), r ? r[13] : "", on("pmH"), r ? r[15] : ""];
+    let after = "";
+    if (isNew){ const same = pubRaw.menu.filter(x => x[0] === row[0] && x[2] === row[2]); after = same.length ? same[same.length - 1][15] : ""; }
+    body = {mgr: "pubset", t: "m", act: isNew ? "add" : "set", key: isNew ? "" : pubOpen, after, row};
+  } else {
+    const isNew = pubOpen.startsWith("cnew:"), id = isNew ? "" : pubOpen.slice(2);
+    if (!v("pcN")){ $("pubMsg").textContent = "Впишите название."; return; }
+    const row = [v("pcG"), id, v("pcN"), v("pcNe"), v("pcM"), v("pcMe"), v("pcC"), v("pcA") || "Не выявлены", v("pcAe"), pubNum(v("pcV")), v("pcI"), v("pcK"), v("pcL"), on("pcLo"), on("pcH")];
+    let after = "";
+    if (isNew){ const same = pubRaw.items.filter(x => x[0] === row[0]); after = same.length ? same[same.length - 1][1] : ""; }
+    body = {mgr: "pubset", t: "c", act: isNew ? "add" : "set", key: id, after, row};
+  }
+  pubBusy = true; $("pubMsg").textContent = "Сохраняем…";
+  const d = await pubPost(body);
+  pubBusy = false;
+  if (!d) return;
+  if (!d.ok){ $("pubMsg").textContent = pubErr(d); return; }
+  pubOpen = ""; buzz(14);
+  pubFetch(); pubLoad();
+});
+
+/* цены из прейскуранта R-Keeper */
+function pubPriceDraw(){
+  if (!pubPr){ $("pubList").innerHTML = ""; return; }
+  const ch = pubPr.ch;
+  $("pubList").innerHTML = '<p class="mgrsum">В файле позиций с ценой: <b>' + pubPr.n + '</b> · изменится цен: <b>' + ch.length + '</b> · без изменений ' + pubPr.same +
+    (pubPr.miss.length ? ' · в меню не нашлось ' + pubPr.miss.length : "") + '</p>' +
+    (ch.length ? '<ul class="olist incl">' + ch.map((c, i) => '<li class="' + (c.how === "guess" ? "inc-guess" : "inc-code") + '"><label class="row1"><span><span class="refn">' + esc(c.name) + '</span>' +
+      '<small class="mgrwhy">' + esc(String(c.old)) + ' → <b>' + esc(String(c.price)) + '</b>' + (c.how === "guess" ? " · похоже на «" + esc(c.fname) + "» — проверьте" : c.how === "code" ? " · по коду" : "") + '</small></span>' +
+      '<input type="checkbox" data-i="' + i + '"' + (c.on ? " checked" : "") + '></label></li>').join("") + '</ul>' +
+      '<div class="refbtns"><button type="button" class="wogo" id="pubPrGo">Применить отмеченные</button><button type="button" class="link" id="pubPrX">Отмена</button></div>' : '<p class="empty">Все цены в меню уже такие, как в файле.</p>') +
+    (pubPr.miss.length ? '<details class="incmapd"><summary>В меню не нашлось (' + pubPr.miss.length + ')</summary><p class="wnhint">' + pubPr.miss.map(esc).join(", ") + '</p></details>' : "");
+}
+$("pubFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!f || !pubRaw) return;
+  $("pubWarn").textContent = "Читаем файл…";
+  let t;
+  try { t = await readTable(f); }
+  catch (err) { $("pubWarn").textContent = err.message === "xls" ? "Это старый формат .xls — откройте файл в Excel и сохраните как «Книга Excel (.xlsx)»." : "Не удалось прочитать файл — сохраните его как .xlsx или CSV."; return; }
+  const sheet = t.sheets.find(s => s.rows.some(r => r.some(c => c !== ""))), rows = sheet ? sheet.rows : [];
+  let hr = -1, map = {};
+  for (let i = 0; i < Math.min(rows.length, 40) && hr < 0; i++){
+    const cells = rows[i].map(c => typeof c === "string" ? c.toLowerCase().trim() : "");
+    const n = cells.findIndex(c => /наимен|блюдо|товар|назван/.test(c)), p = cells.findIndex(c => /цена|стоимост/.test(c));
+    if (n >= 0 && p >= 0){ hr = i; map = {n, p, c: cells.findIndex(c => /^код|артикул/.test(c))}; }
+  }
+  if (hr < 0){ $("pubWarn").textContent = "Не нашёл в файле столбцы «Наименование» и «Цена»."; return; }
+  $("pubWarn").textContent = "";
+  const menu = pubRaw.menu.map(r => ({r, name: r[5] || pubCardName(r[12]), t: incTok(r[5] || pubCardName(r[12])), k: incNorm(r[5] || pubCardName(r[12]))}));
+  const ch = [], miss = [], seen = new Set();
+  let n = 0, same = 0;
+  for (let i = hr + 1; i < rows.length; i++){
+    const name = String(rows[i][map.n] || "").trim(), price = rows[i][map.p], code = map.c >= 0 ? String(rows[i][map.c] || "").trim() : "";
+    if (!name || typeof price !== "number" || !(price > 0)) continue;
+    n++;
+    let m = code ? menu.find(x => x.r[13] && x.r[13] === code) : null, how = m ? "code" : "";
+    if (!m){ m = menu.find(x => x.k === incNorm(name)); how = m ? "name" : ""; }
+    if (!m){
+      const tk = incTok(name);
+      let b1 = 0, b2 = 0, bi = null;
+      menu.forEach(x => { const sc = incScore(tk, x.t); if (sc > b1){ b2 = b1; b1 = sc; bi = x; } else if (sc > b2) b2 = sc; });
+      if (b1 >= 0.75 && b1 > b2){ m = bi; how = "guess"; }
+    }
+    if (!m){ miss.push(name); continue; }
+    if (seen.has(m.r[15])) continue;
+    seen.add(m.r[15]);
+    if (typeof m.r[11] === "string" && /\//.test(m.r[11])) continue;      // «350/890» — две цены, правится вручную
+    if (+m.r[11] === price){ same++; continue; }
+    ch.push({uid: m.r[15], name: m.name, fname: name, old: m.r[11] === "" ? "нет цены" : m.r[11], price, code, how, on: how !== "guess"});
+  }
+  pubPr = {ch, miss, n, same};
+  pubPriceDraw();
+});
+$("pubList").addEventListener("change", e => {
+  const c = e.target.closest("input[type=checkbox][data-i]");
+  if (c && pubPr) pubPr.ch[+c.dataset.i].on = c.checked;
+});
+$("pubList").addEventListener("click", async e => {
+  if (e.target.id === "pubPrX"){ pubPr = null; return pubPriceDraw(); }
+  if (e.target.id !== "pubPrGo" || pubBusy || !pubPr) return;
+  const rows = pubPr.ch.filter(c => c.on).map(c => ({uid: c.uid, price: c.price, code: c.code}));
+  if (!rows.length) return;
+  pubBusy = true; e.target.disabled = true;
+  const d = await pubPost({mgr: "prices", rows});
+  pubBusy = false; e.target.disabled = false;
+  if (!d) return;
+  if (!d.ok){ $("pubWarn").textContent = pubErr(d); return; }
+  $("pubWarn").textContent = "Цены обновлены: " + d.n + ". Гости увидят их сразу.";
+  pubPr = null; buzz(14); pubFetch(); pubLoad();
+});

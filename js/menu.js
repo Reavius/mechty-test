@@ -263,14 +263,14 @@ function mTile(x){
     '<div class="cbody"><p class="mdesc">' + esc(d) + '</p>' +
     (ci && ci.img ? '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async">' : '') + '</div>' +
     '<div class="mfoot">' + (ci ? '<a class="mlink" href="#' + esc(x.c) + '">' + t("link") + ' →</a>' : '<span></span>') +
-    '<span class="mvp">' + (x.v ? '<small>' + mVol(x) + '</small>' : '') + '<b>' + esc(x.p) + '</b></span></div></article>';
+    '<span class="mvp">' + (x.v ? '<small>' + esc(mVol(x)) + '</small>' : '') + '<b>' + esc(x.p) + '</b></span></div></article>';
 }
 function mRow(x){
   const ci = x.c ? cardItem(x.c) : null, d = mDesc(x);
   return '<li class="mrow"><div class="mn"><span class="mname">' + esc(mName(x)) + '</span>' +
     (d ? '<small>' + esc(d) + '</small>' : '') +
     (ci ? '<a class="mlink" href="#' + esc(x.c) + '">' + t("link") + ' →</a>' : '') + '</div>' +
-    '<span class="mv">' + mVol(x) + '</span><b class="mp">' + esc(x.p) + '</b></li>';
+    '<span class="mv">' + esc(mVol(x)) + '</span><b class="mp">' + esc(x.p) + '</b></li>';
 }
 const mOk = x => x.n || cardItem(x.c);                         // позиция из карты, которой там уже нет, — не показывать
 const mHit = (x, f) => !f || [mName(x, "ru"), mName(x, "en"), mDesc(x, "ru"), mDesc(x, "en")].some(s => s.toLowerCase().includes(f));
@@ -295,7 +295,7 @@ function drawMenuChips(){
   const n = c => c.secs.reduce((a, s) => a + s.items.filter(mOk).length, 0);
   $("mchips").innerHTML = [{k: "all", ru: UI.ru.all, en: UI.en.all, n: MENU.reduce((a, c) => a + n(c), 0)}]
     .concat(MENU.map(c => ({k: c.k, ru: c.ru, en: c.en, n: n(c)})))
-    .map(d => '<button type="button" data-key="' + d.k + '" aria-pressed="false">' + esc(d[LANG]) + '<b>' + d.n + '</b></button>').join("");
+    .map(d => '<button type="button" data-key="' + esc(d.k) + '" aria-pressed="false">' + esc(d[LANG]) + '<b>' + d.n + '</b></button>').join("");
 }
 
 /* вкладки «Меню» / «Состав и аллергены» */
@@ -366,5 +366,102 @@ $("mout").addEventListener("click", e => {
   mScroll = window.scrollY;
   if (location.hash === a.getAttribute("href")){ e.preventDefault(); jumpTo(a.getAttribute("href").slice(1)); }
 });
+
+/* ── меню и состав из таблицы («Менеджер» → «Гостям») ──
+   Пока листов нет — показывается то, что в файлах сайта (выше). Есть — сайт берёт их из таблицы без пароля,
+   копию хранит на телефоне (открывается сразу и без интернета), свежую подтягивает при каждом открытии. */
+const PUBK = "mechty-pub", pubYes = v => /^(да|1|true|x|\+)$/i.test(String(v).trim());
+const PUB0 = {menu: JSON.parse(JSON.stringify(MENU)), data: JSON.parse(JSON.stringify(data)),
+  en: JSON.parse(JSON.stringify(CARD_EN)), gen: JSON.parse(JSON.stringify(GROUP_EN))};
+let pubV = "", pubFrom = "files";
+const pubSet = (to, from) => { to.length = 0; from.forEach(x => to.push(x)); };
+const pubObj = (to, from) => { Object.keys(to).forEach(k => delete to[k]); Object.assign(to, from); };
+/* строки таблицы → MENU и data (как в файлах сайта) */
+function pubApply(d){
+  if (!d || !d.ok || !Array.isArray(d.menu) || !Array.isArray(d.items) || !Array.isArray(d.groups)) return false;
+  const menu = [];
+  let ch = null, sec = null;
+  for (const r of d.menu){
+    if (!ch || ch.ru !== r[0]){ ch = {k: String(r[0]), ru: String(r[0]), en: String(r[1] || r[0]), secs: []}; menu.push(ch); sec = null; }
+    if (!sec || sec.ru !== r[2]){ sec = {ru: String(r[2]), en: String(r[3] || r[2]), tiles: pubYes(r[4]), items: []}; ch.secs.push(sec); }
+    const x = {p: r[11]};
+    if (r[5]) x.n = String(r[5]); if (r[6]) x.e = String(r[6]); if (r[7]) x.d = String(r[7]); if (r[8]) x.de = String(r[8]);
+    if (r[9] !== "" && r[9] != null) x.v = r[9]; if (/^шт/i.test(r[10])) x.u = "pcs"; if (r[12]) x.c = String(r[12]);
+    sec.items.push(x);
+  }
+  const en = {}, gen = {}, by = {}, groups = d.groups.map(g => {
+    const o = {key: String(g[0]), cat: String(g[1]), short: String(g[2] || g[1]), rule: String(g[3] || ""), srok: String(g[4] || ""), store: String(g[5] || ""),
+      items: []};
+    if (pubYes(g[6])) o.serve = true;
+    if (pubYes(g[7])) o.nolabel = true;
+    if (g[8] || g[9] || g[10]) gen[o.key] = [String(g[8] || ""), String(g[9] || g[8] || ""), String(g[10] || "")];
+    by[o.key] = o;
+    return o;
+  });
+  for (const r of d.items){
+    const g = by[r[0]];
+    if (!g) continue;
+    const al = String(r[7] || "Не выявлены"), it = {id: String(r[1]), n: String(r[2]), c: String(r[6] || r[4] || "").split(/\s*;\s*/).filter(Boolean), al, m: String(r[4] || "")};
+    if (!/не выявлен/i.test(al)) it.flag = true;
+    if (r[8]) it.alEn = String(r[8]);
+    if (r[9] !== "" && r[9] != null) it.vol = r[9];
+    if (r[10]) it.img = String(r[10]);
+    if (r[11]) it.icon = String(r[11]);
+    if (r[12]) it.ln = String(r[12]);
+    if (pubYes(r[13])) it.lo = true;
+    if (r[3] || r[5]) en[it.id] = [String(r[3] || ""), String(r[5] || "")];
+    g.items.push(it);
+  }
+  if (!menu.length || !groups.some(g => g.items.length)) return false;   // пустая таблица — не затирать меню
+  pubSet(MENU, menu);
+  pubSet(data, groups.filter(g => g.items.length));
+  pubObj(CARD_EN, en); pubObj(GROUP_EN, gen);
+  pubV = d.v || ""; pubFrom = "table";
+  if (!MENU.some(c => c.k === mActive)) mActive = "all";
+  return true;
+}
+/* вернуть то, что в файлах сайта (листы удалили) */
+function pubReset(){
+  pubSet(MENU, JSON.parse(JSON.stringify(PUB0.menu)));
+  pubSet(data, JSON.parse(JSON.stringify(PUB0.data)));
+  pubObj(CARD_EN, JSON.parse(JSON.stringify(PUB0.en))); pubObj(GROUP_EN, JSON.parse(JSON.stringify(PUB0.gen)));
+  pubV = ""; pubFrom = "files"; mActive = "all";
+}
+function pubRedraw(){
+  drawMenuChips(); drawMenu();
+  if (typeof drawCard === "function"){
+    if (typeof active !== "undefined" && active !== "all" && !data.some(g => g.key === active)) active = "all";
+    drawChips(); drawCard();
+  }
+  if (typeof labRefresh === "function") labRefresh();
+  const h = decodeURIComponent(location.hash.slice(1));                  // QR на позицию, которой не было в старой копии
+  if (h && h !== "bartenders" && h !== "card" && cardItem(h) && typeof jumpTo === "function" && !$("viewBar").hidden){
+    const el = document.getElementById(h);
+    if (gPane !== "card" || !el || !el.classList.contains("hit")) jumpTo(h);
+  }
+}
+function pubFetch(){
+  if (typeof ENDPOINT !== "string") return;
+  const cb = "mechtyPub" + Date.now(), el = document.createElement("script");
+  const end = () => { try { delete window[cb]; } catch (e) { window[cb] = undefined; } el.remove(); };
+  window[cb] = d => {
+    end();
+    if (d && d.ok && d.none){
+      try { localStorage.removeItem(PUBK); } catch (e) {}
+      if (pubFrom === "table"){ pubReset(); pubRedraw(); }
+      return;
+    }
+    if (!d || !d.ok || (d.v && d.v === pubV)) return;
+    if (pubApply(d)){
+      try { localStorage.setItem(PUBK, JSON.stringify(d)); } catch (e) {}
+      pubRedraw();
+    }
+  };
+  el.onerror = end;
+  el.src = ENDPOINT + "?pub=1&callback=" + cb;
+  document.head.appendChild(el);
+}
+try { const c = JSON.parse(localStorage.getItem(PUBK) || "null"); if (c) pubApply(c); } catch (e) {}
+document.addEventListener("DOMContentLoaded", pubFetch);
 
 applyLang();

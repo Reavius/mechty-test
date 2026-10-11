@@ -40,7 +40,9 @@ function doGet(e) {
   const cb = /^[A-Za-z_$][\w$]{0,63}$/.test(p.callback || "") ? p.callback : "";
   let out;
 
-  if (!tokenOk(p.token)) {
+  if (p.pub) {                                                           // меню и состав для гостей — без пароля
+    try { out = pubGet(); } catch (err) { console.error("pub: " + err); out = { error: "net" }; }
+  } else if (!tokenOk(p.token)) {
     out = { error: "denied" };
   } else if (p.rev) {
     try { out = revision(p); } catch (err) { out = { error: String(err && err.message || err) }; }
@@ -747,6 +749,9 @@ function doPost(e) {
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
     if (p.mgr === "in") return jsonOut(mgrIn(p));
+    if (p.mgr === "pubseed") return jsonOut(mgrPubSeed(p));
+    if (p.mgr === "pubset") return jsonOut(mgrPubSet(p));
+    if (p.mgr === "prices") return jsonOut(mgrPrices(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1281,6 +1286,7 @@ function manager(p) {
   if (p.mgr === "order") return mgrOrder();
   if (p.mgr === "inlist") return mgrInList(p);
   if (p.mgr === "usage") return mgrUsage(p);
+  if (p.mgr === "pubraw") return mgrPubRaw();
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1637,6 +1643,177 @@ function mgrUsage(p) {
   });
   items.forEach(x => { x.inc = x.key ? inc[x.key] || [] : []; x.wo = x.key ? wo[x.key] || [] : []; });
   return { ok: true, kind: kind, cols: cols, items: items.filter(x => x.v.some(y => y != null)) };
+}
+
+/* ═════════════ Для гостей: меню и «Состав и аллергены» из таблицы ═════════════
+   Листы в таблице ревизии: «Меню» (строка — позиция меню, по порядку), «Карта» (позиции «Состава и аллергенов»)
+   и «Карта разделы». Создаются кнопкой «Перенести в таблицу» на сайте («Менеджер» → «Гостям») из того, что сейчас
+   в файлах сайта. Дальше правятся здесь или на сайте. Гости получают их без пароля (pub=1), ответ помнится 5 минут —
+   правка прямо в таблице видна гостям через 5 минут, правка с сайта — сразу. Пустое «Название EN» — гость
+   увидит русское. Пустое название или описание в меню у коктейля со ссылкой на карту — берутся из карты.
+   «Скрыть» = да — позиция не показывается, но остаётся в таблице. */
+const PUB_M = "Меню", PUB_C = "Карта", PUB_G = "Карта разделы", PUB_TTL = 300;
+const PUB_MH = ["Глава", "Глава EN", "Раздел", "Раздел EN", "Плитки", "Название", "Название EN", "Описание", "Описание EN",
+  "Объём", "Ед.", "Цена", "id в карте", "Код R-Keeper", "Скрыть", "uid"];
+const PUB_CH = ["Раздел", "id", "Название", "Название EN", "Состав для гостей", "Состав EN", "Полный состав (этикетка, через ;)",
+  "Аллергены", "Аллергены EN", "Объём подачи", "Фото", "Значок этикетки", "Название на этикетке", "Только этикетка", "Скрыть"];
+const PUB_GH = ["key", "Название", "Кратко", "Правило", "Срок", "Хранение", "Подача", "Без этикеток", "Название EN", "Кратко EN", "Правило EN"];
+const PUB_NOTES = {
+  "Плитки": "да — раздел показывается карточками с фото (коктейли)", "Ед.": "мл (пусто) или шт",
+  "id в карте": "id позиции в листе «Карта» — у позиции появится ссылка «Состав и аллергены», а пустые название и описание берутся оттуда",
+  "Код R-Keeper": "заполняется сам при загрузке цен из R-Keeper", "Скрыть": "да — не показывать гостям", "uid": "служебный, не менять",
+  "id": "латиницей, не менять — на него ведут QR-коды этикеток", "Полный состав (этикетка, через ;)": "как на этикетке: через точку с запятой",
+  "Аллергены": "«Не выявлены» или перечень", "Объём подачи": "мл — для разделов с подачей", "Фото": "photos/имя.webp",
+  "Значок этикетки": "имя значка, например i-pear", "Только этикетка": "да — только для этикеток, гостям не показывать"};
+const yes = v => /^(да|1|true|x|\+)$/i.test(String(v).trim());
+const TRL = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
+  п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya" };
+const pubId = n => String(n).toLowerCase().split("").map(c => c in TRL ? TRL[c] : c).join("").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "item";
+
+function pubSheet(name, head, create) {
+  const ss = revBook(), sh = ss.getSheetByName(name);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(name);
+  n.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight("bold");
+  head.forEach((h, i) => { if (PUB_NOTES[h]) n.getRange(1, i + 1).setNote(PUB_NOTES[h]); });
+  n.setFrozenRows(1);
+  return n;
+}
+function pubRows(sh, w) {
+  const last = sh ? sh.getLastRow() : 0;
+  return last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues().map(r => r.map(x => typeof x === "number" ? x : x instanceof Date ? "" : String(x).trim())) : [];
+}
+/* всё для гостей: меню, разделы и позиции карты (скрытые — без них) */
+function pubGet() {
+  const cache = CacheService.getScriptCache(), c = cache.get("pub");
+  if (c) return JSON.parse(c);
+  const ms = pubSheet(PUB_M, PUB_MH, false), cs = pubSheet(PUB_C, PUB_CH, false), gs = pubSheet(PUB_G, PUB_GH, false);
+  if (!ms && !cs) return { ok: true, none: 1 };
+  const menu = pubRows(ms, PUB_MH.length).filter(r => (r[5] || r[12]) && !yes(r[14])).map(r => r.slice(0, 14));
+  const ids = {}, items = pubRows(cs, PUB_CH.length).filter(r => r[2] && !yes(r[14])).map(r => {
+    let id = r[1] || pubId(r[2]);
+    while (ids[id]) id += "-2";
+    ids[id] = 1; r[1] = id;
+    return r.slice(0, 14);
+  });
+  const groups = pubRows(gs, PUB_GH.length).filter(r => r[0]);
+  const out = { ok: true, menu: menu, groups: groups, items: items };
+  out.v = sha(JSON.stringify(out)).slice(0, 12);
+  const j = JSON.stringify(out);
+  if (j.length < 95000) cache.put("pub", j, PUB_TTL);
+  return out;
+}
+const pubDrop = () => CacheService.getScriptCache().remove("pub");
+
+/* для редактора менеджера: всё, со скрытыми; строкам меню без uid и позициям без id — выдать (под блокировкой) */
+function mgrPubRaw() {
+  const ms = pubSheet(PUB_M, PUB_MH, false), cs = pubSheet(PUB_C, PUB_CH, false), gs = pubSheet(PUB_G, PUB_GH, false);
+  if (!ms && !cs) return { ok: true, none: 1 };
+  const lock = lockOrBusy(15000);
+  try {
+    const menu = pubRows(ms, PUB_MH.length), items = pubRows(cs, PUB_CH.length);
+    let fix = false;
+    menu.forEach(r => { if (!r[15] && (r[5] || r[12])) { r[15] = Utilities.getUuid().slice(0, 8); fix = true; } });
+    if (fix) ms.getRange(2, 16, menu.length, 1).setValues(menu.map(r => [r[15]]));
+    const ids = {};
+    let fixc = false;
+    items.forEach(r => { if (!r[2]) return; let id = r[1] || pubId(r[2]); while (ids[id] && ids[id] !== r) id += "-2"; if (id !== r[1]) { r[1] = id; fixc = true; } ids[id] = r; });
+    if (fixc) cs.getRange(2, 2, items.length, 1).setValues(items.map(r => [r[1]]));
+    if (fix || fixc) pubDrop();
+    return { ok: true, menu: menu, items: items, groups: pubRows(gs, PUB_GH.length) };
+  } finally { lock.releaseLock(); }
+}
+
+/* перенос из файлов сайта: {menu: [[…PUB_MH без uid]], items: [[…PUB_CH]], groups: [[…PUB_GH]]} — только если листов ещё нет */
+function mgrPubSeed(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const menu = Array.isArray(p.menu) ? p.menu.slice(0, 2000) : [], items = Array.isArray(p.items) ? p.items.slice(0, 1000) : [],
+    groups = Array.isArray(p.groups) ? p.groups.slice(0, 50) : [];
+  if (!menu.length || !items.length || !groups.length) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    if (pubSheet(PUB_M, PUB_MH, false) || pubSheet(PUB_C, PUB_CH, false)) return { error: "exists" };
+    const cell = (v, n) => typeof v === "number" ? v : clean(v, n || 300);
+    const put = (sh, rows, w) => {
+      if (!rows.length) return;
+      ensureRows(sh, rows.length + 1);
+      sh.getRange(2, 1, rows.length, w).setNumberFormat("@");
+      sh.getRange(2, 1, rows.length, w).setValues(rows.map(r => Array.from({ length: w }, (_, i) => cell(r[i] == null ? "" : r[i]))));
+    };
+    const ms = pubSheet(PUB_M, PUB_MH, true), cs = pubSheet(PUB_C, PUB_CH, true), gs = pubSheet(PUB_G, PUB_GH, true);
+    put(ms, menu.map(r => r.slice(0, 15).concat([Utilities.getUuid().slice(0, 8)])), PUB_MH.length);
+    ms.getRange(2, 12, menu.length, 1).setNumberFormat("General").setValues(menu.map(r => [typeof r[11] === "number" ? r[11] : cell(r[11], 30)]));
+    put(cs, items, PUB_CH.length);
+    put(gs, groups, PUB_GH.length);
+    SpreadsheetApp.flush();
+    pubDrop();
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+/* правка с сайта: {t: "m"|"c", act: "set"|"add"|"del", key: uid или id, after: uid/id, row: [...]} — лист переписывается целиком */
+function mgrPubSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const isM = p.t === "m", head = isM ? PUB_MH : PUB_CH, w = head.length, kc = isM ? 15 : 1;
+  const row = Array.isArray(p.row) ? Array.from({ length: w }, (_, i) => { const v = p.row[i]; return typeof v === "number" ? v : clean(v == null ? "" : v, 400); }) : null;
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = pubSheet(isM ? PUB_M : PUB_C, head, false);
+    if (!sh) return { error: "none" };
+    const rows = pubRows(sh, w), at = rows.findIndex(r => String(r[kc]) === String(p.key || "")), n0 = rows.length;
+    if (p.act === "del") { if (at < 0) return { error: "gone" }; rows.splice(at, 1); }
+    else if (p.act === "set") {
+      if (at < 0 || !row) return { error: at < 0 ? "gone" : "bad" };
+      row[kc] = rows[at][kc];                                            // uid / id не меняются
+      rows[at] = row;
+    } else if (p.act === "add") {
+      if (!row) return { error: "bad" };
+      if (isM) row[15] = Utilities.getUuid().slice(0, 8);
+      else {
+        let id = /^[a-z0-9-]{1,40}$/.test(row[1]) ? row[1] : pubId(row[2]);
+        while (rows.some(r => r[1] === id)) id += "-2";
+        row[1] = id;
+      }
+      const after = rows.findIndex(r => String(r[kc]) === String(p.after || ""));
+      rows.splice(after < 0 ? rows.length : after + 1, 0, row);
+    } else return { error: "action" };
+    if (rows.length) {
+      ensureRows(sh, rows.length + 1);
+      sh.getRange(2, 1, rows.length, w).setNumberFormat("@").setValues(rows);
+      if (isM) sh.getRange(2, 12, rows.length, 1).setNumberFormat("General").setValues(rows.map(r => [r[11]]));
+    }
+    if (n0 > rows.length) sh.getRange(rows.length + 2, 1, n0 - rows.length, w).setValues(Array.from({ length: n0 - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    pubDrop();
+    return { ok: true, key: p.act === "add" ? row[kc] : p.key };
+  } finally { lock.releaseLock(); }
+}
+/* цены из прейскуранта R-Keeper: {rows: [{uid, price, code}]} */
+function mgrPrices(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const up = (Array.isArray(p.rows) ? p.rows : []).slice(0, 2000).filter(r => r && r.uid && num(r.price) > 0);
+  if (!up.length) return { error: "bad" };
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = pubSheet(PUB_M, PUB_MH, false);
+    if (!sh) return { error: "none" };
+    const rows = pubRows(sh, PUB_MH.length), by = {};
+    rows.forEach((r, i) => { by[r[15]] = i; });
+    let n = 0;
+    up.forEach(u => {
+      const i = by[u.uid];
+      if (i == null) return;
+      rows[i][11] = Math.round(num(u.price) * 100) / 100;
+      if (u.code && !rows[i][13]) rows[i][13] = clean(u.code, 40);
+      n++;
+    });
+    if (n) {
+      sh.getRange(2, 12, rows.length, 1).setValues(rows.map(r => [r[11]]));
+      sh.getRange(2, 14, rows.length, 1).setNumberFormat("@").setValues(rows.map(r => [r[13]]));
+      SpreadsheetApp.flush();
+      pubDrop();
+    }
+    return { ok: true, n: n };
+  } finally { lock.releaseLock(); }
 }
 
 /* ── Ежемесячная копия таблиц ──

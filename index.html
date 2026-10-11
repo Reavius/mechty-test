@@ -417,6 +417,7 @@
         <button type="button" data-t="ord" aria-pressed="false">Автозаявка</button>
         <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
+        <button type="button" data-t="pub" aria-pressed="false">Гостям</button>
       </div>
       <div id="mgrSum">
       <div class="result tcard wo">
@@ -486,6 +487,29 @@
         </div>
         <p class="mgrsum" id="incSum"></p>
         <div id="incList"></div>
+      </div>
+
+      <div id="mgrPub" hidden>
+        <div id="pubSeed" hidden>
+          <p class="wnhint mgrrhint">Сейчас меню для гостей и «Состав и аллергены» берутся из файлов сайта — менять их может только разработчик.
+            Перенесите их в таблицу: появятся листы «Меню», «Карта» и «Карта разделы» в таблице ревизии, и дальше вы правите их сами —
+            здесь или прямо в таблице. Гости увидят то же, что сейчас.</p>
+          <button type="button" class="wogo" id="pubSeedGo">Перенести меню и состав в таблицу</button>
+          <p class="warn" id="pubSeedMsg" role="status"></p>
+        </div>
+        <div id="pubEd" hidden>
+          <div class="modes mgrkind" id="pubMode" role="group" aria-label="Что править">
+            <button type="button" data-m="menu" aria-pressed="true">Меню</button>
+            <button type="button" data-m="card" aria-pressed="false">Состав</button>
+            <button type="button" data-m="price" aria-pressed="false">Цены R-Keeper</button>
+          </div>
+          <p class="wnhint mgrrhint" id="pubHint"></p>
+          <input id="pubQ" class="tq" type="search" placeholder="Поиск" autocomplete="off" aria-label="Поиск">
+          <label class="wogo incfile" id="pubFileL" hidden>Загрузить прейскурант R-Keeper (Excel / CSV)<input type="file" id="pubFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <p class="warn" id="pubWarn" role="status"></p>
+          <div id="pubList"></div>
+          <datalist id="pubChs"></datalist><datalist id="pubSecs"></datalist>
+        </div>
       </div>
 
       <div id="mgrRef" hidden>
