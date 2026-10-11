@@ -1280,6 +1280,7 @@ function manager(p) {
   if (p.mgr === "ref") return mgrRef();
   if (p.mgr === "order") return mgrOrder();
   if (p.mgr === "inlist") return mgrInList(p);
+  if (p.mgr === "usage") return mgrUsage(p);
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1561,6 +1562,81 @@ function inByKey() {
     (out[refKey(r[3], r[4])] = out[refKey(r[3], r[4])] || []).push({ iso: d, q: num(r[5]) });
   });
   return out;
+}
+
+/* ── Расход и странности (бар-менеджер) ──
+   История пересчётов по позициям: ежедневная ревизия (лист «Итог», последние 60 законченных пересчётов) или месячная
+   (закрытые «Итоги» листа «Месячная ревизия», последние 24). К каждой позиции — приход («Журнал прихода») и
+   списания с проработками (журналы актов) в единицах позиции; расход, «обычный» расход и странности считает сайт. */
+const USE_D = 60, USE_M = 24;
+
+/* количество из акта — в единицах позиции; несовместимые единицы — null */
+function woConv(q, wu, pu) {
+  const w = String(wu || "").trim().toLowerCase(), u = String(pu || "").trim().toLowerCase();
+  const L = /^(л|литр)$/, KG = /^кг$/;
+  if (L.test(u)) return L.test(w) ? q : w === "мл" ? q / 1000 : null;
+  if (KG.test(u)) return KG.test(w) ? q : /^(г|гр)$/.test(w) ? q / 1000 : null;
+  if (u === "шт" || u === "") return w === "шт" || w === "бут" ? q : null;
+  return w === u ? q : null;
+}
+function mgrUsage(p) {
+  const kind = p.kind === "m" ? "m" : "d", ref = mgrRef();
+  if (!ref.ok) return ref;
+  const byName = {}, refU = {};
+  ref.rows.forEach(r => { const k = nameKey(r[1]), key = refKey(r[0], r[1]); byName[k] = k in byName ? null : key; refU[key] = r[2]; });
+  const val = v => v === "" || v == null || isNaN(num(v)) ? null : Math.round(num(v) * 1000) / 1000;
+  let cols = [], items = [];
+  if (kind === "d") {
+    const ts = revTotal(revBook()), open = revOpen(), last = open ? open.tc - 1 : ts.getLastColumn(), pos = revPositions(ts);
+    const first = Math.max(2, last - USE_D + 1);
+    if (last >= first && pos.length) {
+      const w = last - first + 1, hd = ts.getRange(1, first, 2, w).getDisplayValues();
+      const v = ts.getRange(3, first, pos[pos.length - 1].row - 2, w).getValues();
+      const ok = [];
+      for (let c = 0; c < w; c++) { const iso = dmy(hd[0][c]); if (iso) { ok.push(c); cols.push({ iso: iso, who: String(hd[1][c] || "") }); } }
+      items = pos.map(x => {
+        const key = byName[nameKey(x.n)] || "";
+        return { n: x.n, sec: "", key: key, u: key ? refU[key] : unitOf(x.n), v: ok.map(c => val(v[x.row - 3][c])) };
+      });
+    }
+  } else {
+    const sh = mrevSheet(true), b = mrevBlock();
+    if (sh && sh.getLastColumn() >= 4 && sh.getLastRow() >= 7) {
+      const lc = sh.getLastColumn(), h = sh.getRange(3, 1, 4, lc).getDisplayValues(), openId = b && b.open ? b.total : "";
+      let tc = [];
+      for (let c = 3; c < lc; c++) {
+        const id = String(h[1][c]).trim(), iso = dmy(h[3][c]);
+        if (String(h[2][c]).trim() === "Итог" && id && id !== openId && iso) tc.push({ c: c + 1, iso: iso, who: String(h[0][c]).trim() });
+      }
+      tc.sort((a, x) => a.iso.localeCompare(x.iso));
+      tc = tc.slice(-USE_M);
+      if (tc.length) {
+        const c0 = Math.min.apply(null, tc.map(x => x.c)), c1 = Math.max.apply(null, tc.map(x => x.c));
+        const v = sh.getRange(7, c0, sh.getLastRow() - 6, c1 - c0 + 1).getValues();
+        cols = tc.map(x => ({ iso: x.iso, who: x.who }));
+        let sec = "";
+        mrevRows(sh).forEach(x => {
+          if (x.t !== "i") { sec = x.n; return; }
+          const key = refKey(sec, x.n);
+          items.push({ n: x.n, sec: sec, key: key, u: key in refU ? refU[key] : x.u, v: tc.map(t => val(v[x.r - 7][t.c - c0])) });
+        });
+      }
+    }
+  }
+  /* приход и списания — только для позиций из справочника */
+  const inc = inByKey(), wo = {};
+  Object.keys(WO_KINDS).forEach(k => {
+    const sh = woSheet(k, false), last = sh ? sh.getLastRow() : 0;
+    if (last < 2) return;
+    sh.getRange(2, 1, last - 1, 5).getValues().forEach(r => {
+      const iso = dmy(r[0]), key = byName[nameKey(r[2])];
+      if (!iso || !key) return;
+      const q = woConv(num(r[4]), r[3], refU[key]);
+      if (q != null && q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000 });
+    });
+  });
+  items.forEach(x => { x.inc = x.key ? inc[x.key] || [] : []; x.wo = x.key ? wo[x.key] || [] : []; });
+  return { ok: true, kind: kind, cols: cols, items: items.filter(x => x.v.some(y => y != null)) };
 }
 
 /* ── Ежемесячная копия таблиц ──

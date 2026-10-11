@@ -413,6 +413,7 @@
     <div id="mgrBox" hidden>
       <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
         <button type="button" data-t="sum" aria-pressed="true">Сводка списаний</button>
+        <button type="button" data-t="use" aria-pressed="false">Расход</button>
         <button type="button" data-t="ord" aria-pressed="false">Автозаявка</button>
         <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
@@ -441,6 +442,24 @@
       </div>
       <div id="mgrOut"></div>
       <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
+      </div>
+
+      <div id="mgrUse" hidden>
+        <p class="wnhint mgrrhint">Расход между двумя ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него объяснено актами.
+          Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов; у ежедневной — по тем же дням недели,
+          если истории хватает). Подсвечивается то, что заметно выше или ниже обычного, и остаток, выросший без прихода.</p>
+        <div class="modes mgrkind" id="useKind" role="group" aria-label="Какая ревизия">
+          <button type="button" data-k="d" aria-pressed="true">Ежедневная</button>
+          <button type="button" data-k="m" aria-pressed="false">Месячная</button>
+        </div>
+        <div class="quick" id="useSens" aria-label="Чувствительность">
+          <button type="button" data-s="0.3" aria-pressed="false">±30%</button>
+          <button type="button" data-s="0.5" aria-pressed="true">±50%</button>
+          <button type="button" data-s="1" aria-pressed="false">±100%</button>
+        </div>
+        <p class="mgrsum" id="useSum"></p>
+        <p class="warn" id="useWarn" role="status"></p>
+        <div id="useList"></div>
       </div>
 
       <div id="mgrOrd" hidden>

@@ -706,3 +706,23 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .incpick input,.inck input{padding:9px 11px;border-radius:9px}
 .inck input{flex:1;min-width:0;width:100%}
 .incl label.inck{padding:0;gap:6px;justify-content:flex-start;cursor:default}
+@media (min-width:641px){.mgrtabs{grid-template-columns:repeat(5,1fr)}}
+@media (max-width:640px){.mgrtabs button:last-child:nth-child(odd){grid-column:1/-1}}
+.usel li:first-child{border-top:0}
+.userow{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;color:var(--fg);font:inherit;padding:11px 16px;cursor:pointer}
+.userow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.usen{flex:1;min-width:0}
+.usen small.mgrwhy{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.usev{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.usev b{display:block;font-size:14.5px}
+.usev small{display:block;font-size:11.5px;color:var(--muted)}
+.use3{border-left:3px solid var(--red)}
+.use3 small.mgrwhy b,.use3 .usev b{color:var(--red)}
+.use2{border-left:3px solid var(--flag)}
+.use2 small.mgrwhy b,.use2 .usev b{color:var(--flag)}
+.use1 small.mgrwhy b{color:var(--accent)}
+.usel li.open{background:var(--surface-2)}
+.usehist{margin:0 0 6px;font-size:13px}
+.usehist td,.usehist th{padding:7px 16px}
+.usehist small.mgrwhy{display:block;font-size:11.5px;color:var(--muted)}
+.useok{padding:24px 0}
