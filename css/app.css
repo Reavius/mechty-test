@@ -679,3 +679,30 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .mgrt .tname em .link{font-size:11px;letter-spacing:.11em;text-transform:uppercase}
 .mgrt .row1 small.mgrwhy{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
 .ordl li:not(.on) .ordn{text-decoration:line-through}
+@media (min-width:641px){.mgrtabs{grid-template-columns:repeat(4,1fr)}}
+@media (max-width:640px){.mgrtabs{grid-template-columns:repeat(2,1fr)}}
+.incfile{display:block;text-align:center;margin:4px 0 0}
+.incfile input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+#incQuick{margin-top:22px}
+.incmap .label{margin-top:8px}
+.incl{margin-top:10px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.incl li:first-child{border-top:0}
+.incr{padding:10px 14px}
+.incr .refn small{font-weight:500;color:var(--muted)}
+.incr small.mgrwhy{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.incr small.mgrwhy b{font-weight:600}
+.inc-code small.mgrwhy b,.inc-name small.mgrwhy b{color:var(--accent)}
+.inc-guess{border-left:3px solid var(--flag)}
+.inc-guess small.mgrwhy b,.incg{color:var(--flag)}
+.inc-no .refn{color:var(--muted)}
+.incpick{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:8px;margin-top:8px}
+.incpick input{width:100%;min-width:0;font-size:16px}
+.inck{display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600}
+.incmapd{margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.incmapd summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--accent)}
+.incmapd[open] summary{margin-bottom:4px}
+.incml{margin:14px 0 0}
+.incpick{grid-template-columns:minmax(0,1fr) 86px}
+.incpick input,.inck input{padding:9px 11px;border-radius:9px}
+.inck input{flex:1;min-width:0;width:100%}
+.incl label.inck{padding:0;gap:6px;justify-content:flex-start;cursor:default}

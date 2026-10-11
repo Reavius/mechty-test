@@ -414,6 +414,7 @@
       <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
         <button type="button" data-t="sum" aria-pressed="true">Сводка списаний</button>
         <button type="button" data-t="ord" aria-pressed="false">Автозаявка</button>
+        <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
       </div>
       <div id="mgrSum">
@@ -444,11 +445,28 @@
 
       <div id="mgrOrd" hidden>
         <p class="wnhint mgrrhint">К заказу = <b>норма − остаток</b> по позициям справочника с нормой, с округлением до целой тары.
-          Остаток — из самой свежей ревизии: ежедневной или месячной. Снимите галочку с того, что заказывать не нужно.</p>
+          Остаток — из самой свежей ревизии: ежедневной или месячной; приход после неё прибавляется. Снимите галочку с того, что заказывать не нужно.</p>
         <p class="mgrsum" id="mgrOsrc"></p>
         <p class="warn" id="mgrOwarn" role="status"></p>
         <div id="mgrOlist"></div>
         <p class="mgrfoot"><button type="button" class="link" id="mgrOcopy" disabled>Скопировать заявку</button></p>
+      </div>
+
+      <div id="mgrInc" hidden>
+        <p class="wnhint mgrrhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
+          и сопоставит товары со справочником: по коду R-Keeper, по названию, которое уже встречалось, или подскажет похожее — проверьте.
+          Второй раз то же сопоставление подтверждать не нужно. Старый .xls откройте в Excel и сохраните как «Книга Excel (.xlsx)».</p>
+        <label class="wogo incfile">Загрузить накладные (Excel / CSV)<input type="file" id="incFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+        <p class="warn" id="incWarn" role="status"></p>
+        <div id="incImp" hidden></div>
+        <datalist id="incRefs"></datalist>
+        <div class="quick" id="incQuick">
+          <button type="button" data-r="d30" aria-pressed="true">30 дней</button>
+          <button type="button" data-r="m" aria-pressed="false">Этот месяц</button>
+          <button type="button" data-r="pm" aria-pressed="false">Прошлый месяц</button>
+        </div>
+        <p class="mgrsum" id="incSum"></p>
+        <div id="incList"></div>
       </div>
 
       <div id="mgrRef" hidden>
@@ -546,6 +564,7 @@
 <script src="js/mrev.js" defer></script>
 <script src="js/order.js" defer></script>
 <script src="js/open.js" defer></script>
+<script src="js/xlsx.js" defer></script>
 <script src="js/mgr.js" defer></script>
 <script src="js/calc.js" defer></script>
 <script src="js/swipe.js" defer></script>

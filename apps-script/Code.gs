@@ -746,6 +746,7 @@ function doPost(e) {
     if (p.mgr === "login") return jsonOut(mgrLogin(p));
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
+    if (p.mgr === "in") return jsonOut(mgrIn(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1278,6 +1279,7 @@ function manager(p) {
   if (p.mgr === "wo") return mgrWo(p);
   if (p.mgr === "ref") return mgrRef();
   if (p.mgr === "order") return mgrOrder();
+  if (p.mgr === "inlist") return mgrInList(p);
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1308,12 +1310,15 @@ function mgrWo(p) {
    Код R-Keeper — из столбца A бланка, если там число. Тара — объём или вес одной бутылки / упаковки в единицах
    позиции (0,7 — бутылка 0,7 л); норма — сколько держать, в тех же единицах. */
 const REF = "Справочник";
-const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка"];
+const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка",
+  "Название в R-Keeper", "Коэф. R-Keeper"];                               // J, K — запоминает загрузка прихода
 const REF_F = ["u", "code", "tara", "norm", "sup", "price", "note"];      // столбцы C…I
 const refKey = (sec, n) => [sec, n].map(x => String(x).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ")).join("|");
 
 function refSheet(create) {
   const ss = revBook(), sh = ss.getSheetByName(REF);
+  if (sh && create && sh.getLastColumn() < REF_HEAD.length)           // лист из прошлой версии — дописать шапку J, K
+    sh.getRange(1, 1, 1, REF_HEAD.length).setValues([REF_HEAD]).setFontWeight("bold");
   if (sh || !create) return sh;
   const nsh = ss.insertSheet(REF);
   nsh.getRange(1, 1, 1, REF_HEAD.length).setValues([REF_HEAD]).setFontWeight("bold");
@@ -1353,6 +1358,9 @@ function refSync() {
 function refVals(v) {
   return v.map(r => r.map(x => typeof x === "number" ? String(Math.round(x * 1000) / 1000).replace(".", ",") : x instanceof Date ? "" : String(x)));
 }
+/* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке, название R-Keeper, коэф.] */
+const refRow = (r, inBlank) => [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()),
+  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim()]);
 /* справочник для сайта: по порядку бланка; строки, которых в бланке уже нет, — в конце с пометкой */
 function mgrRef() {
   const lock = lockOrBusy(15000);
@@ -1364,7 +1372,7 @@ function mgrRef() {
   blank.forEach((x, i) => { const k = refKey(x.sec, x.n); if (!(k in order)) order[k] = i; });
   const rows = v.filter(r => String(r[1]).trim()).map(r => {
     const k = refKey(r[0], r[1]);
-    return { o: k in order ? order[k] : 1e6, r: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [k in order ? 1 : 0]) };
+    return { o: k in order ? order[k] : 1e6, r: refRow(r, k in order) };
   });
   rows.sort((a, b) => a.o - b.o);
   return { ok: true, head: REF_HEAD, rows: rows.map(x => x.r) };
@@ -1389,14 +1397,15 @@ function mgrRefSet(p) {
     sh.getRange(i + 2, 3, 1, REF_F.length).setValues([REF_F.map(k => vals[k])]);
     SpreadsheetApp.flush();
     const r = refVals(sh.getRange(i + 2, 1, 1, REF_HEAD.length).getValues())[0];
-    return { ok: true, row: [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()), [1]) };
+    return { ok: true, row: refRow(r, true) };
   } finally { lock.releaseLock(); }
 }
 
 /* ── Автозаявка (бар-менеджер) ──
    К заказу = норма − последний остаток, по позициям справочника с нормой. Остаток — из той ревизии, что свежее:
    ежедневной (лист «Итог», последний законченный пересчёт; позиции сопоставляются по названию) или месячной
-   (последняя закрытая; пока месячная идёт — прошлая). Округление до целой тары и группировку по поставщикам делает сайт. */
+   (последняя закрытая; пока месячная идёт — прошлая). Приход из «Журнала прихода» после даты этой ревизии прибавляется
+   к остатку. Округление до целой тары и группировку по поставщикам делает сайт. */
 const dmy = s => { const m = String(s || "").match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
 const nameKey = s => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
 
@@ -1440,12 +1449,116 @@ function mgrOrder() {
     }
   } catch (e) { out.src.d = null; }
 
+  const inc = inByKey();                                               // пришло после ревизии — тоже на баре
   ref.rows.forEach(r => {
     const norm = num(String(r[5]).replace(",", "."));
     if (!String(r[5]).trim() || !(norm > 0)) { out.nonorm++; return; }
     const s = stock[refKey(r[0], r[1])] || null;
+    const inq = s && s.date > "0000-00-00" ? (inc[refKey(r[0], r[1])] || []).filter(x => x.iso > s.date).reduce((a, x) => a + x.q, 0) : 0;
     out.rows.push({ sec: r[0], n: r[1], u: r[2], code: r[3], tara: num(String(r[4]).replace(",", ".")), norm: norm,
-      sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "" });
+      sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "", inq: Math.round(inq * 1000) / 1000 });
+  });
+  return out;
+}
+
+/* ── Приход (бар-менеджер) ──
+   Накладные R-Keeper загружаются на сайте (Excel / CSV), сайт сопоставляет строки с позициями справочника и шлёт сюда.
+   Лист «Журнал прихода» в таблице ревизии: строка на строку накладной, количество — уже в единицах позиции
+   (кол-во R-Keeper × коэффициент). Одна и та же строка накладной второй раз не записывается (id).
+   В справочник запоминаются название и коэффициент R-Keeper (J, K), код — если пуст, цена закупки — за единицу позиции. */
+const IN_SHEET = "Журнал прихода";
+const IN_HEAD = ["Дата", "№ накладной", "Поставщик", "Раздел", "Позиция", "Кол-во", "Ед. изм.", "Цена за ед.", "Сумма",
+  "Код R-Keeper", "Название в R-Keeper", "Кол-во в R-Keeper", "Ед. R-Keeper", "Коэф.", "Загрузил", "Записано", "id"];
+
+function inSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(IN_SHEET);
+  if (sh || !create) return sh;
+  const nsh = ss.insertSheet(IN_SHEET);
+  nsh.getRange(1, 1, 1, IN_HEAD.length).setValues([IN_HEAD]).setFontWeight("bold");
+  nsh.setFrozenRows(1);
+  nsh.setColumnWidth(5, 220);
+  nsh.setColumnWidth(11, 220);
+  return nsh;
+}
+const ruDate = s => { const v = String(s || "").trim(), m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + "." + m[2] + "." + m[1] : /^\d{2}\.\d{2}\.\d{4}$/.test(v) ? v : ""; };
+
+/* запись прихода: {rows: [{date, no, sup, code, rkn, rku, rkq, price, sum, sec, n, k}], who} */
+function mgrIn(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const src = (Array.isArray(p.rows) ? p.rows : []).slice(0, 1000), who = clean(p.who, 80);
+  const rows = [];
+  for (const r of src) {
+    const date = ruDate(r.date), rkq = num(r.rkq), k = num(r.k), n = clean(r.n, 200);
+    if (!date || !(rkq > 0) || !(k > 0) || !n) return { error: "bad" };
+    rows.push({ date: date, no: clean(r.no, 40), sup: clean(r.sup, 120), code: clean(r.code, 40), rkn: clean(r.rkn, 200),
+      rku: clean(r.rku, 20), rkq: rkq, price: num(r.price), sum: num(r.sum), sec: clean(r.sec, 120), n: n, k: k });
+  }
+  if (!rows.length) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    const rs = refSheet(true), rl = rs.getLastRow();
+    const rv = rl >= 2 ? rs.getRange(2, 1, rl - 1, REF_HEAD.length).getValues() : [];
+    const at = {};
+    rv.forEach((r, i) => { at[refKey(r[0], r[1])] = i; });
+    const sh = inSheet(true), last = sh.getLastRow();
+    const ids = new Set(last >= 2 ? sh.getRange(2, IN_HEAD.length, last - 1, 1).getValues().map(r => String(r[0])) : []);
+    const stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm"), add = [], touched = {}, miss = [];
+    let dup = 0;
+    rows.forEach(r => {
+      const i = at[refKey(r.sec, r.n)];
+      if (i == null) { miss.push(r.n); return; }
+      const id = sha([r.date, r.no, r.sup, r.code, r.rkn, r.rkq, r.price].join("|")).slice(0, 20);
+      if (ids.has(id)) { dup++; return; }
+      ids.add(id);
+      const q = Math.round(r.rkq * r.k * 1000) / 1000, pu = r.price > 0 ? Math.round(r.price / r.k * 100) / 100 : "";
+      add.push([r.date, r.no, r.sup, rv[i][0], rv[i][1], q, rv[i][2], pu, r.sum || (r.price > 0 ? Math.round(r.price * r.rkq * 100) / 100 : ""),
+        r.code, r.rkn, r.rkq, r.rku, r.k, who, stamp, id]);
+      const ref = rv[i];                                                // справочник: запомнить, как эта позиция зовётся в R-Keeper
+      if (r.rkn) ref[9] = r.rkn;
+      ref[10] = r.k;
+      if (r.code && !String(ref[3]).trim()) ref[3] = r.code;
+      if (pu !== "") ref[7] = pu;
+      touched[i] = 1;
+    });
+    if (add.length) {
+      ensureRows(sh, last + add.length);
+      const top = last + 1;
+      sh.getRange(top, 1, add.length, 5).setNumberFormat("@");           // дата, №, поставщик, раздел, позиция — текстом
+      sh.getRange(top, 7, add.length, 1).setNumberFormat("@");
+      sh.getRange(top, 10, add.length, 2).setNumberFormat("@");
+      sh.getRange(top, 13, add.length, 1).setNumberFormat("@");
+      sh.getRange(top, 15, add.length, 3).setNumberFormat("@");
+      sh.getRange(top, 1, add.length, IN_HEAD.length).setValues(add);
+    }
+    Object.keys(touched).forEach(i => {
+      const r = rv[i];
+      rs.getRange(+i + 2, 4).setNumberFormat("@").setValue(r[3]);
+      rs.getRange(+i + 2, 8).setValue(r[7]);
+      rs.getRange(+i + 2, 10, 1, 2).setValues([[r[9], r[10]]]);
+    });
+    SpreadsheetApp.flush();
+    return { ok: true, added: add.length, dup: dup, miss: miss };
+  } finally { lock.releaseLock(); }
+}
+/* приход за период (ГГГГ-ММ-ДД): [дата, №, поставщик, раздел, позиция, кол-во, ед., цена за ед., сумма] */
+function mgrInList(p) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : "0000-00-00";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : "9999-99-99";
+  const sh = inSheet(false), last = sh ? sh.getLastRow() : 0, rows = [];
+  if (last >= 2) sh.getRange(2, 1, last - 1, 9).getValues().forEach(r => {
+    const d = dmy(r[0]);
+    if (!d || d < from || d > to) return;
+    rows.push([String(r[0]).trim(), String(r[1]), String(r[2]), String(r[3]), String(r[4]), num(r[5]), String(r[6]), r[7] === "" ? "" : num(r[7]), r[8] === "" ? "" : num(r[8])]);
+  });
+  return { ok: true, from: from, to: to, rows: rows };
+}
+/* приход по позициям: ключ справочника → [{iso, q}] */
+function inByKey() {
+  const sh = inSheet(false), last = sh ? sh.getLastRow() : 0, out = {};
+  if (last >= 2) sh.getRange(2, 1, last - 1, 6).getValues().forEach(r => {
+    const d = dmy(r[0]);
+    if (!d) return;
+    (out[refKey(r[3], r[4])] = out[refKey(r[3], r[4])] || []).push({ iso: d, q: num(r[5]) });
   });
   return out;
 }

@@ -40,7 +40,7 @@ function mgrInit(){
 }
 /* ключ истёк или пароль сменили — снова форма входа */
 function mgrExpired(){
-  mgrs(MGR, null); mgrData = null; refRows = null; ordData = null;
+  mgrs(MGR, null); mgrData = null; refRows = null; ordData = null; incData = null;
   $("mgrMsg").textContent = "Вход менеджера истёк или пароль сменили — войдите снова.";
   mgrInit();
 }
@@ -73,7 +73,8 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null;
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null;
+  $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
     fetch(ENDPOINT, {method: "POST", keepalive: true, headers: {"Content-Type": "text/plain;charset=utf-8"},
@@ -214,14 +215,15 @@ $("mgrCopy").addEventListener("click", async () => {
 });
 
 /* ── вкладки менеджера ── */
-let mgrTab = ["sum", "ord", "ref"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
+let mgrTab = ["sum", "ord", "inc", "ref"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
 function mgrTabDraw(){
   document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
   $("mgrSum").hidden = mgrTab !== "sum";
   $("mgrOrd").hidden = mgrTab !== "ord";
+  $("mgrInc").hidden = mgrTab !== "inc";
   $("mgrRef").hidden = mgrTab !== "ref";
 }
-const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrLoad();
+const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrLoad();
 $("mgrTabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-t]");
   if (!b || b.dataset.t === mgrTab) return;
@@ -366,7 +368,7 @@ const ORD_FROM = {d: "ежедн.", m: "месячн."};
 const ordKey = r => r.sec + "|" + r.n;
 /* сколько заказать: целой тарой, если она задана */
 function ordLine(r){
-  const need = r.norm - (r.q || 0);
+  const need = r.norm - (r.q || 0) - (r.inq || 0);
   if (!(need > 1e-9)) return null;
   const u = String(r.u || "").trim().toLowerCase();
   if (r.tara > 0){
@@ -418,7 +420,7 @@ function ordDraw(){
   }
   const G = ordGroups();
   const line = r => '<li class="' + (ordOff.has(ordKey(r)) ? "" : "on") + '"><label class="row1"><span><span class="ordn">' + esc(r.n) + '</span>' +
-    '<small class="mgrwhy">остаток ' + mgrNum(r.q) + ' · норма ' + mgrNum(r.norm) + (r.from ? ' · ' + ORD_FROM[r.from] + (r.date && r.date !== "0000-00-00" ? " " + mgrRu(r.date).slice(0, 5) : "") : "") + '</small></span>' +
+    '<small class="mgrwhy">остаток ' + mgrNum(r.q) + (r.inq ? ' + приход ' + mgrNum(r.inq) : "") + ' · норма ' + mgrNum(r.norm) + (r.from ? ' · ' + ORD_FROM[r.from] + (r.date && r.date !== "0000-00-00" ? " " + mgrRu(r.date).slice(0, 5) : "") : "") + '</small></span>' +
     '<b class="ordq">' + esc(r.l.text) + '</b><input type="checkbox" data-k="' + esc(ordKey(r)) + '"' + (ordOff.has(ordKey(r)) ? "" : " checked") + ' aria-label="' + esc(r.n) + '"></label></li>';
   let html = '<p class="mgrsum">К заказу <b>' + mgrPl(G.sups.reduce((a, s) => a + G.g[s].length, 0), "позиция", "позиции", "позиций") + '</b> · в норме ' + G.ok +
     (d.nonorm ? ' · без нормы ' + d.nonorm + ' (<button type="button" class="link" data-tab="ref">справочник</button>)' : "") + '</p>';
@@ -465,3 +467,231 @@ $("mgrOlist").addEventListener("click", e => {
 });
 $("mgrOcopy").addEventListener("click", () => ordCopy($("mgrOcopy")));
 $("mgrOwarn").addEventListener("click", e => { if (e.target.id === "ordRetry") ordLoad(); });
+
+/* ── приход: загрузка накладных R-Keeper ──
+   Файл → таблица (js/xlsx.js) → строка шапки и столбцы находятся сами (их можно поправить) → строки накладной
+   сопоставляются со справочником: по коду R-Keeper, по уже встречавшемуся названию (J справочника), иначе — похожее
+   название («проверьте»). Коэффициент — сколько единиц позиции в одной единице R-Keeper (бутылка 0,7 → 0,7 л). */
+const INC_F = [["date", "Дата", /дата/], ["no", "№ накладной", /^(номер|№)(?!\s*п\/п)|накладн|документ/], ["sup", "Поставщик", /поставщ|контраг|продав|отправит/],
+  ["code", "Код", /^код|артикул/], ["name", "Наименование", /наимен|товар|номенклат|продукц|назван/], ["unit", "Ед. изм.", /^ед|единиц/],
+  ["qty", "Количество", /^кол|количеств/], ["price", "Цена", /цена/], ["sum", "Сумма", /сумм|стоимост/]];
+let inc = null, incData = null, incRange = "d30";
+const incU = u => { const s = String(u || "").trim().toLowerCase().replace(/\.$/, "");
+  return /^(л|литр|литра|литров|l)$/.test(s) ? "л" : /^(мл|ml)$/.test(s) ? "мл" : /^(кг|kg)$/.test(s) ? "кг" : /^(г|гр|грамм)$/.test(s) ? "г" :
+    /^(шт|штук|штука|pcs)$/.test(s) ? "шт" : /^(бут|бутылка|бутылок|btl)$/.test(s) ? "бут" : s; };
+const incNorm = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/(\d)[,.](\d)/g, "$1.$2").replace(/[«»"'`’().,\/\\\-–—_*]+/g, " ").replace(/\s+/g, " ").trim();
+const incTok = s => incNorm(s).split(" ").filter(w => w.length > 1 && !/^\d+(\.\d+)?(л|мл|кг|г|гр|шт|%|лет)?$/.test(w) && !["мл", "кг", "гр", "шт", "бут", "лет"].includes(w));
+/* похожесть названий: общие слова (с окончаниями: «лимоны» — «лимон»), в среднем по обоим названиям */
+const incSame = (x, y) => x === y || (Math.min(x.length, y.length) >= 4 && Math.abs(x.length - y.length) <= 2 && (x.startsWith(y) || y.startsWith(x)));
+function incScore(a, b){
+  if (!a.length || !b.length) return 0;
+  const hit = a.filter(x => b.some(y => incSame(x, y))).length;
+  return (hit / a.length + hit / b.length) / 2;
+}
+const incLabel = r => r[1] + " — " + (r[0] || "без раздела");
+const colName = i => { let s = ""; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
+
+async function incLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  document.querySelectorAll("#incQuick button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.r === incRange)));
+  const [from, to] = mgrRange(incRange);
+  $("incSum").textContent = "Загрузка…";
+  const d = await api({mgr: "inlist", mk, from, to});
+  if (d.error === "mgr") return mgrExpired();
+  if (!d.ok){ $("incSum").textContent = d.error === "action" ? "Нужна новая версия Apps Script." : "Нет связи с таблицей — нажмите период ещё раз."; return; }
+  incData = d; incListDraw();
+}
+function incListDraw(){
+  const by = {}, keys = [];
+  for (const r of incData.rows){
+    const k = r[0] + "|" + r[1] + "|" + r[2];
+    if (!by[k]){ by[k] = {date: r[0], no: r[1], sup: r[2], rows: [], sum: 0, iso: r[0].split(".").reverse().join("-")}; keys.push(k); }
+    by[k].rows.push(r); by[k].sum += typeof r[8] === "number" ? r[8] : 0;
+  }
+  const inv = keys.map(k => by[k]).sort((a, b) => b.iso.localeCompare(a.iso));
+  const total = inv.reduce((a, x) => a + x.sum, 0);
+  $("incSum").innerHTML = mgrRu(incData.from) + " — " + mgrRu(incData.to) + ": <b>" + mgrPl(inv.length, "накладная", "накладные", "накладных") + "</b>" +
+    (total ? " на " + mgrNum(Math.round(total)) + " ₸" : "");
+  $("incList").innerHTML = inv.slice(0, 40).map(x => '<div class="result tcard mgrt"><div class="tname"><em>' + (x.sum ? mgrNum(Math.round(x.sum)) + " ₸" : "") + '</em>' +
+    '<h3>' + esc(x.date) + (x.no ? " №" + esc(x.no) : "") + '</h3><small class="mgrwhy">' + esc(x.sup || "поставщик не указан") + '</small></div>' +
+    '<table><tbody>' + x.rows.map(r => '<tr><td class="n">' + esc(r[4]) + '</td><td class="v">' + mgrNum(r[5]) + (r[6] ? " " + esc(r[6]) : "") + '</td></tr>').join("") +
+    '</tbody></table></div>').join("") || '<p class="empty">За этот период прихода нет.</p>';
+}
+$("incQuick").addEventListener("click", e => {
+  const b = e.target.closest("button[data-r]");
+  if (!b) return;
+  incRange = b.dataset.r; buzz(8); incLoad();
+});
+
+/* справочник нужен для сопоставления — свежий: тару и коды могли поправить в таблице */
+async function incRefs(){
+  const d = await api({mgr: "ref", mk: mgrKey()});
+  if (d.error === "mgr"){ mgrExpired(); return false; }
+  if (!d.ok) return false;
+  refRows = d.rows; return true;
+}
+$("incFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  $("incWarn").textContent = "Читаем файл…";
+  let t;
+  try { t = await readTable(f); }
+  catch (err) {
+    $("incWarn").textContent = err.message === "xls" ? "Это старый формат .xls — откройте файл в Excel и сохраните как «Книга Excel (.xlsx)»." :
+      err.message === "old" ? "Телефон не умеет распаковывать .xlsx — обновите браузер или сохраните файл как CSV." : "Не удалось прочитать файл — сохраните его как .xlsx или CSV.";
+    return;
+  }
+  const sheets = t.sheets.filter(s => s.rows.some(r => r.some(c => c !== "")));
+  if (!sheets.length){ $("incWarn").textContent = "В файле нет таблицы."; return; }
+  if (!(await incRefs())){ $("incWarn").textContent = "Нет связи с таблицей — справочник не загрузился. Попробуйте ещё раз."; return; }
+  $("incWarn").textContent = "";
+  inc = {file: f.name, sheets, si: 0, mapOpen: null};
+  incDetect(); incBuild(); incDraw();
+});
+
+/* шапка: строка, где больше всего знакомых заголовков; данные накладной над ней (№, дата, поставщик) */
+function incDetect(){
+  const rows = inc.sheets[inc.si].rows;
+  let best = -1, bs = 0;
+  for (let i = 0; i < Math.min(rows.length, 40); i++){
+    const cells = rows[i].map(c => typeof c === "string" ? c.toLowerCase().trim() : "");
+    const sc = INC_F.filter(f => cells.some(c => c && c.length < 60 && f[2].test(c))).length;
+    if (sc > bs && cells.some(c => INC_F[4][2].test(c))){ bs = sc; best = i; }
+  }
+  inc.hr = bs >= 2 ? best : -1;
+  inc.map = {};
+  if (inc.hr >= 0){
+    const used = new Set(), cells = rows[inc.hr].map(c => typeof c === "string" ? c.toLowerCase().trim() : "");
+    for (const [k, , re] of INC_F){
+      const i = cells.findIndex((c, j) => c && !used.has(j) && re.test(c));
+      if (i >= 0){ inc.map[k] = i; used.add(i); }
+    }
+  }
+  const top = rows.slice(0, Math.max(inc.hr, 0)).map(r => r.filter(c => c !== "").join(" ")).join("\n");
+  const no = top.match(/№\s*([\w\-\/]+)/), sup = top.match(/(?:поставщик|контрагент)[:\s]+([^\n]+)/i);
+  const dt = top.match(/(\d{4}-\d{2}-\d{2})/) || top.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  inc.meta = {no: no ? no[1] : "", date: dt ? (dt[3] ? dt[3] + "-" + dt[2] + "-" + dt[1] : dt[1]) : mgrToday(), sup: sup ? sup[1].trim().slice(0, 120) : ""};
+}
+/* строки накладной и сопоставление */
+function incBuild(){
+  const rows = inc.sheets[inc.si].rows, m = inc.map, out = [];
+  const cell = (r, k) => m[k] == null ? "" : r[m[k]] == null ? "" : r[m[k]];
+  const byCode = {}, byName = {}, toks = refRows.map(r => incTok(r[1]));
+  refRows.forEach((r, i) => { if (r[3]) byCode[String(r[3]).trim()] = i; if (r[10]) byName[incNorm(r[10])] = i; });
+  for (let i = inc.hr + 1; i < rows.length; i++){
+    const r = rows[i], name = String(cell(r, "name")).trim(), qty = cell(r, "qty");
+    if (!name || typeof qty !== "number" || !(qty > 0) || /^(итого|всего)/i.test(name)) continue;
+    const code = String(cell(r, "code")).trim();
+    let ri = -1, how = "";
+    if (code && byCode[code] != null){ ri = byCode[code]; how = "code"; }
+    else if (byName[incNorm(name)] != null){ ri = byName[incNorm(name)]; how = "name"; }
+    else {
+      const t = incTok(name);
+      let b1 = 0, b2 = 0, bi = -1;
+      toks.forEach((x, j) => { const sc = incScore(t, x); if (sc > b1){ b2 = b1; b1 = sc; bi = j; } else if (sc > b2) b2 = sc; });
+      if (b1 >= 0.6 && b1 > b2){ ri = bi; how = "guess"; }
+    }
+    const date = cell(r, "date"), price = cell(r, "price"), sum = cell(r, "sum");
+    out.push({name, code, unit: String(cell(r, "unit")).trim(), qty, price: typeof price === "number" ? price : 0, sum: typeof sum === "number" ? sum : 0,
+      date: typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "", no: String(cell(r, "no")).trim(), sup: String(cell(r, "sup")).trim(),
+      ri, how, k: ri >= 0 ? incK(refRows[ri], cell(r, "unit")) : 1});
+  }
+  inc.rows = out;
+}
+function incK(ref, rku){
+  if (ref[11]) return mgrN(ref[11]);
+  const ru = incU(rku), pu = incU(ref[2]), tara = mgrN(ref[4]);
+  if (!ru || !pu || ru === pu) return 1;
+  if ((ru === "шт" || ru === "бут") && (pu === "л" || pu === "кг") && tara > 0) return tara;
+  if (ru === "мл" && pu === "л" || ru === "г" && pu === "кг") return 0.001;
+  if (ru === "л" && pu === "мл" || ru === "кг" && pu === "г") return 1000;
+  return 1;
+}
+const incHow = {code: "по коду", name: "уже сопоставляли", guess: "похоже — проверьте", "": "не найдено — строка пропустится"};
+function incDraw(){
+  const box = $("incImp"), rows = inc.sheets[inc.si].rows, hdr = inc.hr >= 0 ? rows[inc.hr] : rows[0] || [];
+  const ncol = Math.max(...rows.slice(0, 60).map(r => r.length), 1);
+  $("incRefs").innerHTML = refRows.map(r => '<option value="' + esc(incLabel(r)) + '">').join("");
+  const opt = (k, sel) => '<option value="">—</option>' + Array.from({length: ncol}, (_, i) => '<option value="' + i + '"' + (sel === i ? " selected" : "") + '>' +
+    colName(i) + (hdr[i] !== "" && hdr[i] != null ? " · " + esc(String(hdr[i]).slice(0, 28)) : "") + '</option>').join("");
+  const ready = inc.rows.filter(r => r.ri >= 0).length, guess = inc.rows.filter(r => r.how === "guess").length;
+  const meta = (k, label, type, val) => inc.map[k] == null ? '<div><label class="label" for="incM' + k + '">' + label + '</label><input id="incM' + k + '" type="' + type + '" value="' + esc(val) + '"></div>' : "";
+  const found = inc.map.name != null && inc.map.qty != null;
+  if (inc.mapOpen == null) inc.mapOpen = !found;
+  box.hidden = false;
+  box.innerHTML = '<div class="result tcard wo"><div class="tname"><em>' + esc(inc.file) + '</em><h3>Накладные из файла</h3></div><div class="wobody">' +
+    (inc.sheets.length > 1 ? '<label class="label" for="incSheet">Лист</label><select id="incSheet">' + inc.sheets.map((s, i) => '<option value="' + i + '"' + (i === inc.si ? " selected" : "") + '>' + esc(s.name) + '</option>').join("") + '</select>' : "") +
+    '<details class="incmapd" id="incMapD"' + (inc.mapOpen ? " open" : "") + '><summary>' + (found ? "Столбцы найдены" + (inc.hr >= 0 ? " (шапка — строка " + (inc.hr + 1) + ")" : "") + " — проверить" : "Столбцы не найдены — укажите наименование и количество") + '</summary>' +
+    '<div class="refgrid incmap">' + INC_F.map(([k, label]) => '<div><label class="label" for="incC' + k + '">' + label + '</label><select id="incC' + k + '" data-k="' + k + '">' + opt(k, inc.map[k]) + '</select></div>').join("") + '</div></details>' +
+    (inc.map.date == null || inc.map.no == null || inc.map.sup == null ? '<p class="label incml">Накладная — для всех строк файла</p>' : "") +
+    '<div class="refgrid">' + meta("date", "Дата", "date", inc.meta.date) + meta("no", "№", "text", inc.meta.no) + meta("sup", "Поставщик", "text", inc.meta.sup) + '</div>' +
+    '<p class="mgrsum">Строк: <b>' + inc.rows.length + '</b> · сопоставлено ' + ready + (guess ? ' · <span class="incg">проверьте ' + guess + '</span>' : "") +
+      (inc.rows.length - ready ? ' · не найдено ' + (inc.rows.length - ready) : "") + '</p>' +
+    '<ul class="olist incl">' + inc.rows.map((r, i) => {
+      const ref = r.ri >= 0 ? refRows[r.ri] : null;
+      return '<li class="inc-' + (r.how || "no") + '" data-i="' + i + '"><div class="incr"><span class="refn">' + esc(r.name) + (r.code ? ' <small>код ' + esc(r.code) + '</small>' : "") + '</span>' +
+        '<small class="mgrwhy">' + mgrNum(r.qty) + (r.unit ? " " + esc(r.unit) : "") + (r.price ? " · " + mgrNum(r.price) + " ₸" : "") + ' · <b>' + incHow[r.how] + '</b></small>' +
+        '<div class="incpick"><input type="text" list="incRefs" data-f="ref" value="' + (ref ? esc(incLabel(ref)) + '"' : '" placeholder="Позиция справочника"') + ' aria-label="Позиция справочника">' +
+        '<label class="inck">× <input type="text" inputmode="decimal" data-f="k" value="' + mgrNum(r.k) + '" aria-label="Коэффициент"></label></div>' +
+        (ref ? '<small class="mgrwhy">1 ' + esc(r.unit || "ед.") + ' = ' + mgrNum(r.k) + ' ' + esc(ref[2] || "ед.") + ' · в приход: ' + mgrNum(Math.round(r.qty * r.k * 1000) / 1000) + ' ' + esc(ref[2] || "") + '</small>' : "") +
+        '</div></li>';
+    }).join("") + '</ul>' +
+    '<p class="warn" id="incMsg" role="status"></p>' +
+    '<div class="refbtns"><button type="button" class="wogo" id="incSave"' + (ready ? "" : " disabled") + '>Записать приход (' + ready + ')</button><button type="button" class="link" id="incX">Отмена</button></div>' +
+    '</div></div>';
+}
+/* перерисовка — после события: поле, теряющее фокус, ещё в документе */
+$("incImp").addEventListener("toggle", e => { if (e.target.id === "incMapD" && inc) inc.mapOpen = e.target.open; }, true);
+let incT = 0;
+const incRedraw = () => { clearTimeout(incT); incT = setTimeout(() => { if (inc) incDraw(); }, 0); };
+$("incImp").addEventListener("change", e => {
+  const t = e.target;
+  if (t.id === "incSheet"){ inc.si = +t.value; incDetect(); incBuild(); return incRedraw(); }
+  if (t.id && t.id.startsWith("incM") && t.id.length > 4){ inc.meta[t.id.slice(4)] = t.value; return; }
+  if (t.dataset.k && t.id.startsWith("incC")){ if (t.value === "") delete inc.map[t.dataset.k]; else inc.map[t.dataset.k] = +t.value; incBuild(); return incRedraw(); }
+  const li = t.closest("li[data-i]");
+  if (!li) return;
+  const r = inc.rows[+li.dataset.i];
+  if (t.dataset.f === "ref"){
+    const i = refRows.findIndex(x => incLabel(x) === t.value.trim());
+    r.ri = i; r.how = i >= 0 ? "name" : ""; r.k = i >= 0 ? incK(refRows[i], r.unit) : 1;
+    if (!t.value.trim()){ r.ri = -1; r.how = ""; }
+    incRedraw();
+  } else if (t.dataset.f === "k"){
+    const k = mgrN(t.value);
+    if (k > 0){ r.k = k; incRedraw(); } else t.value = mgrNum(r.k);
+  }
+});
+$("incImp").addEventListener("click", async e => {
+  if (e.target.id === "incX"){ inc = null; $("incImp").hidden = true; $("incImp").innerHTML = ""; return; }
+  if (e.target.id !== "incSave") return;
+  const mk = mgrKey(), btn = e.target;
+  if (!mk) return mgrInit();
+  const mv = k => { const el = $("incM" + k); return el ? el.value.trim() : ""; };
+  const rows = inc.rows.filter(r => r.ri >= 0).map(r => {
+    const ref = refRows[r.ri];
+    return {date: r.date || mv("date"), no: r.no || mv("no"), sup: r.sup || mv("sup"), code: r.code, rkn: r.name, rku: r.unit, rkq: r.qty,
+      price: r.price, sum: r.sum, sec: ref[0], n: ref[1], k: r.k};
+  });
+  if (rows.some(r => !/^\d{4}-\d{2}-\d{2}$/.test(r.date))){ $("incMsg").textContent = "Укажите дату накладной."; return; }
+  btn.disabled = true; $("incMsg").textContent = "Записываем…";
+  let d = null;
+  try {
+    const res = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"},
+      body: JSON.stringify({token: TOKEN, mgr: "in", mk, who: me ? me.name : "", rows})});
+    d = await res.json();
+  } catch (err) { d = {error: "net"}; }
+  if (d && d.error === "mgr") return mgrExpired();
+  if (!d || !d.ok){
+    btn.disabled = false;
+    $("incMsg").textContent = d && d.error === "action" ? "Нужна новая версия Apps Script." : d && d.error === "bad" ? "Проверьте даты и количества." : "Не записалось — нет связи. Нажмите ещё раз (повторы не задвоятся).";
+    return;
+  }
+  buzz(14);
+  inc = null; refRows = null; ordData = null;
+  $("incImp").hidden = true; $("incImp").innerHTML = "";
+  $("incWarn").textContent = "Записано строк: " + d.added + (d.dup ? ", уже были в журнале: " + d.dup : "") + (d.miss && d.miss.length ? ", позиции не найдены: " + d.miss.join(", ") : "") + ".";
+  incLoad();
+});
