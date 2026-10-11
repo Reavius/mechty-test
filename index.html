@@ -364,6 +364,11 @@
     <div class="result tcard osum">
       <div class="tname"><em id="ocount"></em><h2 class="h3" id="otitle">К заказу</h2></div>
       <div id="osum"></div>
+      <form class="onew" id="onew" autocomplete="off" novalidate>
+        <input id="onn" type="text" maxlength="80" placeholder="Нет в списке? Например, изюм" aria-label="Своя позиция">
+        <input id="onq" type="text" maxlength="16" placeholder="кол-во" aria-label="Количество своей позиции">
+        <button type="submit" class="wox" aria-label="Добавить в заявку">+</button>
+      </form>
       <div class="otools">
         <button type="button" class="link" id="ocopy">Скопировать заявку</button>
         <button type="button" class="link" id="oreset">Отменить выбранное</button>
@@ -391,6 +396,13 @@
     <ol class="log" id="log"></ol>
     <button type="button" class="link more" id="logMore" hidden></button>
     <div class="warn" id="logWarn" role="status"></div>
+  </div>
+
+  <div class="block">
+    <p class="label">Участники <span class="scope" id="memScope"></span>
+      <button type="button" class="link" id="memShow">Показать</button>
+    </p>
+    <ol class="log" id="mem" hidden></ol>
   </div>
 
   <footer>

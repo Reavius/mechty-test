@@ -50,6 +50,8 @@ function doGet(e) {
     try { out = writeoffs(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.wn) {
     try { out = wnote(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.mem) {
+    try { out = { ok: true, mem: members() }; } catch (err) { console.error("mem: " + err); out = { error: "net" }; }
   } else {
     const name = clean(p.name, 60);
     const email = clean(p.email, 120).toLowerCase();
@@ -137,6 +139,25 @@ function recent() {
   }
   data.sort((a, b) => b.t - a.t);
   return data.slice(0, SHOW);
+}
+
+/* Участники — все, кто когда-либо входил: по одному на почту (фамилия — из последнего входа), по алфавиту.
+   Почта целиком на сайт не уходит: первые 3 символа, 8 звёздочек и окончание адреса (.ru / .com / .kz). */
+function members() {
+  const sh = sheet(), last = sh.getLastRow();
+  if (last < 1) return [];
+  const by = {};
+  sh.getRange(1, 1, last, 3).getValues().forEach(r => {
+    const d = r[0], n = String(r[1] || "").replace(/^'/, "").trim(), e = String(r[2] || "").replace(/^'/, "").trim().toLowerCase();
+    if (!(d instanceof Date) || !n || e.indexOf("@") < 1) return;
+    const t = d.getTime();
+    if (!by[e] || t > by[e].t) by[e] = { n: n, t: t };
+  });
+  return Object.keys(by).map(e => ({ n: by[e].n, m: maskMail(e) })).sort((a, b) => a.n.localeCompare(b.n, "ru"));
+}
+function maskMail(e) {
+  const end = (String(e).match(/\.[^.@]+$/) || [""])[0];
+  return String(e).slice(0, 3) + "********" + end;
 }
 
 /* Разовая перестановка: выберите sortJournal в списке функций и нажмите «Выполнить» —
