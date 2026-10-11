@@ -648,3 +648,25 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .mgrskel{margin-top:14px}
 .mgrd{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .mgrd input[type="date"]{min-width:0;padding-inline:10px}
+.mgrtabs{margin:0 0 6px}
+.mgrrhint{margin:14px 2px 12px}
+.refsec{margin-top:22px}
+.reft{font-family:var(--sans);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 2px 8px}
+.refl{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.refl li:first-child{border-top:0}
+.refrow{display:block;width:100%;text-align:left;background:none;border:0;color:var(--fg);font:inherit;padding:11px 16px;cursor:pointer}
+.refrow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.refn{display:block;font-size:14.5px;font-weight:600;overflow-wrap:anywhere}
+.refrow small{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+.refrow small em{font-style:normal;color:var(--flag)}
+.refli.open{background:var(--surface-2)}
+.refli.open .refrow .refn{color:var(--accent)}
+.refli.saved .refrow small::after{content:" · сохранено ✓";color:var(--accent)}
+.refed{padding:0 16px 16px}
+.refed .label{display:block;margin:10px 0 5px}
+.refed input,.refed select{width:100%;font-size:16px;min-width:0}
+.refgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}
+.refbtns{display:flex;align-items:center;gap:16px}
+.refbtns .wogo{flex:1;margin-top:12px}
+.refbtns .link{margin-top:12px}
+.refed .label{letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

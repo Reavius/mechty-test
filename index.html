@@ -411,6 +411,11 @@
     </form>
 
     <div id="mgrBox" hidden>
+      <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
+        <button type="button" data-t="sum" aria-pressed="true">Сводка списаний</button>
+        <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
+      </div>
+      <div id="mgrSum">
       <div class="result tcard wo">
         <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
         <div class="wobody">
@@ -433,7 +438,26 @@
         </div>
       </div>
       <div id="mgrOut"></div>
-      <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button> · <button type="button" class="link" id="mgrOff">Выйти из менеджера</button></p>
+      <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
+      </div>
+
+      <div id="mgrRef" hidden>
+        <p class="wnhint mgrrhint">Позиции — из бланка месячной ревизии, новые добавляются сами. Заполняйте здесь или в таблице ревизии,
+          лист «Справочник». <b>Тара</b> — объём или вес одной бутылки / упаковки в единицах позиции (0,7 — бутылка 0,7 л),
+          <b>норма</b> — сколько держать, в тех же единицах.</p>
+        <input id="mgrRq" class="tq" type="search" placeholder="Поиск по позиции" autocomplete="off" aria-label="Поиск по справочнику">
+        <div class="quick" id="mgrRf">
+          <button type="button" data-f="all" aria-pressed="true">Все</button>
+          <button type="button" data-f="norm" aria-pressed="false">Без нормы</button>
+          <button type="button" data-f="tara" aria-pressed="false">Без тары</button>
+          <button type="button" data-f="code" aria-pressed="false">Без кода</button>
+        </div>
+        <p class="mgrsum" id="mgrRinfo"></p>
+        <p class="warn" id="mgrRwarn" role="status"></p>
+        <div id="mgrRlist"></div>
+        <datalist id="mgrSups"></datalist>
+      </div>
+      <p class="mgrfoot"><button type="button" class="link" id="mgrOff">Выйти из менеджера</button></p>
     </div>
   </div>
 

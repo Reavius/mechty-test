@@ -35,7 +35,14 @@ function mgrInit(){
     if (q && q.k) mgrKindSel = q.k;
   }
   mgrKindDraw();
-  mgrLoad();                                                  // каждый раз при входе в раздел — свежие акты
+  mgrTabDraw();
+  if (mgrTab === "ref") refLoad(); else mgrLoad();            // каждый раз при входе в раздел — свежие данные
+}
+/* ключ истёк или пароль сменили — снова форма входа */
+function mgrExpired(){
+  mgrs(MGR, null); mgrData = null; refRows = null;
+  $("mgrMsg").textContent = "Вход менеджера истёк или пароль сменили — войдите снова.";
+  mgrInit();
 }
 $("mgrIn").addEventListener("submit", async e => {
   e.preventDefault();
@@ -66,8 +73,8 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null;
-  $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true;
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1;
+  $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = "";
   if (k && k.mk && TOKEN)
     fetch(ENDPOINT, {method: "POST", keepalive: true, headers: {"Content-Type": "text/plain;charset=utf-8"},
       body: JSON.stringify({token: TOKEN, mgr: "out", mk: k.mk})}).catch(() => {});
@@ -85,11 +92,7 @@ async function mgrLoad(){
   $("mgrOut").innerHTML = '<ul class="olist mgrskel">' + skel(5) + '</ul>';
   const d = await api({mgr: "wo", mk, from, to});
   if ($("mgrFrom").value !== from || $("mgrTo").value !== to) return;      // пока грузили, даты сменили
-  if (d.error === "mgr"){
-    mgrs(MGR, null); mgrData = null;
-    $("mgrMsg").textContent = "Вход менеджера истёк или пароль сменили — войдите снова.";
-    return mgrInit();
-  }
+  if (d.error === "mgr") return mgrExpired();
   if (!d.ok){
     $("mgrSub").textContent = "";
     $("mgrOut").innerHTML = "";
@@ -209,3 +212,147 @@ $("mgrCopy").addEventListener("click", async () => {
   $("mgrCopy").textContent = ok ? "Скопировано ✓" : "Не скопировалось";
   setTimeout(() => { $("mgrCopy").textContent = "Скопировать сводку"; }, 1800);
 });
+
+/* ── вкладки менеджера ── */
+let mgrTab = mgrj("mechty-mgr-tab", "sum") === "ref" ? "ref" : "sum";
+function mgrTabDraw(){
+  document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
+  $("mgrSum").hidden = mgrTab !== "sum";
+  $("mgrRef").hidden = mgrTab !== "ref";
+}
+$("mgrTabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-t]");
+  if (!b || b.dataset.t === mgrTab) return;
+  mgrTab = b.dataset.t; mgrs("mechty-mgr-tab", mgrTab);
+  buzz(8); mgrTabDraw();
+  if (mgrTab === "ref") refLoad(); else mgrLoad();
+});
+
+/* ── справочник позиций ──
+   строка: [раздел, позиция, ед., код R-Keeper, тара, норма, поставщик, цена, заметка, есть в бланке] */
+let refRows = null, refF = "all", refOpen = -1, refBusy = false, refSaved = -1;
+const REF_U = ["", "литр", "шт", "кг", "бут"];
+const refNum = /^\s*(\d+([.,]\d+)?)?\s*$/;
+
+async function refLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  $("mgrRwarn").textContent = "";
+  if (!refRows) $("mgrRlist").innerHTML = '<ul class="olist mgrskel">' + skel(8) + '</ul>';
+  const d = await api({mgr: "ref", mk});
+  if (d.error === "mgr") return mgrExpired();
+  if (!d.ok){
+    if (!refRows) $("mgrRlist").innerHTML = "";
+    $("mgrRwarn").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)."
+      : 'Нет связи с таблицей. <button type="button" class="link" id="refRetry">Повторить</button>';
+    return;
+  }
+  if (refOpen >= 0 && refRows && refRows[refOpen]){           // открытую на правку позицию не закрывать
+    const k = refRows[refOpen][0] + "|" + refRows[refOpen][1];
+    refOpen = d.rows.findIndex(r => r[0] + "|" + r[1] === k);
+  }
+  refRows = d.rows;
+  refDraw();
+}
+
+const refMiss = (r, f) => f === "norm" ? !r[5] : f === "tara" ? !r[4] : f === "code" ? !r[3] : false;
+function refMeta(r){
+  const p = [];
+  if (r[2]) p.push(esc(r[2]));
+  if (r[3]) p.push("код " + esc(r[3]));
+  p.push(r[4] ? "тара " + esc(r[4]) : '<em>нет тары</em>');
+  p.push(r[5] ? "норма " + esc(r[5]) : '<em>нет нормы</em>');
+  if (r[6]) p.push(esc(r[6]));
+  if (r[7]) p.push(esc(r[7]) + " ₸");
+  if (!r[9]) p.push('<em>нет в бланке</em>');
+  return p.join(" · ");
+}
+function refForm(r, i){
+  const us = REF_U.includes(r[2]) ? REF_U : REF_U.concat([r[2]]);
+  const fld = (id, label, val, attrs) => '<div><label class="label" for="' + id + '">' + label + '</label><input id="' + id + '" value="' + esc(val) + '" ' + attrs + '></div>';
+  return '<form class="refed" data-i="' + i + '" autocomplete="off" novalidate><div class="refgrid">' +
+    '<div><label class="label" for="refU">Ед. изм.</label><select id="refU">' + us.map(u => '<option value="' + esc(u) + '"' + (u === r[2] ? " selected" : "") + '>' + (u ? esc(u) : "—") + '</option>').join("") + '</select></div>' +
+    fld("refCode", "Код R-Keeper", r[3], 'type="text" inputmode="numeric" maxlength="30"') +
+    fld("refTara", "Тара", r[4], 'type="text" inputmode="decimal" maxlength="12" placeholder="0,7"') +
+    fld("refNorm", "Норма", r[5], 'type="text" inputmode="decimal" maxlength="12" placeholder="3"') +
+    fld("refSup", "Поставщик", r[6], 'type="text" list="mgrSups" maxlength="80"') +
+    fld("refPrice", "Цена, ₸", r[7], 'type="text" inputmode="decimal" maxlength="12"') +
+    '</div>' + fld("refNote", "Заметка", r[8], 'type="text" maxlength="200"') +
+    '<p class="warn" id="refMsg" role="status"></p>' +
+    '<div class="refbtns"><button type="submit" class="wogo">Сохранить</button><button type="button" class="link" data-cancel="1">Отмена</button></div></form>';
+}
+function refDraw(){
+  if (!refRows) return;
+  const q = $("mgrRq").value.trim().toLowerCase().replace(/ё/g, "е");
+  const all = refRows.length, cnt = k => refRows.filter(r => r[k]).length;
+  $("mgrRinfo").innerHTML = "Позиций <b>" + all + "</b> · норма есть у <b>" + cnt(5) + "</b> · тара — у <b>" + cnt(4) + "</b> · код — у <b>" + cnt(3) + "</b>";
+  document.querySelectorAll("#mgrRf button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === refF)));
+  $("mgrSups").innerHTML = [...new Set(refRows.map(r => r[6]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru")).map(x => '<option value="' + esc(x) + '">').join("");
+  let html = "", sec = null, open = false;
+  refRows.forEach((r, i) => {
+    if (refF !== "all" && !refMiss(r, refF) && i !== refOpen) return;
+    if (q && !(r[1] + " " + r[0] + " " + r[3] + " " + r[6]).toLowerCase().replace(/ё/g, "е").includes(q) && i !== refOpen) return;
+    if (r[0] !== sec){
+      if (open) html += '</ul></section>';
+      sec = r[0]; open = true;
+      html += '<section class="refsec"><h3 class="reft">' + esc(sec || "Без раздела") + '</h3><ul class="olist refl">';
+    }
+    html += '<li class="refli' + (i === refOpen ? " open" : "") + (i === refSaved ? " saved" : "") + '" data-i="' + i + '">' +
+      '<button type="button" class="refrow" data-i="' + i + '" aria-expanded="' + (i === refOpen) + '"><span class="refn">' + esc(r[1]) + '</span>' +
+      '<small>' + refMeta(r) + '</small></button>' + (i === refOpen ? refForm(r, i) : "") + '</li>';
+  });
+  if (open) html += '</ul></section>';
+  $("mgrRlist").innerHTML = html || '<p class="empty">' + (refF !== "all" ? "Всё заполнено." : "Ничего не найдено.") + '</p>';
+}
+
+$("mgrRlist").addEventListener("click", e => {
+  const b = e.target.closest("button.refrow");
+  if (b){
+    const i = +b.dataset.i;
+    refOpen = refOpen === i ? -1 : i; refSaved = -1;
+    buzz(8); refDraw();
+    if (refOpen >= 0){ const f = document.querySelector('.refed[data-i="' + i + '"]'); if (f) f.closest("li").scrollIntoView({block: "nearest"}); }
+    return;
+  }
+  if (e.target.closest("[data-cancel]")){ refOpen = -1; refDraw(); }
+});
+$("mgrRlist").addEventListener("submit", async e => {
+  const f = e.target.closest("form.refed");
+  if (!f) return;
+  e.preventDefault();
+  if (refBusy) return;
+  const i = +f.dataset.i, r = refRows[i], mk = mgrKey();
+  if (!r || !mk) return mgrInit();
+  const v = id => $(id).value.trim();
+  const bad = ["refTara", "refNorm", "refPrice"].filter(id => !refNum.test(v(id)));
+  if (bad.length){ $("refMsg").textContent = "Тара, норма и цена — числом, например 0,7."; $(bad[0]).focus(); return; }
+  refBusy = true; $("refMsg").textContent = "Сохраняем…";
+  f.querySelector("button[type=submit]").disabled = true;
+  let d = null;
+  try {
+    const res = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"},
+      body: JSON.stringify({token: TOKEN, mgr: "ref", mk, sec: r[0], n: r[1],
+        f: {u: $("refU").value, code: v("refCode"), tara: v("refTara"), norm: v("refNorm"), sup: v("refSup"), price: v("refPrice"), note: v("refNote")}})});
+    d = await res.json();
+  } catch (err) { d = {error: "net"}; }
+  refBusy = false;
+  if (d && d.ok && d.row){
+    refRows[i] = d.row; refOpen = -1; refSaved = i;
+    buzz(14); refDraw();
+    return;
+  }
+  if (d && d.error === "mgr") return mgrExpired();
+  const sb = f.querySelector("button[type=submit]");
+  if (sb) sb.disabled = false;
+  $("refMsg").textContent = d && d.error === "bad" ? "Тара, норма и цена — числом, например 0,7." :
+    d && d.error === "gone" ? "Этой позиции уже нет в справочнике — обновите список." :
+    d && d.error === "action" ? "Нужна новая версия Apps Script." : "Не сохранилось — нет связи. Нажмите «Сохранить» ещё раз.";
+});
+let refT = 0;
+$("mgrRq").addEventListener("input", () => { clearTimeout(refT); refT = setTimeout(refDraw, 120); });
+$("mgrRf").addEventListener("click", e => {
+  const b = e.target.closest("button[data-f]");
+  if (!b) return;
+  refF = b.dataset.f; refOpen = -1; buzz(8); refDraw();
+});
+$("mgrRwarn").addEventListener("click", e => { if (e.target.id === "refRetry") refLoad(); });
