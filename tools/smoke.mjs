@@ -22,13 +22,13 @@ page.on("pageerror", e => errs.push(e.message));
 page.on("console", m => { if (m.type() === "error" && !/ERR_|fonts\.g|Failed to load resource/.test(m.text())) errs.push(m.text()); });
 
 // заглушка Apps Script: журнал и ревизия
-const Z5 = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда"];
-const rev = { zones: Z5, open: { date: "05.10.2026", name: "Тест", key: "t1" }, prev: null,
-  items: [{ n: "Джин", u: "л", z: [1.5, 0, 0, 0, 0], t: 1.5, p: null }, { n: "Корона", u: "шт", z: [0, 3, 0, 0, 0], t: 3, p: 2 }] };
+const Z6 = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда", "Синий контейнер"];
+const rev = { zones: Z6, day: "2026-10-05", open: { date: "05.10.2026", key: "2026-10-05", zones: { "Кафе": { who: "Другой" }, "Склад и проход": { who: "Тест" } }, fin: {} }, prev: null,
+  items: [{ n: "Джин", u: "л", z: [1.5, 0, 0, 0, 0, 0], t: 1.5, p: null }, { n: "Корона", u: "шт", z: [0, 3, 0, 0, 0, 0], t: 3, p: 2 }] };
 await page.route("https://script.google.com/**", r => {
   const u = new URL(r.request().url()), cb = u.searchParams.get("callback");
   const mrev = { now: Date.now(), prev: null,
-    block: { title: "Ревизия · Октябрь 2026", date: "01.10.2026", open: true, started: 1, cols: [{ id: "c1", name: "Тест", date: "01.10.2026", open: true }] },
+    block: { title: "Ревизия · Октябрь 2026", date: "01.10.2026", open: true, started: 1, cols: [{ id: "c1", name: "Тест", zones: ["Клуб", "VIP"], date: "01.10.2026", open: true }] }, zones: Z6,
     rows: [{ r: 7, t: "h", n: "Виски" }, { r: 8, t: "i", n: "Джемесон", u: "литр", tot: null, c: [null], p: 2 },
       { r: 9, t: "h", n: "Водка" }, { r: 10, t: "i", n: "Беленькая", u: "", tot: 1, c: [1], p: null }] };
   const body = u.searchParams.has("rev") ? { ok: true, rev } : u.searchParams.has("mrev") ? { ok: true, mrev }
@@ -124,12 +124,13 @@ if (PW) {
   await page.click('[data-s="lab"]'); await page.waitForTimeout(1200);
   ok(await page.evaluate(() => document.getElementById("lback").width > 100), "этикетки рисуются");
   await page.click('[data-s="rev"]'); await page.waitForTimeout(800);
-  ok(await page.locator("#rlist li").count() > 0, "ревизия");
+  ok(await page.isVisible("#rlist li") && await page.locator("#rzone button").count() === 6 &&
+    (await page.textContent('#rzone button[data-z="Кафе"] small')) === "Другой", "ревизия: зоны и кто их считает");
   await page.click('#rkind [data-k="month"]'); await page.waitForTimeout(600);
   ok(await page.locator("#mlist li.rrow").count() === 2, "месячная ревизия: позиции по разделам");
   await page.fill("#mq", "виски"); await page.waitForTimeout(300);   // поиск срабатывает после паузы в наборе
   ok(await page.locator("#mlist li.rrow").count() === 1, "месячная ревизия: поиск по разделу");
-  ok(await page.isVisible("#mnew") && await page.locator("#mlist .rin").count() === 1, "месячная ревизия: свой столбец и новая позиция");
+  ok(await page.isVisible("#mnew") && await page.locator("#mlist .rin").count() === 1 && (await page.textContent("#minfo")).includes("Тест · Клуб и VIP"), "месячная ревизия: свой столбец (с зонами) и новая позиция");
   await page.fill("#mq", "");
   await page.click('#rkind [data-k="day"]');
   ok(await page.locator("#log li").count() > 0, "журнал входов");

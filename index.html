@@ -316,16 +316,17 @@
       <div class="tname"><em id="rqueue"></em><h2 class="h3" id="rtitle">Ревизия</h2></div>
       <p class="oempty" id="rinfo" aria-live="polite">Загружаем…</p>
       <div class="otools">
-        <button type="button" class="link" id="rstart">Начать ревизию</button>
-        <button type="button" class="link" id="rreload">Обновить</button>
+        <button type="button" class="link" id="rstart">Войти в ревизию</button>
         <button type="button" class="link" id="rclose" hidden>Завершить</button>
+        <button type="button" class="link" id="rreload">Обновить</button>
       </div>
     </div>
     <div class="warn" id="rwarn" role="status"></div>
     <div id="rbody" hidden>
-      <div class="block">
+      <div class="block" id="rzblock">
         <p class="label">Зона</p>
         <div class="modes zones" id="rzone" role="group" aria-label="Зона"></div>
+        <p class="mfound" id="rznote" aria-live="polite"></p>
       </div>
       <div class="result tcard"><ul class="rlist" id="rlist"></ul></div>
     </div>
@@ -336,12 +337,22 @@
         <div class="tname"><em id="mqueue"></em><h2 class="h3" id="mtitle">Месячная ревизия</h2></div>
         <div class="oempty" id="minfo" aria-live="polite">Загружаем…</div>
         <div class="otools">
-          <button type="button" class="link" id="mstart">Начать ревизию</button>
+          <button type="button" class="link" id="mstart">Войти в ревизию</button>
+          <button type="button" class="link" id="mzones" hidden>Сменить зоны</button>
           <button type="button" class="link" id="mfinish" hidden>Завершить мой подсчёт</button>
           <button type="button" class="link" id="mreload">Обновить</button>
         </div>
       </div>
       <div class="warn" id="mwarn" role="status"></div>
+      <form class="result tcard mpick" id="mpick" hidden>
+        <div class="tname"><h2 class="h3">Какая зона подсчёта?</h2></div>
+        <p class="oempty">Можно выбрать несколько — в таблице ваш столбец будет, например, «Куклин · Клуб и VIP». Зону, которую считает другой бармен, выбрать нельзя.</p>
+        <div class="modes zones" id="mpz" role="group" aria-label="Зоны подсчёта"></div>
+        <div class="otools">
+          <button type="submit" class="link" id="mpgo">Начать подсчёт</button>
+          <button type="button" class="link" id="mpno">Отмена</button>
+        </div>
+      </form>
       <div id="mbody" hidden>
         <div class="msearch" id="msearch">
           <input id="mq" class="tq" type="search" placeholder="Поиск по позиции" autocomplete="off" enterkeyhint="search" aria-label="Поиск по позициям месячной ревизии">

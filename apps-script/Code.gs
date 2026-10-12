@@ -15,7 +15,7 @@ const REV_BOOK_ID = "1OF063GZsdB_eyFRny0006R_y57nfhoZcJGyKcB-T7Ko";  // ID та�
 const REV_TOTAL = "Итог";                    // итог со всех зон; в столбце A — позиции с 3-й строки
 const REV_ZONES = "По зонам";                // по колонке на зону; создаётся сам, если его нет
 const REV_LOG = "Ревизия журнал";            // каждое добавление отдельной строкой
-const ZONES = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда"];
+const ZONES = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда", "Синий контейнер"];   // новые — только в конец
 const TZ = "GMT+5";                                                 // время Астаны — для дат ревизии
 const PCS = ["корона", "ред булл", "рэд булл", "red bull", "байкал"];   // считаются в штуках
 const MREV = "Месячная ревизия";                                    // лист месячной ревизии (в таблице ревизии)                      // позиции в штуках (по вхождению в название); остальные — литры
@@ -211,22 +211,25 @@ function sortJournal() {
 
 
 /* ═════════════ Ревизия ═════════════
-   Состояние открытой ревизии — в свойствах скрипта: колонка итога, первая колонка зон,
-   дата и фамилия. Сложение делается здесь, под блокировкой, поэтому повторы и
-   одновременные запросы не портят суммы. Каждое добавление имеет id: повтор с тем же id
-   не прибавляется второй раз. */
+   Ежедневная ревизия — это день с 9:00 до 9:00 (время Астаны), один на всех. Считать можно параллельно:
+   столбец зоны на листе «По зонам» появляется при первом добавлении в эту зону и закрепляется за тем, кто начал
+   (строки 1–3: дата, фамилия, зона); пустые зоны столбцов не получают. Добавлять можно и в чужую зону — число
+   прибавится к её столбцу, а в журнал запишется под фамилией того, кто добавил. Итог дня — один столбец листа
+   «Итог» (сумма всех зон дня), создаётся при первом добавлении. В 9:00 день закрывается сам.
+   «Завершить» — личное: сворачивает ревизию у этого бармена и ничего не блокирует; вернуться можно до 9:00.
+   Состояние дня — в свойстве REV_DAY. Сложение — под блокировкой; повтор с тем же id не прибавляется. */
 
 function revision(p) {
   journalPin();                              // закрепить лист журнала до создания новых листов
   const act = String(p.rev);
-  if (act === "state") return { ok: true, rev: revState() };
+  if (act === "state" || act === "start") return { ok: true, rev: revState() };   // start — от старого сайта
 
   revBook();                                 // открыть таблицу до блокировки — блокировка держится меньше
   const lock = lockOrBusy(20000);
   try {
-    if (act === "start") return { ok: true, rev: revStart(clean(p.rn, 60)) };
-    if (act === "close") { PropertiesService.getScriptProperties().deleteProperty("REV_OPEN"); return { ok: true, rev: revState() }; }
     if (act === "add") return revAdd(p);
+    if (act === "fin") return revFin(p);
+    if (act === "close") return { ok: true, rev: revState() };              // старый сайт: «Завершить» для всех больше нет
     return { error: "action" };
   } finally {
     lock.releaseLock();
@@ -264,10 +267,31 @@ function revLog(ss) {
   return sh;
 }
 
-function revOpen() {
-  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("REV_OPEN") || "null"); }
-  catch (e) { return null; }
+/* день ревизии: с 9:00 до 9:00 по Астане → «2026-10-12» (дата, когда день начался) */
+const revDayKey = t => Utilities.formatDate(new Date((t || Date.now()) - 9 * 3600000), TZ, "yyyy-MM-dd");
+const revDayDate = day => day.split("-").reverse().join(".");
+
+/* Состояние сегодняшнего дня {day, date, tc, zones: {зона: {col, who}}, fin: {ключ фамилии: {name, at}}} или null.
+   Ревизия старой схемы (REV_OPEN: пять зон одной фамилии), начатая сегодня, продолжается как день;
+   save — под блокировкой: перенос записывается. */
+function revDay(save) {
+  const P = PropertiesService.getScriptProperties(), day = revDayKey();
+  const read = k => { try { return JSON.parse(P.getProperty(k) || "null"); } catch (e) { return null; } };
+  let st = read("REV_DAY");
+  if (st && st.day !== day) st = null;
+  const old = read("REV_OPEN");
+  if (old) {
+    if (!st && old.started && revDayKey(old.started) === day && old.tc && old.zc) {
+      st = { day: day, date: revDayDate(day), tc: old.tc, zones: {}, fin: {}, old: old.key };
+      ZONES.slice(0, 5).forEach((z, i) => { st.zones[z] = { col: old.zc + i, who: old.name }; });
+    }
+    if (save) { P.deleteProperty("REV_OPEN"); if (st) revDaySave(st); }
+  }
+  return st;
 }
+const revDaySave = st => PropertiesService.getScriptProperties().setProperty("REV_DAY", JSON.stringify(st));
+/* столбец «Итога» идущего дня — для сводок бар-менеджера (незаконченный день в них не берём) */
+function revOpenCol() { const st = revDay(false); return st ? st.tc : 0; }
 
 /* Позиции — из столбца A итогового листа, с 3-й строки. */
 function revPositions(ts) {
@@ -307,77 +331,106 @@ function num(v) {
 }
 const round3 = x => Math.round(x * 1000) / 1000;
 
-function revStart(name) {
-  if (!name) throw new Error("Нет фамилии");
-  const ss = revBook(), ts = revTotal(ss), zs = revZones(ss);
-  const started = new Date();
-  const date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
-
-  const tc = ts.getLastColumn() + 1;
-  ensureCols(ts, tc);
-  ts.getRange(1, tc, 2, 1).setNumberFormat("@").setValues([[date], [name]]);
-
-  /* позиции, которых нет на листе зон, — дописать вниз одной записью (по порядку, без повторов) */
+/* первое добавление дня: столбец «Итога» и позиции, которых нет на листе зон (вниз, по порядку «Итога») */
+function revNewDay(ts, zs, day) {
+  const st = { day: day, date: revDayDate(day), tc: ts.getLastColumn() + 1, zones: {}, fin: {} };
+  ensureCols(ts, st.tc);
+  ts.getRange(1, st.tc, 2, 1).setNumberFormat("@").setValues([[st.date], [""]]);
   const zl = Math.max(zs.getLastRow(), 3);
   const have = {}, miss = [];
   if (zl > 3) zs.getRange(4, 1, zl - 3, 1).getValues().forEach(r => { have[String(r[0]).trim()] = 1; });
   revPositions(ts).forEach(x => { if (!have[x.n]) { have[x.n] = 1; miss.push([x.n]); } });
   if (miss.length) { ensureRows(zs, zl + miss.length); zs.getRange(zl + 1, 1, miss.length, 1).setValues(miss); }
-  const zc = Math.max(zs.getLastColumn(), 1) + 1;
-  /* дата и фамилия — один раз, объединённой ячейкой над пятью зонами */
-  const n = ZONES.length, blank = ZONES.slice(1).map(() => "");
-  ensureCols(zs, zc + n - 1);
-  zs.getRange(1, zc, 3, n).setNumberFormat("@")
-    .setValues([[date].concat(blank), [name].concat(blank), ZONES.slice()])
-    .setHorizontalAlignment("center");
-  zs.getRange(1, zc, 1, n).merge().setFontWeight("bold");
-  zs.getRange(2, zc, 1, n).merge();
-  zs.getRange(1, zc, Math.max(zs.getLastRow(), 3), n)
-    .setBorder(true, true, true, true, null, null, "#888888", SpreadsheetApp.BorderStyle.SOLID);
+  return st;
+}
 
-  PropertiesService.getScriptProperties().setProperty("REV_OPEN",
-    JSON.stringify({ tc: tc, zc: zc, date: date, name: name, started: started.getTime(), key: date + "|" + name + "|" + tc }));
-  return revState();
+/* первое добавление в зону: её столбец справа — дата, фамилия, зона */
+function revNewZone(ts, zs, st, zone, who) {
+  const col = Math.max(zs.getLastColumn(), 1) + 1;
+  ensureCols(zs, col);
+  zs.getRange(1, col, 3, 1).setNumberFormat("@").setValues([[st.date], [who], [zone]]).setHorizontalAlignment("center");
+  zs.getRange(1, col).setFontWeight("bold");
+  zs.getRange(1, col, Math.max(zs.getLastRow(), 3), 1)
+    .setBorder(true, true, true, true, null, null, "#888888", SpreadsheetApp.BorderStyle.SOLID);
+  st.zones[zone] = { col: col, who: who };
+  ts.getRange(2, st.tc).setNumberFormat("@").setValue(revWho(st));          // в «Итоге» — все, кто считает
+  return st.zones[zone];
+}
+/* фамилии зон дня без повторов, кто раньше начал — первым: «Куклин, Журавлев» */
+function revWho(st) {
+  const seen = {};
+  return ZONES.filter(z => st.zones[z]).sort((a, b) => st.zones[a].col - st.zones[b].col).map(z => st.zones[z].who)
+    .filter(w => { const k = mnorm(w); return seen[k] ? false : (seen[k] = 1); }).join(", ");
+}
+/* числа строки по зонам дня (порядок ZONES; зоны без столбца — 0) — одним чтением */
+function revZoneVals(zs, st, rows) {
+  const cols = ZONES.map(z => st && st.zones[z] ? st.zones[z].col : 0), used = cols.filter(c => c);
+  const out = {};
+  if (!used.length || !rows.length) return out;
+  const c0 = Math.min.apply(null, used), w = Math.max.apply(null, used) - c0 + 1;
+  const r0 = Math.min.apply(null, rows), h = Math.max.apply(null, rows) - r0 + 1;
+  const v = zs.getRange(r0, c0, h, w).getValues();
+  rows.forEach(r => { out[r] = cols.map(c => c ? round3(num(v[r - r0][c - c0])) : 0); });
+  return out;
 }
 
 function revAdd(p) {
-  const open = revOpen();
-  if (!open) return { error: "closed" };
   const id = String(p.id || "").slice(0, 64);
   const zi = ZONES.indexOf(String(p.zone || ""));
   const name = String(p.pos || "").trim();
   const v = num(p.v);
   if (!id || zi < 0 || !name || !v || Math.abs(v) > 100000) return { error: "bad" };
-  if (p.rk && p.rk !== open.key) return { error: "closed" };
+  const day = revDayKey();
+  let st = revDay(true);
+  /* сайт шлёт ключ дня; ключ ревизии старой схемы — пока идёт её день */
+  if (p.rk && p.rk !== day && !(st && st.old && p.rk === st.old)) return { error: "closed" };
 
   const ss = revBook(), ts = revTotal(ss), zs = revZones(ss);
   const pos = revPositions(ts).find(x => x.n === name);
   if (!pos) return { error: "position" };
-  const zr = zoneRow(zs, name);
+  const rn = clean(p.rn, 60) || "без фамилии", zone = ZONES[zi];
 
   const cache = CacheService.getScriptCache();
   if (!cache.get("rev:" + id)) {
-    const cell = zs.getRange(zr, open.zc + zi);
+    if (!st) st = revNewDay(ts, zs, day);
+    const z = st.zones[zone] || revNewZone(ts, zs, st, zone, rn);
+    revDaySave(st);
+    const cell = zs.getRange(zoneRow(zs, name), z.col);
     cell.setValue(round3(num(cell.getValue()) + v));
-    revLog(ss).appendRow([new Date(), clean(p.rn, 60), open.date + " · " + open.name, ZONES[zi], name, v, id]);
+    revLog(ss).appendRow([new Date(), rn, st.date + " · " + zone + " · " + z.who, zone, name, v, id]);
     cache.put("rev:" + id, "1", 21600);
   }
+  if (!st) return { error: "closed" };
 
-  const z = zs.getRange(zr, open.zc, 1, ZONES.length).getValues()[0].map(num);
+  const zr = zoneRow(zs, name), z = revZoneVals(zs, st, [zr])[zr] || ZONES.map(() => 0);
   const t = round3(z.reduce((a, b) => a + b, 0));
-  ts.getRange(pos.row, open.tc).setValue(t);
+  ts.getRange(pos.row, st.tc).setValue(t);
   SpreadsheetApp.flush();                                                  // записать до снятия блокировки
-  return { ok: true, add: { pos: name, z: z.map(round3), t: t } };
+  return { ok: true, add: { pos: name, z: z, t: t, zone: zone, who: st.zones[zone] ? st.zones[zone].who : "" } };
+}
+
+/* «Завершить» и «Вернуться в ревизию» — только для себя; видно остальным */
+function revFin(p) {
+  const rn = clean(p.rn, 60), st = revDay(true);
+  if (!rn) return { error: "Нет фамилии" };
+  if (p.rk && p.rk !== revDayKey()) return { error: "closed" };
+  if (st) {
+    st.fin = st.fin || {};
+    if (p.on === "1") st.fin[mnorm(rn)] = { name: rn, at: Date.now() };
+    else delete st.fin[mnorm(rn)];
+    revDaySave(st);
+  }
+  return { ok: true, rev: revState() };
 }
 
 function revState() {
-  const open = revOpen();
+  const st = revDay(false);
   const ss = revBook(), ts = revTotal(ss);
   const items = revPositions(ts);
   const lastCol = ts.getLastColumn();
 
-  /* предыдущий пересчёт — колонка перед открытой (или последняя, если ревизия не идёт) */
-  const pc = open ? open.tc - 1 : lastCol;
+  /* прошлый пересчёт — столбец перед сегодняшним (или последний, если сегодня ещё не считали) */
+  const pc = st ? st.tc - 1 : lastCol;
   let prev = null, prevVals = [];
   if (pc >= 2 && items.length) {
     const hd = ts.getRange(1, pc, 2, 1).getDisplayValues();
@@ -385,21 +438,26 @@ function revState() {
     prevVals = ts.getRange(3, pc, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
   }
 
-  let zvals = {};
-  if (open) {
-    const zs = revZones(ss);
-    const last = zs.getLastRow();
+  const zvals = {};
+  if (st) {
+    const zs = revZones(ss), last = zs.getLastRow();
     if (last >= 4) {
       const names = zs.getRange(4, 1, last - 3, 1).getValues();
-      const vals = zs.getRange(4, open.zc, last - 3, ZONES.length).getValues();
-      names.forEach((r, i) => { zvals[String(r[0]).trim()] = vals[i].map(x => round3(num(x))); });
+      const rows = revZoneVals(zs, st, names.map((_, i) => i + 4));
+      names.forEach((r, i) => { if (rows[i + 4]) zvals[String(r[0]).trim()] = rows[i + 4]; });
     }
+  }
+  const zones = {}, fin = {};
+  if (st) {
+    ZONES.forEach(z => { if (st.zones[z]) zones[z] = { who: st.zones[z].who }; });
+    Object.keys(st.fin || {}).forEach(k => { fin[k] = st.fin[k].name; });
   }
 
   return {
     now: Date.now(),                         // точное время сервера — сайт сверяет по нему часы
     zones: ZONES,
-    open: open ? { date: open.date, name: open.name, key: open.key, started: open.started || null } : null,
+    day: revDayKey(),                        // ключ текущего дня (9:00–9:00) — с ним сайт шлёт добавления
+    open: st ? { date: st.date, key: st.day, zones: zones, fin: fin } : null,
     prev: prev,
     items: items.map(x => {
       const z = zvals[x.n] || ZONES.map(() => 0);
@@ -417,9 +475,10 @@ function revState() {
 
    Одна месячная ревизия идёт несколько дней и считается несколькими людьми параллельно:
    первый её столбец — «Итог» (формула: сумма столбцов барменов справа; поправлять можно руками),
-   дальше — столбцы барменов по порядку: «Начать мой подсчёт» — новый столбец с фамилией и датой,
-   «Завершить» — столбец закрыт. У одного человека может быть несколько столбцов (разные дни).
-   Шапка столбца: строка 3 — название ревизии (у «Итога»), 4 — служебный id, 5 — фамилия или «Итог», 6 — дата.
+   дальше — столбцы барменов по порядку. «Войти в ревизию» — бармен выбирает зоны подсчёта (одну или несколько),
+   его столбец — «Куклин · Клуб и VIP». Одну зону два бармена одновременно не считают. Другие зоны — другой
+   столбец того же бармена (прежний закрывается, к нему можно вернуться, выбрав те же зоны). «Завершить» — столбец закрыт.
+   Шапка столбца: строка 3 — название ревизии (у «Итога»), 4 — служебный id, 5 — «фамилия · зоны» или «Итог», 6 — дата.
    Столбцы находятся по id в строке 4, поэтому вставка столбцов в лист ничего не ломает.
    Числа складываются здесь, под блокировкой; повтор с тем же id не прибавляется. */
 const MREV_NEW = "Новые позиции";
@@ -433,8 +492,8 @@ function monthly(p) {
   const lock = lockOrBusy(20000);
   try {
     if (act === "state") return { ok: true, mrev: mrevState() };
-    if (act === "begin") return mrevBegin(rn);
-    if (act === "mine") return mrevMine(rn);
+    if (act === "begin") return mrevBegin(rn, p.zones);
+    if (act === "mine") return mrevMine(rn, p.zones);
     if (act === "finish") return mrevFinish(String(p.cid || ""), rn);
     if (act === "end") return mrevEnd();
     if (act === "add") return mrevAdd(p, false);
@@ -593,7 +652,8 @@ function mrevState(ro) {
   return {
     now: Date.now(),
     block: b && ids[b.total] ? { title: b.title, date: b.date, open: b.open, started: b.started,
-      cols: cols.map(c => ({ id: c.id, name: c.name, date: c.date, open: c.open })) } : null,
+      cols: cols.map(c => ({ id: c.id, name: c.name, zones: c.zones || null, date: c.date, open: c.open })) } : null,
+    zones: ZONES,
     prev: P.MREV_PREV_TITLE || null,
     rows: rows
   };
@@ -609,14 +669,16 @@ function mrevNewCol(sh, id, title, name, date) {
   return col;
 }
 
-function mrevBegin(name) {
+function mrevBegin(name, zones) {
   if (!name) return { error: "Нет фамилии" };
   const sh = mrevSheet();
   let b = mrevBlock();
   if (b && b.open && !mrevTotalCol(sh, b, mrevIds(sh))) {   // «сломанная» ревизия (без «Итога») — закрыть
     b.open = false; b.cols.forEach(c => { c.open = false; }); mrevSave(b);
   }
-  if (b && b.open) return mrevMine(name);                 // ревизия уже идёт — просто свой столбец
+  if (b && b.open) return mrevMine(name, zones);          // ревизия уже идёт — просто свой столбец
+  const zl = mrevZoneList(zones);
+  if (zl && !zl.length) return { error: "Выберите зону" };
   const started = new Date(), date = Utilities.formatDate(started, TZ, "dd.MM.yyyy");
   const months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
   const loc = new Date(started.getTime() + 5 * 3600000);   // время Астаны (TZ = GMT+5)
@@ -627,22 +689,52 @@ function mrevBegin(name) {
   sh.getRange(7, tc, Math.max(sh.getLastRow(), 7) - 6, 1).setFontWeight("bold");
   mrevTotals(sh, tc, mrevRows(sh), 0);
   mrevSave(b);
-  return mrevMine(name);
+  return mrevMine(name, zones);
 }
 
-function mrevMine(name) {
+/* зоны с сайта «Клуб|VIP» → в порядке ZONES, без чужих; не передали (старый сайт) — null */
+function mrevZoneList(zones) {
+  if (zones == null) return null;
+  const want = String(zones).split("|").map(z => z.trim());
+  return ZONES.filter(z => want.indexOf(z) >= 0);
+}
+/* «Клуб и VIP», «Кафе, Клуб и VIP» */
+const zoneLabel = zl => zl.length < 2 ? zl.join("") : zl.slice(0, -1).join(", ") + " и " + zl[zl.length - 1];
+
+/* свой столбец с выбранными зонами: тот же набор — прежний столбец (закрытый — открывается снова), иначе новый;
+   другой открытый столбец этого бармена закрывается. Зону, которую считает другой, взять нельзя. */
+function mrevMine(name, zones) {
   if (!name) return { error: "Нет фамилии" };
+  const zl = mrevZoneList(zones);
+  if (zl && !zl.length) return { error: "Выберите зону" };
   const sh = mrevSheet(), b = mrevBlock();
   if (!b || !b.open) return { error: "closed" };
-  const ids = mrevIds(sh);
-  const mine = b.cols.find(c => c.open && ids[c.id] && mnorm(c.name) === mnorm(name));
-  if (!mine) {
-    const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
-    const c = { id: b.key + "-" + (++b.n), name: name, date: date, open: true };
-    mrevNewCol(sh, c.id, "", name, date);
-    b.cols.push(c);
-    mrevSave(b);
+  const ids = mrevIds(sh), me = mnorm(name), live = b.cols.filter(c => ids[c.id]);
+  if (!zl) {                                                // старый сайт — как раньше, без зон
+    if (!live.some(c => c.open && mnorm(c.name) === me)) {
+      const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
+      const c = { id: b.key + "-" + (++b.n), name: name, date: date, open: true };
+      mrevNewCol(sh, c.id, "", name, date);
+      b.cols.push(c);
+      mrevSave(b);
+    }
+    return { ok: true, mrev: mrevState() };
   }
+  for (const z of zl) {
+    const o = live.find(c => c.open && mnorm(c.name) !== me && (c.zones || []).indexOf(z) >= 0);
+    if (o) return { error: "Зону «" + z + "» сейчас считает " + o.name };
+  }
+  const key = zl.join("|");
+  let c = live.filter(x => mnorm(x.name) === me && (x.zones || []).join("|") === key).pop();
+  live.forEach(x => { if (x !== c && x.open && mnorm(x.name) === me) x.open = false; });
+  if (c) c.open = true;
+  else {
+    const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
+    c = { id: b.key + "-" + (++b.n), name: name, zones: zl, date: date, open: true };
+    mrevNewCol(sh, c.id, "", name + " · " + zoneLabel(zl), date);
+    b.cols.push(c);
+  }
+  mrevSave(b);
   return { ok: true, mrev: mrevState() };
 }
 
@@ -720,7 +812,7 @@ function mrevAdd(p, isNew) {
   let cv = cell.getValue();                                               // столбец бармена — простые числа
   if (v || cv === "") { cv = round3(num(cv) + v); cell.setValue(cv); }
   if (p.clr && num(cv) === 0) { cell.setValue(""); cv = ""; }             // отменили всё — снова «не посчитано»
-  revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), b.title + " · " + c.name + " " + c.date, isNew ? "новая" : "—", clean(name, 80), v, id]);
+  revLog(revBook()).appendRow([new Date(), clean(p.rn, 60), b.title + " · " + c.name + (c.zones ? " · " + zoneLabel(c.zones) : "") + " " + c.date, isNew ? "новая" : "—", clean(name, 80), v, id]);
   cache.put("mrev:" + id, String(row), 21600);
   SpreadsheetApp.flush();
   const t = sh.getRange(row, tc).getValue();
@@ -1213,7 +1305,7 @@ function checkRevision() {
   const ts = revTotal(ss);
   const pos = revPositions(ts);
   Logger.log("Лист «" + ts.getName() + "»: позиций " + pos.length + " — " + pos.map(x => x.n).join(", "));
-  Logger.log("Открытая ревизия: " + JSON.stringify(revOpen()));
+  Logger.log("Ежедневная ревизия сегодня: " + JSON.stringify(revDay(false)));
   const ms = mrevSheet();
   Logger.log("Лист «" + ms.getName() + "»: позиций " + mrevRows(ms).filter(x => x.t === "i").length + ", месячная ревизия: " + JSON.stringify(mrevBlock()));
   Logger.log("Всё в порядке.");
@@ -1447,7 +1539,7 @@ function mgrOrder() {
 
   /* ежедневная: последний законченный пересчёт листа «Итог» */
   try {
-    const ts = revTotal(revBook()), open = revOpen(), col = open ? open.tc - 1 : ts.getLastColumn(), items = revPositions(ts);
+    const ts = revTotal(revBook()), oc = revOpenCol(), col = oc ? oc - 1 : ts.getLastColumn(), items = revPositions(ts);
     if (col >= 2 && items.length) {
       const hd = ts.getRange(1, col, 2, 1).getDisplayValues(), date = dmy(hd[0][0]);
       const vals = ts.getRange(3, col, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
@@ -1602,7 +1694,7 @@ function mgrUsage(p) {
   const val = v => v === "" || v == null || isNaN(num(v)) ? null : Math.round(num(v) * 1000) / 1000;
   let cols = [], items = [];
   if (kind === "d") {
-    const ts = revTotal(revBook()), open = revOpen(), last = open ? open.tc - 1 : ts.getLastColumn(), pos = revPositions(ts);
+    const ts = revTotal(revBook()), oc = revOpenCol(), last = oc ? oc - 1 : ts.getLastColumn(), pos = revPositions(ts);
     const first = Math.max(2, last - USE_D + 1);
     if (last >= first && pos.length) {
       const w = last - first + 1, hd = ts.getRange(1, first, 2, w).getDisplayValues();
