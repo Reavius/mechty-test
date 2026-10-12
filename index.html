@@ -405,9 +405,10 @@
         <button type="submit" class="wox" aria-label="Добавить в заявку">+</button>
       </form>
       <div class="otools">
-        <button type="button" class="link" id="ocopy">Скопировать заявку</button>
+        <button type="button" class="link" id="ocopy">Скопировать и отправить в архив</button>
         <button type="button" class="link" id="oreset">Отменить выбранное</button>
       </div>
+      <p class="mfound osent" id="osent" aria-live="polite"></p>
     </div>
     <div id="olist"></div>
   </div>
@@ -503,6 +504,7 @@
       <div id="mgrOrd" hidden>
         <p class="wnhint mgrrhint">К заказу = <b>норма − остаток</b> по позициям справочника с нормой, с округлением до целой тары.
           Остаток — из самой свежей ревизии: ежедневной или месячной; приход после неё прибавляется. Снимите галочку с того, что заказывать не нужно.</p>
+        <div id="mgrOreq"></div>
         <p class="mgrsum" id="mgrOsrc"></p>
         <p class="warn" id="mgrOwarn" role="status"></p>
         <div id="mgrOlist"></div>

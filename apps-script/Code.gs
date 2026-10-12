@@ -663,6 +663,15 @@ function mrevState(ro) {
   };
 }
 
+/* состояние месячной для сводок менеджера: без блокировки; если в листе есть что чинить (новые строки без формул
+   «Итога») — под блокировкой, иначе сводка молча осталась бы без месячной ревизии */
+function mrevRead() {
+  const st = mrevState(true);
+  if (st || !mrevSheet(true)) return st;
+  const lock = lockOrBusy(15000);
+  try { return mrevState(); } finally { lock.releaseLock(); }
+}
+
 /* новый столбец справа: шапка в строках 3–6 */
 function mrevNewCol(sh, id, title, name, date) {
   const col = Math.max(sh.getLastColumn(), 3) + 1;
@@ -901,6 +910,7 @@ function doPost(e) {
     journalPin();
     if (p.wo === "save") return jsonOut(woSave(p));
     if (p.wo === "rec") return jsonOut(woSave(p, true));
+    if (p.order === "send") return jsonOut(orderSave(p));
     if (p.mgr === "login") return jsonOut(mgrLogin(p));
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
@@ -1442,6 +1452,7 @@ function manager(p) {
   if (p.mgr === "wo") return mgrWo(p);
   if (p.mgr === "ref") return mgrRef();
   if (p.mgr === "order") return mgrOrder();
+  if (p.mgr === "orders") return mgrOrders(p);
   if (p.mgr === "inlist") return mgrInList(p);
   if (p.mgr === "usage") return mgrUsage(p);
   if (p.mgr === "pubraw") return mgrPubRaw();
@@ -1583,8 +1594,8 @@ function mgrOrder() {
   const stock = {};                                                    // ключ справочника → {q, from, date}
   const put = (k, q, from, date) => { const s = stock[k]; if (!s || date > s.date) stock[k] = { q: q, from: from, date: date }; };
 
-  /* месячная: последняя закрытая (идёт — прошлая) */
-  const ms = mrevState(true);
+  /* месячная: последняя закрытая или готовая (идёт — прошлая) */
+  const ms = mrevRead();
   if (ms && ms.block) {
     const open = ms.block.open && !ms.block.done, date = open ? "" : dmy(ms.block.date);   // готовая (все зоны) — как закрытая
     out.src.m = { title: open ? ms.prev || "" : ms.block.title, date: date, open: open };
@@ -1626,6 +1637,74 @@ function mgrOrder() {
       sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "", inq: Math.round(inq * 1000) / 1000 });
   });
   return out;
+}
+
+/* ── Архив заявок бартендеров ──
+   «Скопировать и отправить в архив» в заявке: копия — в буфер (переслать), заявка — в лист «Заявки» таблицы ревизии,
+   строка на позицию. У заявки id (одна заявка одного телефона за день): повторная отправка заменяет её строки —
+   в архиве последняя версия. Менеджер видит заявки во вкладке «Автозаявка», они же — в еженедельном отчёте. */
+const ORD_SHEET = "Заявки";
+const ORD_HEAD = ["Отправлено", "День", "Заявка", "Кто", "Раздел", "Позиция", "Кол-во", "id"];
+const ORD_KIND = { prep: "Заготовщики", gen: "Общая" };
+
+function ordSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(ORD_SHEET);
+  if (sh || !create) return sh;
+  const nsh = ss.insertSheet(ORD_SHEET);
+  nsh.getRange(1, 1, 1, ORD_HEAD.length).setValues([ORD_HEAD]).setFontWeight("bold");
+  nsh.setFrozenRows(1);
+  nsh.setColumnWidth(6, 240);
+  return nsh;
+}
+function orderSave(p) {
+  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 40), kind = ORD_KIND[p.kind] ? p.kind : "";
+  const who = clean(p.who, 60), items = Array.isArray(p.items) ? p.items.slice(0, 400) : [];
+  const rows = items.map(x => [clean(x && x.g, 80), clean(x && x.n, 120), clean(x && x.q, 30)]).filter(r => r[1]);
+  if (!id || !kind || !who || !rows.length) return { error: "bad" };
+  revBook();
+  const lock = lockOrBusy(20000);
+  try {
+    const sh = ordSheet(true), now = new Date();
+    const at = Utilities.formatDate(now, TZ, "dd.MM.yyyy HH:mm"), day = Utilities.formatDate(now, TZ, "dd.MM.yyyy");
+    /* прошлая версия этой заявки — убрать (снизу вверх, отрезками подряд) */
+    const last = sh.getLastRow();
+    if (last >= 2) {
+      const ids = sh.getRange(2, ORD_HEAD.length, last - 1, 1).getValues().map(r => String(r[0]));
+      for (let i = ids.length - 1; i >= 0;) {
+        if (ids[i] !== id) { i--; continue; }
+        let j = i;
+        while (j > 0 && ids[j - 1] === id) j--;
+        sh.deleteRows(j + 2, i - j + 1);
+        i = j - 1;
+      }
+    }
+    const from = sh.getLastRow() + 1;
+    ensureRows(sh, from + rows.length - 1);
+    sh.getRange(from, 1, rows.length, ORD_HEAD.length).setNumberFormat("@")
+      .setValues(rows.map(r => [at, day, ORD_KIND[kind], who].concat(r, [id])));
+    SpreadsheetApp.flush();
+    return { ok: true, at: at, n: rows.length };
+  } finally { lock.releaseLock(); }
+}
+/* заявки за период (дни «с» и «по», ГГГГ-ММ-ДД; по умолчанию — 30 дней), новые сверху */
+function orderList(from, to) {
+  const sh = ordSheet(false), last = sh ? sh.getLastRow() : 0, by = {}, out = [];
+  if (last < 2) return out;
+  sh.getRange(2, 1, last - 1, ORD_HEAD.length).getDisplayValues().forEach(r => {
+    const iso = dmy(r[1]), id = String(r[7]).trim();
+    if (!iso || !id || iso < from || iso > to) return;
+    let o = by[id];
+    if (!o) { o = by[id] = { id: id, at: String(r[0]).trim(), day: iso, kind: String(r[2]).trim(), who: String(r[3]).trim(), items: [] }; out.push(o); }
+    o.items.push({ g: String(r[4]).trim(), n: String(r[5]).trim(), q: String(r[6]).trim() });
+  });
+  const key = o => { const m = o.at.match(/^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})/); return m ? m[3] + m[2] + m[1] + m[4] + m[5] : o.day; };
+  return out.sort((a, b) => key(b).localeCompare(key(a)));
+}
+function mgrOrders(p) {
+  const today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : today;
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : Utilities.formatDate(new Date(Date.parse(to + "T00:00:00Z") - 30 * 864e5), "UTC", "yyyy-MM-dd");
+  return { ok: true, from: from, to: to, orders: orderList(from, to).slice(0, 100) };
 }
 
 /* ── Приход (бар-менеджер) ──
@@ -1790,19 +1869,23 @@ function mgrUsage(p) {
     }
   }
   /* приход и списания — только для позиций из справочника */
-  const inc = inByKey(), wo = {};
+  /* списания, которые не удалось учесть (название не как в справочнике, несовместимые единицы), — сайт покажет списком */
+  const inc = inByKey(), wo = {}, womiss = {}, since = cols.length ? cols[0].iso : "9999";
   Object.keys(WO_KINDS).forEach(k => {
     const sh = woSheet(k, false), last = sh ? sh.getLastRow() : 0;
     if (last < 2) return;
     sh.getRange(2, 1, last - 1, 5).getValues().forEach(r => {
       const iso = dmy(r[0]), key = byName[nameKey(r[2])];
-      if (!iso || !key) return;
+      if (!iso) return;
+      const miss = why => { if (iso > since) { const m = String(r[2]).trim() + "|" + why; womiss[m] = { n: String(r[2]).trim(), u: String(r[3]).trim(), why: why, pu: key ? refU[key] : "" }; } };
+      if (!key) return miss("name");
       const q = woConv(num(r[4]), r[3], refU[key]);
-      if (q != null && q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000 });
+      if (q == null) return miss("unit");
+      if (q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000 });
     });
   });
   items.forEach(x => { x.inc = x.key ? inc[x.key] || [] : []; x.wo = x.key ? wo[x.key] || [] : []; });
-  return { ok: true, kind: kind, cols: cols, items: items.filter(x => x.v.some(y => y != null)) };
+  return { ok: true, kind: kind, cols: cols, items: items.filter(x => x.v.some(y => y != null)), womiss: Object.values(womiss).slice(0, 40) };
 }
 
 /* ═════════════ Для гостей: меню и «Состав и аллергены» из таблицы ═════════════
@@ -2119,7 +2202,19 @@ function reportData(from, to) {
     const ts = revTotal(revBook()), lc = ts.getLastColumn();
     if (lc >= 2) { const h = ts.getRange(1, 2, 2, lc - 1).getDisplayValues(); h[0].forEach((x, i) => { if (inR(dmy(x))) d.revs.push({ date: x, who: h[1][i] }); }); }
   } catch (e) {}
+  try {                                                                // месячные — по дате начала
+    const ms = mrevSheet(true), b = mrevBlock();
+    if (ms && ms.getLastColumn() >= 4) {
+      const lc = ms.getLastColumn(), h = ms.getRange(3, 1, 4, lc).getDisplayValues();
+      for (let c = 3; c < lc; c++) {
+        if (String(h[2][c]).trim() !== "Итог" || !inR(dmy(h[3][c]))) continue;
+        const id = String(h[1][c]).trim(), st = b && b.total === id && b.open ? (b.done ? "все зоны посчитаны" : "идёт") : "закрыта";
+        d.revs.push({ date: h[3][c], who: "месячная «" + String(h[0][c]).trim() + "» — " + st });
+      }
+    }
+  } catch (e) {}
   try { d.odd = reportOdd(); } catch (e) { d.odd = { odd: [], date: "", prev: "" }; }
+  try { d.orders = orderList(from, to).map(o => [o.at, o.kind, o.who, o.items.length]); } catch (e) { d.orders = []; }
   /* приход */
   const inl = mgrInList({ from: from, to: to }), sup = {}, inv = {};
   inl.rows.forEach(r => { const s = r[2] || "поставщик не указан"; sup[s] = (sup[s] || 0) + (typeof r[8] === "number" ? r[8] : 0); inv[r[0] + "|" + r[1] + "|" + r[2]] = s; });
@@ -2155,7 +2250,7 @@ function reportHtml(d) {
   const nwo = d.wo.acts.filter(a => a.k === "wo").length, npr = d.wo.acts.filter(a => a.k === "pr").length;
   let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
     '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — неделя ' + hx(ru(d.from)) + ' — ' + hx(ru(d.to)) + '</h2>' +
-    '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · открытий смен ' + d.open.length + '</p>';
+    '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · заявок ' + (d.orders || []).length + ' · открытий смен ' + d.open.length + '</p>';
   h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
     tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f]));
   h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
@@ -2164,6 +2259,7 @@ function reportHtml(d) {
   h += '<h3 style="' + H + '">Приход</h3>' + tb(["Поставщик", "Сумма, ₸", "Накладных"], d.inc.sup.map(x => [x[0], x[1] ? fmtN(Math.round(x[1])) : "", x[2]]));
   h += '<h3 style="' + H + '">Ниже нормы сейчас</h3>' + tb(["Позиция", "Не хватает", "Поставщик"], d.low.map(x => [x.n, fmtN(x.need) + (x.u ? " " + x.u : ""), x.sup])) +
     (d.nonorm ? '<p style="color:#888;margin:6px 0 0">Без нормы в справочнике: ' + d.nonorm + ' позиций.</p>' : "");
+  h += '<h3 style="' + H + '">Заявки бартендеров</h3>' + tb(["Отправлено", "Заявка", "Кто", "Позиций"], d.orders || []);
   h += '<h3 style="' + H + '">Ревизии</h3>' + tb(["Дата", "Кто"], d.revs.map(x => [x.date, x.who])) +
     '<h3 style="' + H + '">Открытия смен («Бар готов»)</h3>' + tb(["День", "Время", "Кто", "Не отмечено"], d.open) +
     '<h3 style="' + H + '">Входы в «Бартендерам»</h3>' + tb(["Кто", "Входов"], Object.keys(d.logins).map(k => [k, d.logins[k]]).sort((a, b) => b[1] - a[1]));

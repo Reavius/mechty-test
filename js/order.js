@@ -95,6 +95,7 @@ function checklist(o){
     writeNeed(new Set());
     writeQty({});
     if (o.custom) writeOwn([]);
+    if (o.reset) o.reset();
     fill();
   });
 
@@ -115,6 +116,15 @@ function checklist(o){
       t.value = text; document.body.appendChild(t); t.select();
       try { ok = document.execCommand("copy"); } catch (e2) {}
       t.remove();
+    }
+    if (o.send){                                              // заявка — ещё и в архив (её видит бар-менеджер)
+      el("copy").disabled = true;
+      el("copy").textContent = (ok ? "Скопировано" : "Не скопировалось") + " · отправляем…";
+      const sent = await o.send(o.list().flatMap(g => g.items.filter(n => need.has(n)).map(n => ({g: g.own ? "Своё" : g.g, n, q: qty[n] || ""}))));
+      el("copy").disabled = false;
+      el("copy").textContent = (ok ? "Скопировано" : "Не скопировалось") + (sent ? " и отправлено ✓" : " · архив — когда будет связь");
+      setTimeout(() => { el("copy").textContent = copyLabel; }, 2500);
+      return;
     }
     el("copy").textContent = ok ? "Скопировано ✓" : "Не удалось скопировать";
     setTimeout(() => { el("copy").textContent = copyLabel; }, 2000);
@@ -147,7 +157,57 @@ let okind = "prep";
 try { if (localStorage.getItem("mechty-okind") === "gen") okind = "gen"; localStorage.removeItem("mechty-order"); } catch (e) {}
 const OL = () => OKINDS[okind].list();
 
+/* Архив: «Скопировать и отправить в архив» — заявка уходит и в таблицу (лист «Заявки»), её видит бар-менеджер.
+   У заявки этого телефона за день — один id: повторная отправка (что-то добавили) заменяет её в архиве.
+   Нет связи — заявка ждёт на телефоне и уходит сама, когда связь появится. */
+const OQ = "mechty-order-out";
+const ojson = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || "null") || d; } catch (e) { return d; } };
+const osave = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const oday = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);          // день по Астане
+function oid(kind){
+  const k = OKINDS[kind].key + "-sent", v = ojson(k, null);
+  if (v && v.id && v.day === oday()) return v.id;
+  const n = {id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), day: oday()};
+  osave(k, n);
+  return n.id;
+}
+let obusy = null;
+async function orderFlush(){
+  if (obusy) return obusy;
+  obusy = (async () => {
+    for (const id of Object.keys(ojson(OQ, {}))){
+      const body = ojson(OQ, {})[id];
+      if (!body) continue;
+      let d;
+      try {
+        const r = await fetch(ENDPOINT, {method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({token: TOKEN}, body))});
+        d = await r.json();
+      } catch (e) { d = {error: "net"}; }
+      if (!d.ok && d.error !== "bad") continue;                 // нет связи, таблица занята — попробуем позже
+      const q = ojson(OQ, {});
+      if (q[id] === undefined || JSON.stringify(q[id]) === JSON.stringify(body)) delete q[id];   // пока слали, не поменяли
+      osave(OQ, q);
+      if (d.ok){ const k = OKINDS[body.kind].key + "-sent", v = ojson(k, {}); if (v.id === id){ v.at = d.at; osave(k, v); } }
+    }
+  })();
+  try { await obusy; } finally { obusy = null; }
+  osentDraw();
+}
+async function orderSend(items){
+  const body = {order: "send", id: oid(okind), kind: okind, who: me ? me.name : "", items};
+  const q = ojson(OQ, {}); q[body.id] = body; osave(OQ, q);
+  await orderFlush();
+  return !ojson(OQ, {})[body.id];
+}
+/* под кнопкой: в архиве ли эта заявка */
+function osentDraw(){
+  const v = ojson(OKINDS[okind].key + "-sent", null), wait = v && ojson(OQ, {})[v.id];
+  $("osent").textContent = wait ? "Не отправлено в архив — нет связи, уйдёт само." : v && v.at && v.day === oday() ? "В архиве у бар-менеджера · " + String(v.at).slice(-5) : "";
+}
+window.addEventListener("online", () => { if (TOKEN && Object.keys(ojson(OQ, {})).length) orderFlush(); });
+
 const orderList = checklist({id: "o", key: () => OKINDS[okind].key, list: OL, pick: "Заказать", head: "Заявка", custom: true,
+  send: orderSend, reset: () => osave(OKINDS[okind].key + "-sent", null),
   none: "Список заявки пока не загружен.", empty: "Пока пусто. Отметьте галочкой в списке ниже то, что нужно заказать."});
 
 $("okind").addEventListener("click", e => {
@@ -163,6 +223,8 @@ function fillOrder(){
     b.setAttribute("aria-pressed", String(b.dataset.o === okind)));
   $("otitle").textContent = "К заказу · " + (okind === "gen" ? "общая" : "заготовщики");
   orderList.fill();
+  osentDraw();
+  if (TOKEN && Object.keys(ojson(OQ, {})).length) orderFlush();
 }
 
 /* ════════════ Взять на бар ════════════ */
