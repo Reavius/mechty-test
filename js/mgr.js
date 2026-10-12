@@ -388,6 +388,7 @@ async function ordLoad(){
   if (!mk) return mgrInit();
   $("mgrOwarn").textContent = "";
   if (!ordData) $("mgrOlist").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
+  api({mgr: "orders", mk}).then(r => { if (r.ok){ ordReq = r; ordReqDraw(); } });   // архив заявок — отдельно, не ждём
   const d = await api({mgr: "order", mk});
   if (d.error === "mgr") return mgrExpired();
   if (!d.ok){
@@ -399,6 +400,37 @@ async function ordLoad(){
   ordData = d;
   ordDraw();
 }
+/* ── заявки бартендеров (архив, лист «Заявки») ── */
+let ordReq = null, ordReqAll = false;
+const ORQ_SHOW = 5;
+function ordReqText(o){
+  const out = ["Заявка (" + o.kind.toLowerCase() + ") " + o.at + " · " + o.who];
+  let g = null;
+  for (const x of o.items){
+    if (x.g !== g){ g = x.g; out.push("", g || "Без раздела"); }
+    out.push("— " + x.n + (x.q ? " " + x.q : ""));
+  }
+  return out.join("\n");
+}
+function ordReqDraw(){
+  const L = ordReq ? ordReq.orders : [], show = ordReqAll ? L : L.slice(0, ORQ_SHOW);
+  $("mgrOreq").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + (L.length ? mgrPl(L.length, "заявка", "заявки", "заявок") + " · " : "") + 'за 30 дней</em><h3>Заявки бартендеров</h3></div>' +
+    (L.length ? '<ul class="oreq">' + show.map((o, i) => '<li><details' + (i ? "" : " open") + '><summary><span><b>' + esc(o.kind) + '</b> · ' + esc(o.who) +
+        '<small class="mgrwhy">' + esc(o.at) + ' · ' + mgrPl(o.items.length, "позиция", "позиции", "позиций") + '</small></span></summary>' +
+        '<ul class="oreqi">' + o.items.map(x => '<li>' + esc(x.n) + (x.q ? ' — <b>' + esc(x.q) + '</b>' : '') + '</li>').join("") + '</ul>' +
+        '<button type="button" class="link" data-oreq="' + i + '">Скопировать</button></details></li>').join("") + '</ul>' +
+      (L.length > ORQ_SHOW ? '<p class="mgrfoot"><button type="button" class="link" id="oreqAll">' + (ordReqAll ? "Свернуть" : "Показать все (" + L.length + ")") + '</button></p>' : "")
+    : '<p class="oempty">Пока нет. Бартендеры отправляют заявку кнопкой «Скопировать и отправить в архив» в разделе «Заявка».</p>') + '</div>';
+}
+$("mgrOreq").addEventListener("click", async e => {
+  if (e.target.id === "oreqAll"){ ordReqAll = !ordReqAll; ordReqDraw(); return; }
+  const b = e.target.closest("button[data-oreq]");
+  if (!b || !ordReq) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(ordReqText(ordReq.orders[+b.dataset.oreq])); ok = true; } catch (e2) {}
+  b.textContent = ok ? "Скопировано ✓" : "Не скопировалось"; buzz(ok ? 14 : 8);
+  setTimeout(() => { b.textContent = "Скопировать"; }, 1800);
+});
 function ordGroups(){
   const g = {}, none = [];
   let ok = 0;
@@ -774,7 +806,11 @@ function useDraw(){
   const noref = d.items.filter(x => !x.key).length;
   $("useSum").innerHTML = (d.kind === "m" && L.who ? "«" + esc(L.who) + "» от <b>" + mgrRu(L.iso) + "</b>" : "Ревизия <b>" + mgrRu(L.iso) + "</b>" + (L.who ? " (" + esc(L.who) + ")" : "")) + " против " + mgrRu(P.iso) +
     " · позиций " + rows.length + " · <b>странностей " + odd.length + "</b>" + (rows.some(r => r.nbase < 2) ? " · у части позиций мало истории — «обычного» ещё нет" : "");
-  $("useWarn").textContent = noref ? "Не найдены в справочнике (приход и списания для них не учитываются): " + d.items.filter(x => !x.key).map(x => x.n).join(", ") + "." : "";
+  const wm = d.womiss || [], wn = wm.filter(x => x.why === "name"), wu = wm.filter(x => x.why === "unit");
+  $("useWarn").textContent = [noref ? "Не найдены в справочнике (приход и списания для них не учитываются): " + d.items.filter(x => !x.key).map(x => x.n).join(", ") + "." : "",
+    wn.length ? "Списания не учтены — названия нет в справочнике (назовите в акте как в бланке ревизии): " + wn.map(x => x.n).join(", ") + "." : "",
+    wu.length ? "Списания не учтены — единица акта не переводится в единицу позиции: " + wu.map(x => x.n + " (" + (x.u || "?") + " → " + (x.pu || "?") + ")").join(", ") + "." : ""]
+    .filter(Boolean).join(" ");
   const unit = x => useU(x.u);
   const line = r => {
     const l = r.last, u = unit(r.x);

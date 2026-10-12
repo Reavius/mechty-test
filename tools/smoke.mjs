@@ -25,7 +25,13 @@ page.on("console", m => { if (m.type() === "error" && !/ERR_|fonts\.g|Failed to 
 const Z6 = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда", "Синий контейнер"];
 const rev = { zones: Z6, day: "2026-10-05", open: { date: "05.10.2026", key: "2026-10-05", zones: { "Кафе": { who: "Другой" }, "Склад и проход": { who: "Тест" } }, fin: {} }, prev: null,
   items: [{ n: "Джин", u: "л", z: [1.5, 0, 0, 0, 0, 0], t: 1.5, p: null }, { n: "Корона", u: "шт", z: [0, 3, 0, 0, 0, 0], t: 3, p: 2 }] };
+let orderSent = null;
 await page.route("https://script.google.com/**", r => {
+  if (r.request().method() === "POST"){                            // архив заявок
+    const b = JSON.parse(r.request().postData() || "{}");
+    if (b.order) orderSent = b;
+    return r.fulfill({ contentType: "application/json", body: JSON.stringify(b.order ? { ok: true, at: "05.10.2026 14:05", n: (b.items || []).length } : { error: "action" }) });
+  }
   const u = new URL(r.request().url()), cb = u.searchParams.get("callback");
   const mrev = { now: Date.now(), prev: null,
     block: { title: "Ревизия · Октябрь 2026", date: "01.10.2026", open: true, started: 1, cols: [{ id: "c1", name: "Тест", zones: ["Клуб", "VIP"], date: "01.10.2026", open: true }],
@@ -104,6 +110,9 @@ if (PW) {
   await page.click("#ocopy");
   const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
   ok(clip.includes("— " + fname + " 5 кг"), "количество попадает в копию заявки");
+  await page.waitForTimeout(300);
+  ok(orderSent && orderSent.kind === "gen" && orderSent.items.some(x => x.n === fname && x.q === "5 кг") &&
+    (await page.textContent("#osent")).includes("В архиве у бар-менеджера"), "заявка отправлена в архив");
   await page.reload(); await page.waitForSelector("#viewBt:not([hidden])", { timeout: 15000 });
   await page.click('[data-s="order"]');
   ok(await page.inputValue("#osum input.oq") === "5 кг", "количество сохраняется");
