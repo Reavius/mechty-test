@@ -28,7 +28,8 @@ const rev = { zones: Z6, day: "2026-10-05", open: { date: "05.10.2026", key: "20
 await page.route("https://script.google.com/**", r => {
   const u = new URL(r.request().url()), cb = u.searchParams.get("callback");
   const mrev = { now: Date.now(), prev: null,
-    block: { title: "Ревизия · Октябрь 2026", date: "01.10.2026", open: true, started: 1, cols: [{ id: "c1", name: "Тест", zones: ["Клуб", "VIP"], date: "01.10.2026", open: true }] }, zones: Z6,
+    block: { title: "Ревизия · Октябрь 2026", date: "01.10.2026", open: true, started: 1, cols: [{ id: "c1", name: "Тест", zones: ["Клуб", "VIP"], date: "01.10.2026", open: true }],
+      zst: { "Клуб": { st: "count", who: "Тест" }, "VIP": { st: "count", who: "Тест" }, "Кафе": { st: "sent", who: "Другой" } } }, zones: Z6,
     rows: [{ r: 7, t: "h", n: "Виски" }, { r: 8, t: "i", n: "Джемесон", u: "литр", tot: null, c: [null], p: 2 },
       { r: 9, t: "h", n: "Водка" }, { r: 10, t: "i", n: "Беленькая", u: "", tot: 1, c: [1], p: null }] };
   const body = u.searchParams.has("rev") ? { ok: true, rev } : u.searchParams.has("mrev") ? { ok: true, mrev }
@@ -130,7 +131,8 @@ if (PW) {
   ok(await page.locator("#mlist li.rrow").count() === 2, "месячная ревизия: позиции по разделам");
   await page.fill("#mq", "виски"); await page.waitForTimeout(300);   // поиск срабатывает после паузы в наборе
   ok(await page.locator("#mlist li.rrow").count() === 1, "месячная ревизия: поиск по разделу");
-  ok(await page.isVisible("#mnew") && await page.locator("#mlist .rin").count() === 1 && (await page.textContent("#minfo")).includes("Тест · Клуб и VIP"), "месячная ревизия: свой столбец (с зонами) и новая позиция");
+  ok(await page.isVisible("#mnew") && await page.locator("#mlist .rin").count() === 1 && (await page.textContent("#minfo")).includes("Клуб — Тест · считает") &&
+    (await page.textContent("#mmy")).includes("Клуб и VIP") && await page.isVisible("#mfinish"), "месячная ревизия: свои зоны, «Отправить результаты» и новая позиция");
   await page.fill("#mq", "");
   await page.click('#rkind [data-k="day"]');
   ok(await page.locator("#log li").count() > 0, "журнал входов");

@@ -476,8 +476,10 @@ function revState() {
    Одна месячная ревизия идёт несколько дней и считается несколькими людьми параллельно:
    первый её столбец — «Итог» (формула: сумма столбцов барменов справа; поправлять можно руками),
    дальше — столбцы барменов по порядку. «Войти в ревизию» — бармен выбирает зоны подсчёта (одну или несколько),
-   его столбец — «Куклин · Клуб и VIP». Одну зону два бармена одновременно не считают. Другие зоны — другой
-   столбец того же бармена (прежний закрывается, к нему можно вернуться, выбрав те же зоны). «Завершить» — столбец закрыт.
+   его столбец — «Куклин · Клуб и VIP»; «Добавить зону» — ещё один его столбец. Каждая зона считается один раз и
+   одним барменом: «Отправить результаты» — его зоны посчитаны (столбцы закрыты). Поправить посчитанную зону может
+   только тот, кто её считал: выбрал её снова — его столбец открылся. Ревизия начинается с первой зоны и идёт
+   несколько дней, пока не отправлены все зоны; тогда она готова (done), но поправлять её можно до начала следующей.
    Шапка столбца: строка 3 — название ревизии (у «Итога»), 4 — служебный id, 5 — «фамилия · зоны» или «Итог», 6 — дата.
    Столбцы находятся по id в строке 4, поэтому вставка столбцов в лист ничего не ломает.
    Числа складываются здесь, под блокировкой; повтор с тем же id не прибавляется. */
@@ -492,8 +494,10 @@ function monthly(p) {
   const lock = lockOrBusy(20000);
   try {
     if (act === "state") return { ok: true, mrev: mrevState() };
-    if (act === "begin") return mrevBegin(rn, p.zones);
+    if (act === "begin") return mrevBegin(rn, p.zones, p.fresh === "1");
     if (act === "mine") return mrevMine(rn, p.zones);
+    if (act === "send") return mrevSend(rn);
+    if (act === "drop") return mrevDrop(String(p.cid || ""), rn);
     if (act === "finish") return mrevFinish(String(p.cid || ""), rn);
     if (act === "end") return mrevEnd();
     if (act === "add") return mrevAdd(p, false);
@@ -651,8 +655,8 @@ function mrevState(ro) {
   });
   return {
     now: Date.now(),
-    block: b && ids[b.total] ? { title: b.title, date: b.date, open: b.open, started: b.started,
-      cols: cols.map(c => ({ id: c.id, name: c.name, zones: c.zones || null, date: c.date, open: c.open })) } : null,
+    block: b && ids[b.total] ? { title: b.title, date: b.date, open: b.open, started: b.started, done: !!(b.open && b.done),
+      zst: mrevZst(cols), cols: cols.map(c => ({ id: c.id, name: c.name, zones: c.zones || null, date: c.date, open: c.open, sent: !!c.sent })) } : null,
     zones: ZONES,
     prev: P.MREV_PREV_TITLE || null,
     rows: rows
@@ -669,12 +673,18 @@ function mrevNewCol(sh, id, title, name, date) {
   return col;
 }
 
-function mrevBegin(name, zones) {
+/* fresh — «Начать новую ревизию»: прошлая должна быть посчитана целиком, она закрывается («Итог» фиксируется) */
+function mrevBegin(name, zones, fresh) {
   if (!name) return { error: "Нет фамилии" };
   const sh = mrevSheet();
   let b = mrevBlock();
   if (b && b.open && !mrevTotalCol(sh, b, mrevIds(sh))) {   // «сломанная» ревизия (без «Итога») — закрыть
     b.open = false; b.cols.forEach(c => { c.open = false; }); mrevSave(b);
+  }
+  if (b && b.open && fresh) {
+    if (!b.done) return { error: "Прошлая ревизия ещё не посчитана — сначала все зоны" };
+    mrevEnd();
+    b = mrevBlock();
   }
   if (b && b.open) return mrevMine(name, zones);          // ревизия уже идёт — просто свой столбец
   const zl = mrevZoneList(zones);
@@ -701,8 +711,24 @@ function mrevZoneList(zones) {
 /* «Клуб и VIP», «Кафе, Клуб и VIP» */
 const zoneLabel = zl => zl.length < 2 ? zl.join("") : zl.slice(0, -1).join(", ") + " и " + zl[zl.length - 1];
 
-/* свой столбец с выбранными зонами: тот же набор — прежний столбец (закрытый — открывается снова), иначе новый;
-   другой открытый столбец этого бармена закрывается. Зону, которую считает другой, взять нельзя. */
+/* состояние зон: {зона: {st: "count" | "sent", who, date, cid}}; свободных зон нет в списке.
+   Зону держит открытый столбец (считают) или отправленный (посчитана); закрытый без отправки — нет. */
+function mrevZst(cols) {
+  const out = {};
+  cols.forEach(c => {
+    if (!c.zones || !(c.open || c.sent)) return;
+    c.zones.forEach(z => { if (!out[z] || c.open) out[z] = { st: c.open ? "count" : "sent", who: c.name, date: c.date, cid: c.id }; });
+  });
+  return out;
+}
+/* все зоны отправлены — ревизия готова (для сводок менеджера — как закрытая) */
+function mrevDoneCheck(b, ids) {
+  const zst = mrevZst(b.cols.filter(c => ids[c.id]));
+  b.done = ZONES.every(z => zst[z] && zst[z].st === "sent");
+}
+
+/* «Войти в ревизию» / «Добавить зону»: выбранные зоны, которые этот бармен уже считал, — его прежние столбцы
+   открываются снова; остальные — один новый столбец «Фамилия · зоны». Чужую зону (считает или посчитал) взять нельзя. */
 function mrevMine(name, zones) {
   if (!name) return { error: "Нет фамилии" };
   const zl = mrevZoneList(zones);
@@ -710,9 +736,9 @@ function mrevMine(name, zones) {
   const sh = mrevSheet(), b = mrevBlock();
   if (!b || !b.open) return { error: "closed" };
   const ids = mrevIds(sh), me = mnorm(name), live = b.cols.filter(c => ids[c.id]);
+  const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
   if (!zl) {                                                // старый сайт — как раньше, без зон
     if (!live.some(c => c.open && mnorm(c.name) === me)) {
-      const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
       const c = { id: b.key + "-" + (++b.n), name: name, date: date, open: true };
       mrevNewCol(sh, c.id, "", name, date);
       b.cols.push(c);
@@ -720,29 +746,62 @@ function mrevMine(name, zones) {
     }
     return { ok: true, mrev: mrevState() };
   }
+  const zst = mrevZst(live);
   for (const z of zl) {
-    const o = live.find(c => c.open && mnorm(c.name) !== me && (c.zones || []).indexOf(z) >= 0);
-    if (o) return { error: "Зону «" + z + "» сейчас считает " + o.name };
+    const o = zst[z];
+    if (o && mnorm(o.who) !== me) return { error: "Зону «" + z + "» " + (o.st === "count" ? "сейчас считает " : "уже посчитал ") + o.who };
   }
-  const key = zl.join("|");
-  let c = live.filter(x => mnorm(x.name) === me && (x.zones || []).join("|") === key).pop();
-  live.forEach(x => { if (x !== c && x.open && mnorm(x.name) === me) x.open = false; });
-  if (c) c.open = true;
-  else {
-    const date = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy");
-    c = { id: b.key + "-" + (++b.n), name: name, zones: zl, date: date, open: true };
-    mrevNewCol(sh, c.id, "", name + " · " + zoneLabel(zl), date);
+  const reopen = live.filter(c => mnorm(c.name) === me && c.zones && (c.open || c.sent) && c.zones.some(z => zl.indexOf(z) >= 0));
+  const fresh = zl.filter(z => !reopen.some(c => c.zones.indexOf(z) >= 0));
+  reopen.forEach(c => { c.open = true; c.sent = false; });
+  let cid = reopen.length ? reopen[0].id : "";
+  if (fresh.length) {
+    const c = { id: b.key + "-" + (++b.n), name: name, zones: fresh, date: date, open: true };
+    mrevNewCol(sh, c.id, "", name + " · " + zoneLabel(fresh), date);
     b.cols.push(c);
+    cid = c.id;
   }
+  mrevDoneCheck(b, mrevIds(sh));
+  mrevSave(b);
+  return { ok: true, cid: cid, mrev: mrevState() };
+}
+
+/* «Отправить результаты»: все открытые столбцы этого бармена — посчитаны */
+function mrevSend(name) {
+  if (!name) return { error: "Нет фамилии" };
+  const sh = mrevSheet(), b = mrevBlock();
+  if (!b || !b.open) return { error: "closed" };
+  const me = mnorm(name), mine = b.cols.filter(c => c.open && mnorm(c.name) === me);
+  if (!mine.length) return { error: "closed" };
+  mine.forEach(c => { c.open = false; c.sent = true; c.sentAt = Date.now(); });
+  mrevDoneCheck(b, mrevIds(sh));
   mrevSave(b);
   return { ok: true, mrev: mrevState() };
 }
 
+/* «Не считать эту зону» — только свой открытый столбец без чисел: столбец убирается, зоны свободны */
+function mrevDrop(cid, name) {
+  const sh = mrevSheet(), b = mrevBlock(), c = b && b.open && b.cols.find(x => x.id === cid);
+  if (!c || !c.open) return { error: "closed" };
+  if (mnorm(c.name) !== mnorm(name)) return { error: "Это столбец " + c.name };
+  const col = mrevIds(sh)[c.id];
+  if (col) {
+    const last = Math.max(sh.getLastRow(), 7);
+    if (sh.getRange(7, col, last - 6, 1).getValues().some(r => r[0] !== "")) return { error: "В столбце уже есть числа — отмените их (↶) или отправьте результаты" };
+    sh.getRange(3, col, 4, 1).clearContent();
+  }
+  b.cols = b.cols.filter(x => x !== c);
+  mrevSave(b);
+  return { ok: true, mrev: mrevState() };
+}
+
+/* старый сайт: «Завершить мой подсчёт» — один столбец посчитан */
 function mrevFinish(cid, name) {
   const b = mrevBlock(), c = b && b.cols.find(x => x.id === cid);
   if (!c) return { error: "closed" };
   if (name && mnorm(c.name) !== mnorm(name)) return { error: "Это столбец " + c.name };
-  c.open = false;
+  c.open = false; c.sent = true; c.sentAt = Date.now();
+  mrevDoneCheck(b, mrevIds(mrevSheet()));
   mrevSave(b);
   return { ok: true, mrev: mrevState() };
 }
@@ -1527,7 +1586,7 @@ function mgrOrder() {
   /* месячная: последняя закрытая (идёт — прошлая) */
   const ms = mrevState(true);
   if (ms && ms.block) {
-    const open = ms.block.open, date = open ? "" : dmy(ms.block.date);
+    const open = ms.block.open && !ms.block.done, date = open ? "" : dmy(ms.block.date);   // готовая (все зоны) — как закрытая
     out.src.m = { title: open ? ms.prev || "" : ms.block.title, date: date, open: open };
     let sec = "";
     ms.rows.forEach(x => {
@@ -1709,7 +1768,7 @@ function mgrUsage(p) {
   } else {
     const sh = mrevSheet(true), b = mrevBlock();
     if (sh && sh.getLastColumn() >= 4 && sh.getLastRow() >= 7) {
-      const lc = sh.getLastColumn(), h = sh.getRange(3, 1, 4, lc).getDisplayValues(), openId = b && b.open ? b.total : "";
+      const lc = sh.getLastColumn(), h = sh.getRange(3, 1, 4, lc).getDisplayValues(), openId = b && b.open && !b.done ? b.total : "";
       let tc = [];
       for (let c = 3; c < lc; c++) {
         const id = String(h[1][c]).trim(), iso = dmy(h[3][c]);

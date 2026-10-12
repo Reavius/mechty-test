@@ -762,3 +762,6 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .mpick{margin-top:14px}
 .mpick .zones{padding:0 16px 14px}
 .mpick .otools #mpgo{font-weight:700}
+.mmy{margin-top:14px}
+.mmy .link{margin-top:10px;font-size:13px}
+#msendb{font-weight:700}
