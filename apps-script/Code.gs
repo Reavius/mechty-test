@@ -155,7 +155,15 @@ function ckState() {
   let st = null;
   try { st = JSON.parse(PropertiesService.getScriptProperties().getProperty(CK_KEY) || "null"); } catch (e) { st = null; }
   const day = ckDay();
-  return st && st.day === day && st.s && typeof st.s === "object" ? st : { day: day, s: {} };
+  return st && st.day === day && st.s && typeof st.s === "object" ? st : { day: day, s: {}, of: st && st.of || 0, tot: st && st.tot || "" };
+}
+/* пункт отмечается сам (акт списания ушёл в таблицу) — вызывается под блокировкой */
+function ckAuto(id, who, g, tx) {
+  const st = ckState();
+  if (st.s[id]) return;
+  st.s[id] = { w: who, t: Date.now() };
+  PropertiesService.getScriptProperties().setProperty(CK_KEY, JSON.stringify(st));
+  try { ckLive(st, who, { id: id, g: g, tx: tx, auto: 1 }, true); } catch (e) { console.error("ckLive: " + e); }
 }
 function checklist(p) {
   const act = String(p.ck);
@@ -165,15 +173,14 @@ function checklist(p) {
   if (!id || !who) return { error: "bad" };
   const lock = lockOrBusy(10000);
   try {
-    const st = ckState();
-    if (String(p.on) === "1") {
-      if (!st.s[id]) {
-        st.s[id] = { w: who, t: Date.now() };
-        if (id === "fin") try { openLog(st.day, who, p.left); } catch (e) { console.error("openLog: " + e); }   // для еженедельного отчёта
-      }
-    }
+    const st = ckState(), on = String(p.on) === "1", had = !!st.s[id];
+    if (on) { if (!had) st.s[id] = { w: who, t: Date.now() }; }
     else delete st.s[id];
+    if (parseInt(p.of, 10) > 0) st.of = parseInt(p.of, 10);              // сколько всего пунктов — для строки дня
+    if (/^[a-z]:\d+(,[a-z]:\d+){0,9}$/.test(String(p.tot || ""))) st.tot = String(p.tot);   // пунктов по разделам: «a:11,b:3,…»
     PropertiesService.getScriptProperties().setProperty(CK_KEY, JSON.stringify(st));
+    /* сразу в таблицу журнала, не дожидаясь «Бар готов»; сбой записи не теряет саму отметку */
+    if (on !== had) try { ckLive(st, who, p, on); } catch (e) { console.error("ckLive: " + e); }
     return { ok: true, day: st.day, s: st.s };
   } finally {
     lock.releaseLock();
@@ -1116,6 +1123,8 @@ function woSave(p, recOnly) {
         sh.getRange(top, 6, n, 5).setNumberFormat("@");                   // текст: причина, кто, файл, когда, id
         sh.getRange(top, 1, n, WO_HEAD.length)                            // кол-во — числом, чтобы считать суммы
           .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
+        /* чеклист: «Заполнить списания и отправить в систему» — отмечается сам */
+        if (kind === "wo") try { ckAuto("d5", who || "—", "Общие дела", "Заполнить списания и отправить в систему"); } catch (e) { console.error("ckAuto: " + e); }
       }
       SpreadsheetApp.flush();                                             // записать до снятия блокировки — повтор увидит id
       out = { ok: true, url: url, rec: true };
@@ -2123,17 +2132,48 @@ function mgrDishSet(p) {
    последней, приход, что ниже нормы, открытия смен и входы. Получатели — «Менеджер» → «Отчёт» (свойство REPORT_EMAIL,
    через запятую; пусто — владелец таблицы). Там же — предпросмотр, «Отправить сейчас» и включение по понедельникам.
    Если сайт пишет, что нет разрешения: выберите installWeeklyReport в списке функций вверху и нажмите «Выполнить» —
-   Google спросит доступ к почте; таймер включится. Открытия смен — лист «Открытия смен» (пишет чеклист по «Бар готов»). */
+   Google спросит доступ к почте; таймер включится. Открытия смен — лист «Открытия смен» (строку дня чеклист обновляет с каждой отметкой). */
 const OPEN_SHEET = "Открытия смен", REPORT_PROP = "REPORT_EMAIL", REPORT_FN = "weeklyReport";
 const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
 
-function openLog(day, who, left) {
+/* Строка дня в «Открытиях смен» (таблица журнала) обновляется с каждой отметкой: сколько отмечено, что осталось,
+   первая и последняя отметка, кто отмечал; «Бар готов» — время и кто. Каждая отметка — ещё и строкой в «Чеклист журнал».
+   Первые четыре столбца — как в прошлой версии (день, время «Бар готов», кто, сколько не отмечено). */
+const OPEN_HEAD = ["День", "Бар готов", "Кто открыл", "Не отмечено", "Отмечено", "Первая отметка", "Последняя отметка", "Кто отмечал", "По разделам"];
+const CK_LET = "АБВГДЕЖЗИК";
+const CK_LOG = "Чеклист журнал";
+function ckLive(st, who, p, on) {
   journalPin();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), now = new Date(), hm = Utilities.formatDate(now, TZ, "HH:mm");
+  const day = String(st.day).split("-").reverse().join("."), tx = clean(p.tx, 160) || String(p.id || "");
+  let lg = ss.getSheetByName(CK_LOG);
+  if (!lg) { lg = ss.insertSheet(CK_LOG); lg.appendRow(["Время", "День", "Кто", "Раздел", "Пункт", "Действие"]); lg.setFrozenRows(1); }
+  lg.appendRow([Utilities.formatDate(now, TZ, "dd.MM.yyyy HH:mm"), "'" + day, who, clean(p.g, 80), tx,
+    on ? (p.auto ? "отмечено само (акт ушёл)" : "отметил") : "снял отметку"]);
   let sh = ss.getSheetByName(OPEN_SHEET);
-  if (!sh) { sh = ss.insertSheet(OPEN_SHEET); sh.appendRow(["День", "Время", "Кто", "Не отмечено"]); sh.setFrozenRows(1); }
-  const d = String(day).split("-").reverse().join(".");
-  sh.appendRow(["'" + d, "'" + Utilities.formatDate(new Date(), TZ, "HH:mm"), who, left === "" || left == null ? "" : num(left)]);
+  if (!sh) { sh = ss.insertSheet(OPEN_SHEET); sh.setFrozenRows(1); }
+  if (sh.getLastColumn() < OPEN_HEAD.length) sh.getRange(1, 1, 1, OPEN_HEAD.length).setValues([OPEN_HEAD]).setFontWeight("bold");
+  /* строка этого дня — среди последних (день свежий) */
+  const last = sh.getLastRow(), from = Math.max(2, last - 59);
+  let row = 0;
+  if (last >= 2) {
+    const v = sh.getRange(from, 1, last - from + 1, 1).getDisplayValues();
+    for (let i = v.length - 1; i >= 0; i--) if (String(v[i][0]).replace(/^'/, "").trim() === day) { row = from + i; break; }
+  }
+  const old = row ? sh.getRange(row, 1, 1, OPEN_HEAD.length).getDisplayValues()[0] : [];
+  const marks = Object.keys(st.s).filter(k => k !== "fin"), fin = st.s.fin, of = Math.max(parseInt(p.of, 10) || st.of || 0, marks.length);
+  const whoAll = [];
+  marks.forEach(k => { const w = st.s[k].w; if (w && whoAll.indexOf(w) < 0) whoAll.push(w); });
+  /* по разделам: «А 2/11 · Б 0/3 · …» — разделы и их размер присылает сайт (st.tot), отметки — из состояния */
+  const pg = String(st.tot || "").split(",").filter(Boolean).map((x, i) => {
+    const [k, n] = x.split(":");
+    return CK_LET.charAt(i) + " " + marks.filter(m => m.charAt(0) === k).length + "/" + n;
+  }).join(" · ");
+  const vals = ["'" + day, fin ? "'" + Utilities.formatDate(new Date(fin.t), TZ, "HH:mm") : "", fin ? fin.w : "",
+    of ? Math.max(0, of - marks.length) : "", of ? marks.length + " из " + of : String(marks.length),
+    "'" + (String(old[5] || "").replace(/^'/, "") || hm), "'" + hm, whoAll.join(", "), pg];
+  if (!row) { row = Math.max(last, 1) + 1; ensureRows(sh, row); }
+  sh.getRange(row, 1, 1, OPEN_HEAD.length).setValues([vals]);
 }
 /* прошлая неделя по Астане: понедельник — воскресенье, ГГГГ-ММ-ДД */
 function reportWeek(now) {
@@ -2227,9 +2267,14 @@ function reportData(from, to) {
     d.nonorm = o.nonorm || 0;
   } catch (e) { d.low = []; d.nonorm = 0; }
   /* открытия смен и входы */
+  /* открытия смен: [день, «Бар готов», кто, отмечено] — дни, когда чеклист начинали */
   d.open = [];
   const os = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OPEN_SHEET);
-  if (os && os.getLastRow() >= 2) os.getRange(2, 1, os.getLastRow() - 1, 4).getDisplayValues().forEach(r => { if (inR(dmy(r[0]))) d.open.push(r); });
+  if (os && os.getLastRow() >= 2) os.getRange(2, 1, os.getLastRow() - 1, 5).getDisplayValues().forEach(r => {
+    if (!inR(dmy(r[0]))) return;
+    const t = String(r[1]).replace(/^'/, ""), left = String(r[3]).trim();
+    d.open.push([String(r[0]).replace(/^'/, ""), t || "не отмечен", r[2], String(r[4]).trim() || (left !== "" ? "не отмечено " + left : "")]);
+  });
   d.logins = {};
   try {
     const js = sheet(), last = js.getLastRow();
@@ -2250,7 +2295,7 @@ function reportHtml(d) {
   const nwo = d.wo.acts.filter(a => a.k === "wo").length, npr = d.wo.acts.filter(a => a.k === "pr").length;
   let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
     '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — неделя ' + hx(ru(d.from)) + ' — ' + hx(ru(d.to)) + '</h2>' +
-    '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · заявок ' + (d.orders || []).length + ' · открытий смен ' + d.open.length + '</p>';
+    '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · заявок ' + (d.orders || []).length + ' · открытий смен ' + d.open.filter(r => /^\d/.test(r[1])).length + '</p>';
   h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
     tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f]));
   h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
@@ -2261,7 +2306,7 @@ function reportHtml(d) {
     (d.nonorm ? '<p style="color:#888;margin:6px 0 0">Без нормы в справочнике: ' + d.nonorm + ' позиций.</p>' : "");
   h += '<h3 style="' + H + '">Заявки бартендеров</h3>' + tb(["Отправлено", "Заявка", "Кто", "Позиций"], d.orders || []);
   h += '<h3 style="' + H + '">Ревизии</h3>' + tb(["Дата", "Кто"], d.revs.map(x => [x.date, x.who])) +
-    '<h3 style="' + H + '">Открытия смен («Бар готов»)</h3>' + tb(["День", "Время", "Кто", "Не отмечено"], d.open) +
+    '<h3 style="' + H + '">Открытия смен (чеклист)</h3>' + tb(["День", "Бар готов", "Кто", "Отмечено"], d.open) +
     '<h3 style="' + H + '">Входы в «Бартендерам»</h3>' + tb(["Кто", "Входов"], Object.keys(d.logins).map(k => [k, d.logins[k]]).sort((a, b) => b[1] - a[1]));
   return h + '<p style="color:#aaa;font-size:12px;margin:24px 0 0">Подробнее — на сайте: «Бартендерам» → «Менеджер».</p></div>';
 }
