@@ -1,12 +1,14 @@
 /* Ревизия: переключатель «Ежедневная / Месячная» и месячная ревизия. */
 /* ════════════ Месячная ревизия ════════════
    Весь бар по бланку — лист «Месячная ревизия» в таблице ревизии. Одна ревизия идёт несколько дней:
-   первый её столбец — «Итог» (сумма), дальше — столбцы барменов: у каждого свой, с фамилией и датой
-   («Начать мой подсчёт» → считаю → «Завершить»). Считать можно одновременно. Числа складывает Apps Script;
+   первый её столбец — «Итог» (сумма), дальше — столбцы барменов: «Войти в ревизию» → бармен выбирает зоны
+   подсчёта (одну или несколько) → его столбец «Куклин · Клуб и VIP» → считаю («Добавить зону» — ещё столбец) →
+   «Отправить результаты». Каждая зона считается один раз и одним барменом; поправить посчитанную может только он.
+   Ревизия идёт несколько дней, пока не отправлены все зоны, — тогда она готова; поправки — до начала следующей. Числа складывает Apps Script;
    добавления уходят с id, без связи копятся в очереди на устройстве. Поиск — по названию и разделу.
    Позиции, которых нет в бланке, добавляются вниз — в «Новые позиции». */
-const MQ = "mechty-mrev-q", MH = "mechty-mrev-hist", MS = "mechty-mrev-state", RK = "mechty-rkind";
-let MREVS = null, mbusy = false, rkind = "day", mcached = false, mnewTry = null;
+const MQ = "mechty-mrev-q", MH = "mechty-mrev-hist", MS = "mechty-mrev-state", RK = "mechty-rkind", MA = "mechty-mrev-act";
+let MREVS = null, mbusy = false, rkind = "day", mcached = false, mnewTry = null, mpicking = false, mpickNew = false, msel = [], mnote = "";
 try { if (localStorage.getItem(RK) === "month") rkind = "month"; } catch (e) {}
 
 /* ── переключатель ── */
@@ -31,10 +33,15 @@ rkindShow();
 /* ── данные ── */
 const mnorm = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
 const mblock = () => MREVS && MREVS.block;
-/* мой открытый столбец: по фамилии того, кто вошёл */
-const mmine = () => { const b = mblock(); return b && b.open && me ? b.cols.find(c => c.open && mnorm(c.name) === mnorm(me.name)) : null; };
+/* мои открытые столбцы (по фамилии того, кто вошёл); числа идут в выбранный («Ваш подсчёт») */
+const mmineAll = () => { const b = mblock(); return b && b.open && me ? b.cols.filter(c => c.open && mnorm(c.name) === mnorm(me.name)) : []; };
+const mmine = () => { const all = mmineAll(), a = rjson(MA, ""); return all.find(c => c.id === a) || all[0] || null; };
 const mmineIdx = () => { const b = mblock(), c = mmine(); return c ? b.cols.indexOf(c) : -1; };
 const mhk = () => { const c = mmine(); return c ? c.id : ""; };   // ключ истории отмены — свой столбец (новый день — новая история)
+/* зоны столбца: «Клуб и VIP», «Кафе, Клуб и VIP» */
+const mzl = zl => zl.length < 2 ? zl.join("") : zl.slice(0, -1).join(", ") + " и " + zl[zl.length - 1];
+const mcolName = c => c.name + (c.zones && c.zones.length ? " · " + mzl(c.zones) : "");
+const MZONES = ["Кафе", "Склад и проход", "Клуб", "VIP", "Мансарда", "Синий контейнер"];   // если Apps Script старый
 
 /* строки листа → разделы; раздел без своих позиций (П/ф бар) — заголовок группы */
 function msections(){
@@ -125,7 +132,7 @@ function mrow(it, hist, mi){
   const b = mblock(), parts = mi >= 0 ? hist[mkey(it)] || [] : [];
   const sub = [];
   if (mi >= 0 && it.c[mi] != null) sub.push("моё: " + mfmt(it.c[mi], it.u) + (parts.length ? " (" + parts.map(hl).join(" + ").replace(/\+ -/g, "− ") + ")" : ""));
-  b.cols.forEach((c, k) => { if (k !== mi && it.c[k] != null) sub.push(c.name + " " + String(c.date).slice(0, 5) + ": " + rfmt(it.c[k])); });
+  b.cols.forEach((c, k) => { if (k !== mi && it.c[k] != null) sub.push((c.zones && c.zones.length ? mcolName(c) : c.name + " " + String(c.date).slice(0, 5)) + ": " + rfmt(it.c[k])); });
   if (it.p != null) sub.push("прошлая: " + mfmt(it.p, it.u));
   return '<li class="rrow' + (it.tot == null ? " mnone" : "") + '" data-r="' + it.r + '">' +
     '<div class="rtop"><span class="rn">' + esc(it.n) + (it.u ? '<small>' + esc(it.u) + '</small>' : '') + '</span>' +
@@ -143,24 +150,49 @@ function mrevDraw(full){
   const q = rjson(MQ, []);
   $("mqueue").textContent = q.length ? "не отправлено: " + q.length : mcached ? "сохранённая копия" : "";
   if (!r) return;
-  const b = r.block, open = !!(b && b.open), mine = mmine(), all = mitems(), done = all.filter(x => x.tot != null).length;
+  const b = r.block, open = !!(b && b.open), done = open && !!b.done, mine = mmine(), all = mitems(), cnt = all.filter(x => x.tot != null).length;
+  const zones = r.zones || MZONES, zst = open && b.zst || {}, meN = me ? mnorm(me.name) : "";
+  const mySent = open && zones.some(z => zst[z] && zst[z].st === "sent" && mnorm(zst[z].who) === meN);
   $("mtitle").textContent = b && open ? b.title.replace(/^Ревизия/, "Месячная ревизия") : "Месячная ревизия не начата";
-  const who = open ? b.cols.map(c => '<li' + (c === mine ? ' class="me"' : '') + '><b>' + esc(c.name) + '</b> · ' + esc(c.date) +
-    (c.open ? ' · <span class="on">считает</span>' : ' · завершено') + '</li>').join("") : "";
-  $("minfo").innerHTML = '<span class="rtoday">Сегодня ' + rday(rnow()) + '</span>' + (open
-    ? 'Начата ' + esc(b.date) + '. Посчитано <b>' + done + '</b> из ' + all.length + '. Первый столбец ревизии — «Итог».' +
-      (who ? '<ul class="mwho">' + who + '</ul>' : '') +
-      (mine ? '' : '<span class="mhint">Нажмите «Начать мой подсчёт» — в таблице появится ваш столбец с сегодняшней датой.</span>')
+  /* зоны: кто считает, кто посчитал, что осталось */
+  const zl = open ? '<ul class="mwho">' + zones.map(z => {
+    const x = zst[z];
+    return '<li' + (x && mnorm(x.who) === meN ? ' class="me"' : '') + '>' + esc(z) + ' — ' + (!x ? 'свободна'
+      : '<b>' + esc(x.who) + '</b> · ' + (x.st === "count" ? '<span class="on">считает</span>' : 'посчитана')) + '</li>';
+  }).join("") + '</ul>' : "";
+  const left = zones.filter(z => !zst[z] || zst[z].st !== "sent");
+  $("minfo").innerHTML = '<span class="rtoday">Сегодня ' + rday(rnow()) + '</span>' + (mnote ? '<b>' + esc(mnote) + '</b> ' : '') + (open
+    ? (done ? '<b>Все зоны посчитаны — итог готов.</b> Поправить свою зону можно до начала следующей ревизии. '
+        : 'Начата ' + esc(b.date) + '. Ревизия идёт, пока не посчитаны все зоны' + (left.length < zones.length ? ' — осталось: ' + esc(left.join(", ")) : '') + '. ') +
+      'Позиций с числами: <b>' + cnt + '</b> из ' + all.length + '.' + zl +
+      (mine || done ? '' : '<span class="mhint">Нажмите «Войти в ревизию» и выберите зону, которую будете считать.</span>')
     : (b ? 'Прошлая — «' + esc(b.title) + '», закрыта. ' : (r.prev ? 'Прошлая — «' + esc(r.prev) + '». ' : '')) +
-      'Нажмите «Начать ревизию» — в листе «Месячная ревизия» появятся столбец «Итог» и ваш столбец. ' + all.length + ' позиций.');
-  $("mstart").textContent = !open ? "Начать ревизию" : "Начать мой подсчёт";
-  $("mstart").hidden = !!mine;
-  $("mfinish").hidden = !mine;
-  $("mend").hidden = !open;
+      'Нажмите «Войти в ревизию» и выберите зону — с неё начнётся месячная ревизия. Она идёт несколько дней, пока не посчитаны все зоны. ' + all.length + ' позиций.');
+  $("mstart").textContent = done ? "Поправить свою зону" : "Войти в ревизию";
+  $("mstart").hidden = !!mine || mpicking || (done && !mySent);
+  $("mfresh").hidden = !done || !!mine || mpicking;
+  $("mzones").hidden = !mine || mpicking;
+  $("mfinish").hidden = $("msendb").hidden = !mine;
+  $("mend").hidden = !open || done;
   $("mnew").hidden = !mine;
-  $("mbody").hidden = !open;
-  if (!open) return;
+  $("mpick").hidden = !mpicking;
+  $("mbody").hidden = !open || mpicking;
+  if (mpicking) mpickDraw();
+  if (!open || mpicking) return;
+  mmyDraw();
   if (full !== false) mlistDraw();
+}
+
+/* «Ваш подсчёт»: свои открытые столбцы — куда идут числа; пустой можно отдать («Не считать») */
+function mmyDraw(){
+  const all = mmineAll(), act = mmine(), mi = mmineIdx();
+  $("mmy").hidden = !all.length;
+  if (!all.length) return;
+  const empty = mitems().every(it => it.c[mi] == null);
+  $("mmy").innerHTML = '<p class="label">Ваш подсчёт — числа идут в выбранный столбец</p><div class="modes zones">' + all.map(c =>
+    '<button type="button" data-c="' + esc(c.id) + '" aria-pressed="' + (c === act) + '">' + esc(c.zones ? mzl(c.zones) : c.name) +
+    '<small>' + esc(c.date) + '</small></button>').join("") + '</div>' +
+    (empty ? '<button type="button" class="link" id="mdrop">Не считать «' + esc(act.zones ? mzl(act.zones) : act.name) + '» — освободить зону</button>' : '');
 }
 
 /* список с учётом поиска и фильтров */
@@ -222,7 +254,8 @@ function mrevAdd(row, v, undo, e){
   undo ? h[k].pop() : h[k].push(e ? {v, e} : v);
   const clr = undo && !h[k].length;                         // отменили всё своё — ячейка снова пустая
   if (clr && it.c[mi] === 0){ it.c[mi] = null; if (!it.c.some(x => x != null)) it.tot = null; }
-  for (const key of Object.keys(all)) if (key !== hk) delete all[key];
+  const keep = mblock().cols.filter(c => me && mnorm(c.name) === mnorm(me.name)).map(c => c.id);   // свои столбцы — на случай поправок
+  for (const key of Object.keys(all)) if (!keep.includes(key)) delete all[key];
   rsave(MH, all);
 
   const q = rjson(MQ, []);
@@ -255,7 +288,7 @@ async function mFlush(){
         bad = true;
         mhistDrop(a);
         lost.push(a.pos + " " + rfmt(a.v) + (d.error === "closed" ? "" : " (" + d.error + ")"));
-        $("mwarn").textContent = "Не записано" + (d.error === "closed" ? " — ваш подсчёт уже завершён или ревизия закрыта" : "") + ": " + lost.join("; ") + ". Впишите заново, если нужно.";
+        $("mwarn").textContent = "Не записано" + (d.error === "closed" ? " — результаты этой зоны уже отправлены или ревизия закрыта" : "") + ": " + lost.join("; ") + ". Впишите заново, если нужно.";
         continue;
       }
       if (!lost.length) $("mwarn").textContent = "";
@@ -289,7 +322,7 @@ async function mnewSend(){
   let name = $("mnn").value.replace(/\s+/g, " ").trim(), unit = $("mnu").value.trim();
   name = name.charAt(0).toUpperCase() + name.slice(1);       // в листе — с большой буквы, как остальные
   const c = $("mnq").value.trim() ? rcalc($("mnq").value) : {v: 0};
-  if (!mine){ $("mwarn").textContent = "Сначала нажмите «Начать мой подсчёт»."; return; }
+  if (!mine){ $("mwarn").textContent = "Сначала нажмите «Войти в ревизию» и выберите зоны."; return; }
   if (!name){ $("mnn").focus(); return; }
   if (!isFinite(c.v)){ $("mnq").focus(); return; }
   /* один id на одну и ту же форму: повтор после «нет связи» не задвоит количество */
@@ -299,7 +332,7 @@ async function mnewSend(){
   const d = await api({mrev:"new", id:mnewTry.id, cid:mine.id, pos:name, unit, v:String(c.v), rn: me ? me.name : ""});
   btn.disabled = false; btn.textContent = "Добавить в ревизию";
   if (!d.ok){
-    $("mwarn").textContent = d.error === "net" || d.error === "busy" ? "Таблица не ответила — нажмите «Добавить» ещё раз (повтор не задвоит количество)." : "Не добавлено: " + (d.error === "closed" ? "ваш подсчёт завершён" : d.error) + ".";
+    $("mwarn").textContent = d.error === "net" || d.error === "busy" ? "Таблица не ответила — нажмите «Добавить» ещё раз (повтор не задвоит количество)." : "Не добавлено: " + (d.error === "closed" ? "результаты уже отправлены" : d.error) + ".";
     return;
   }
   mnewTry = null;
@@ -362,33 +395,102 @@ $("mnq").addEventListener("input", () => {
 });
 $("mnew").addEventListener("submit", e => { e.preventDefault(); mnewSend(); });
 
-$("mstart").addEventListener("click", async () => {
-  const b = mblock(), joining = !!(b && b.open);
+/* ── «Какая зона подсчёта?» — перед входом в ревизию и при смене зон ── */
+/* выбор зон: чужую (считает или посчитал) и ту, что уже считаю, выбрать нельзя; свою посчитанную — можно (поправить).
+   mpickNew — «Начать новую ревизию»: все зоны свободны */
+function mpickStat(z){
+  const b = mblock(), x = !mpickNew && b && b.open && b.zst ? b.zst[z] : null, mine = x && me && mnorm(x.who) === mnorm(me.name);
+  return {off: !!x && (!mine || x.st === "count"),
+    note: !x ? "свободна" : !mine ? (x.st === "count" ? "считает " : "посчитал ") + x.who : x.st === "count" ? "уже считаете" : "ваша · поправить"};
+}
+function mpickDraw(){
+  const zones = MREVS.zones || MZONES;
+  msel = msel.filter(z => !mpickStat(z).off);
+  $("mpz").innerHTML = zones.map(z => {
+    const st = mpickStat(z);
+    return '<button type="button" data-z="' + esc(z) + '" aria-pressed="' + msel.includes(z) + '"' + (st.off ? ' disabled' : '') + '>' + esc(z) +
+      '<small>' + esc(st.note) + '</small></button>';
+  }).join("");
+  $("mpgo").textContent = (mpickNew ? "Начать новую ревизию" : "Начать подсчёт") + (msel.length ? " · " + mzl(msel) : "");
+}
+function mpickOpen(fresh){
+  mpicking = true; mpickNew = !!fresh; msel = []; mnote = "";
+  $("mwarn").textContent = "";
+  mrevDraw(false);
+  $("mpick").scrollIntoView({behavior: "smooth", block: "start"});
+}
+$("mstart").addEventListener("click", () => mpickOpen(false));
+$("mzones").addEventListener("click", () => mpickOpen(false));
+$("mfresh").addEventListener("click", () => {
+  if (confirm("Начать новую месячную ревизию? Текущая закроется, её «Итог» зафиксируется. Сначала выберите зону, с которой начнёте.")) mpickOpen(true);
+});
+$("mpno").addEventListener("click", () => { mpicking = false; mrevDraw(true); });
+$("mpz").addEventListener("click", e => {
+  const bt = e.target.closest("button");
+  if (!bt || bt.disabled) return;
+  const z = bt.dataset.z;
+  msel = msel.includes(z) ? msel.filter(x => x !== z) : msel.concat(z);
+  mpickDraw();
+});
+$("mpick").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!msel.length){ $("mwarn").textContent = "Выберите хотя бы одну зону."; return; }
+  const b = mblock(), joining = !!(b && b.open) && !mpickNew;
+  const zones = (MREVS.zones || MZONES).filter(z => msel.includes(z));
   if (rjson(MQ, []).length && !joining && !confirm("Есть неотправленные добавления. Начать новую ревизию всё равно?")) return;
-  $("minfo").textContent = joining ? "Создаём ваш столбец в таблице…" : "Создаём столбец «Итог» и ваш столбец…";
-  const d = await api({mrev: joining ? "mine" : "begin", rn: me ? me.name : ""});
+  const btn = $("mpgo"); btn.disabled = true;
+  $("minfo").textContent = joining ? "Открываем ваш столбец в таблице…" : "Создаём столбец «Итог» и ваш столбец…";
+  const d = await api({mrev: joining ? "mine" : "begin", rn: me ? me.name : "", zones: zones.join("|"), fresh: mpickNew ? "1" : ""});
+  btn.disabled = false;
   if (d.ok && d.mrev){
     rsync(d.mrev); MREVS = d.mrev; mcached = false; rsave(MS, MREVS);
+    if (d.cid) rsave(MA, d.cid);
+    mpicking = false;
     if (!joining){ rsave(MQ, []); $("mq").value = ""; $("mtodo").checked = false; $("msec").value = ""; }
+    mpickNew = false;
     mrevDraw(true);
-  } else $("minfo").textContent = "Не удалось начать: " + (d.error === "net" ? "нет связи" : d.error || "обновите Apps Script") + ".";
+  } else {
+    $("mwarn").textContent = "Не удалось: " + (d.error === "net" ? "нет связи" : d.error || "обновите Apps Script") + ".";
+    mrevLoad(true);                                        // зону могли занять — обновить выбор
+  }
 });
-$("mfinish").addEventListener("click", async () => {
-  const mine = mmine();
-  if (!mine) return;
+$("mmy").addEventListener("click", async e => {
+  const bt = e.target.closest("button");
+  if (!bt) return;
+  if (bt.id === "mdrop"){
+    const c = mmine();
+    if (!c || !confirm("Не считать «" + (c.zones ? mzl(c.zones) : c.name) + "»? Пустой столбец уберётся, зона освободится.")) return;
+    const d = await api({mrev:"drop", cid: c.id, rn: me ? me.name : ""});
+    if (d.ok && d.mrev){ MREVS = d.mrev; rsave(MS, MREVS); mrevDraw(true); }
+    else $("mwarn").textContent = "Не удалось: " + (d.error === "net" ? "нет связи" : d.error) + ".";
+    return;
+  }
+  if (!bt.dataset.c) return;
+  rsave(MA, bt.dataset.c);
+  mrevDraw(true);
+});
+/* «Отправить результаты» — все свои открытые столбцы посчитаны */
+async function msend(){
+  const mine = mmineAll();
+  if (!mine.length) return;
   if (rjson(MQ, []).length) await mFlush();
   if (rjson(MQ, []).length){ alert("Есть неотправленные добавления — нет связи с таблицей. Попробуйте ещё раз, когда связь появится."); return; }
-  if (!confirm("Завершить ваш подсчёт (" + mine.date + ")? Добавлять в этот столбец больше будет нельзя. Продолжить потом — «Начать мой подсчёт», это будет новый столбец.")) return;
-  const d = await api({mrev:"finish", cid: mine.id, rn: me ? me.name : ""});
-  if (d.ok && d.mrev){ MREVS = d.mrev; rsave(MS, MREVS); mrevDraw(true); }
-  else $("mwarn").textContent = "Не удалось завершить: " + (d.error === "net" ? "нет связи" : d.error) + ".";
-});
+  const what = mine.map(c => c.zones ? mzl(c.zones) : c.name).join(", ");
+  if (!confirm("Отправить результаты: " + what + "? Зоны отметятся посчитанными. Поправить потом — «Войти в ревизию» и выбрать свою зону.")) return;
+  const d = await api({mrev:"send", rn: me ? me.name : ""});
+  if (d.ok && d.mrev){
+    MREVS = d.mrev; rsave(MS, MREVS); mnote = "Отправлено: " + what + ".";
+    mrevDraw(true); $("mtitle").scrollIntoView({behavior: "smooth", block: "start"});
+  } else $("mwarn").textContent = "Не удалось отправить: " + (d.error === "net" ? "нет связи" : d.error) + ".";
+}
+$("mfinish").addEventListener("click", msend);
+$("msendb").addEventListener("click", msend);
 $("mend").addEventListener("click", async () => {
   if (rjson(MQ, []).length) await mFlush();
   if (rjson(MQ, []).length){ alert("Есть неотправленные добавления — нет связи с таблицей. Попробуйте ещё раз, когда связь появится."); return; }
-  const others = (mblock().cols || []).filter(c => c.open && c !== mmine()).map(c => c.name);
-  if (!confirm("Закрыть месячную ревизию для всех? Все столбцы будут завершены, «Итог» зафиксируется." +
-    (others.length ? "\n\nЕщё считают: " + others.join(", ") + " — их неотправленные числа не запишутся." : "") + "\n\nСледующая — «Начать ревизию».")) return;
+  const others = (mblock().cols || []).filter(c => c.open && c !== mmine()).map(mcolName);
+  if (!confirm("Закрыть месячную ревизию для всех, даже если не все зоны посчитаны? Все столбцы будут завершены, «Итог» зафиксируется." +
+    (others.length ? "\n\nЕщё считают: " + others.join(", ") + " — их неотправленные числа не запишутся." : "") + "\n\nСледующая — «Войти в ревизию».")) return;
   const d = await api({mrev:"end"});
   if (d.ok && d.mrev){ MREVS = d.mrev; rsave(MS, MREVS); mrevDraw(true); }
   else $("mwarn").textContent = "Не удалось закрыть: " + (d.error === "net" ? "нет связи" : d.error) + ".";

@@ -316,16 +316,17 @@
       <div class="tname"><em id="rqueue"></em><h2 class="h3" id="rtitle">Ревизия</h2></div>
       <p class="oempty" id="rinfo" aria-live="polite">Загружаем…</p>
       <div class="otools">
-        <button type="button" class="link" id="rstart">Начать ревизию</button>
-        <button type="button" class="link" id="rreload">Обновить</button>
+        <button type="button" class="link" id="rstart">Войти в ревизию</button>
         <button type="button" class="link" id="rclose" hidden>Завершить</button>
+        <button type="button" class="link" id="rreload">Обновить</button>
       </div>
     </div>
     <div class="warn" id="rwarn" role="status"></div>
     <div id="rbody" hidden>
-      <div class="block">
+      <div class="block" id="rzblock">
         <p class="label">Зона</p>
         <div class="modes zones" id="rzone" role="group" aria-label="Зона"></div>
+        <p class="mfound" id="rznote" aria-live="polite"></p>
       </div>
       <div class="result tcard"><ul class="rlist" id="rlist"></ul></div>
     </div>
@@ -336,13 +337,25 @@
         <div class="tname"><em id="mqueue"></em><h2 class="h3" id="mtitle">Месячная ревизия</h2></div>
         <div class="oempty" id="minfo" aria-live="polite">Загружаем…</div>
         <div class="otools">
-          <button type="button" class="link" id="mstart">Начать ревизию</button>
-          <button type="button" class="link" id="mfinish" hidden>Завершить мой подсчёт</button>
+          <button type="button" class="link" id="mstart">Войти в ревизию</button>
+          <button type="button" class="link" id="mfresh" hidden>Начать новую ревизию</button>
+          <button type="button" class="link" id="mzones" hidden>Добавить зону</button>
+          <button type="button" class="link" id="mfinish" hidden>Отправить результаты</button>
           <button type="button" class="link" id="mreload">Обновить</button>
         </div>
       </div>
       <div class="warn" id="mwarn" role="status"></div>
+      <form class="result tcard mpick" id="mpick" hidden>
+        <div class="tname"><h2 class="h3">Какая зона подсчёта?</h2></div>
+        <p class="oempty" id="mpinfo">Можно выбрать несколько — в таблице ваш столбец будет, например, «Куклин · Клуб и VIP». Каждая зона считается один раз: зону, которую считает или уже посчитал другой бармен, выбрать нельзя.</p>
+        <div class="modes zones" id="mpz" role="group" aria-label="Зоны подсчёта"></div>
+        <div class="otools">
+          <button type="submit" class="link" id="mpgo">Начать подсчёт</button>
+          <button type="button" class="link" id="mpno">Отмена</button>
+        </div>
+      </form>
       <div id="mbody" hidden>
+        <div class="block mmy" id="mmy" hidden></div>
         <div class="msearch" id="msearch">
           <input id="mq" class="tq" type="search" placeholder="Поиск по позиции" autocomplete="off" enterkeyhint="search" aria-label="Поиск по позициям месячной ревизии">
           <div class="mtools">
@@ -373,7 +386,7 @@
             <button type="submit" id="mnadd">Добавить в ревизию</button>
           </div>
         </form>
-        <div class="otools mend"><button type="button" class="link" id="mend">Закрыть ревизию для всех</button></div>
+        <div class="otools mend"><button type="button" class="link" id="msendb" hidden>Отправить результаты</button><button type="button" class="link" id="mend">Закрыть ревизию для всех</button></div>
       </div>
     </div>
   </div>

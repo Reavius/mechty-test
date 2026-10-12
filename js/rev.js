@@ -35,44 +35,47 @@ function rtime(ms, opts){
   try { return new Intl.DateTimeFormat("ru-RU", o).format(new Date(ms)); }
   catch (e) { return new Date(ms + 5 * 3600000).toISOString().slice(0, 10).split("-").reverse().join("."); }
 }
-/* «05.10» / «05.10.2026» из таблицы → ключ дня для сравнения */
-const rkey = ms => rtime(ms, {year:"numeric", month:"2-digit", day:"2-digit"});
-/* дата ревизии словами: «5 октября» */
-function rdate(open){
-  if (open.started) return rday(open.started);
-  const m = String(open.date).match(/^(\d{2})\.(\d{2})(?:\.(\d{4}))?/);
-  if (!m) return open.date;
-  const y = m[3] ? +m[3] : +rtime(rnow(), {year:"numeric"});
-  return rday(Date.UTC(y, m[2] - 1, m[1], 7));
-}
-function rsameDay(open){
-  const today = rkey(rnow());
-  if (open.started) return rkey(open.started) === today;
-  const m = String(open.date).match(/^(\d{2})\.(\d{2})(?:\.(\d{4}))?/);
-  return !m || today.startsWith(m[1] + "." + m[2]);
-}
 const rday = ms => rtime(ms, Object.assign({day:"numeric", month:"long"},
   rtime(ms, {year:"numeric"}) !== rtime(rnow(), {year:"numeric"}) ? {year:"numeric"} : {}));
+/* день ревизии «2026-10-12» → «12 октября» */
+const rdayName = day => { const m = String(day || "").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? rday(Date.UTC(+m[1], m[2] - 1, +m[3], 7)) : ""; };
 function rsync(rev){
   if (!rev || !rev.now) return;
   rskew = rev.now - Date.now();
   rsynced = Date.now();
 }
 
+/* День ревизии — с 9:00 до 9:00, один на всех. Вход — только на этом телефоне (ничего не создаёт):
+   столбец зоны появляется в таблице с первым добавленным числом и закрепляется за тем, кто начал.
+   «Завершить» — личное: сворачивает ревизию у себя, остальные продолжают; вернуться можно до 9:00. */
+const RIN = "mechty-rev-in", RF = "mechty-rev-fin";
+let rview = "";                                                  // lobby — вход, work — подсчёт, sum — завершил
+const rme = () => me ? mnorm(me.name) : "";
+const rowner = z => REV && REV.open && REV.open.zones[z] ? REV.open.zones[z].who : "";
+const rfinOf = who => !!(REV && REV.open && REV.open.fin && REV.open.fin[mnorm(who)]);
+function rstate(){
+  const r = REV, day = r.day, open = r.open;
+  if (open ? rfinOf(me ? me.name : "") : rjson(RF, "") === day) return "sum";
+  const mineZone = open && r.zones.some(z => open.zones[z] && mnorm(open.zones[z].who) === rme());
+  return mineZone || rjson(RIN, "") === day ? "work" : "lobby";
+}
+
 async function revLoad(quiet){
   if (!REV && !quiet){
     $("rinfo").innerHTML = '<span class="skel line" aria-hidden="true"><i style="width:70%"></i></span><span class="sr">Загружаем…</span>';
-    $("rlist").innerHTML = skel(6, "rrow"); $("rbody").hidden = false; $("rzone").innerHTML = "";
+    $("rlist").innerHTML = skel(6, "rrow"); $("rbody").hidden = false; $("rzblock").hidden = true;
   }
   const d = await api({rev:"state"});
-  if (d.ok && d.rev){
-    /* сверка, пока бармен вводит число: тот же список — обновить только цифры (поле и клавиатура на месте);
+  if (d.ok && d.rev && d.rev.day){
+    /* сверка, пока бармен вводит число: тот же день и список — обновить только цифры и зоны (поле и клавиатура на месте);
        список в «Итоге» поменялся — перерисовать, если ничего не набрано */
-    const same = quiet && REV && REV.open && d.rev.open && REV.open.key === d.rev.open.key &&
+    const same = quiet && REV && rview === "work" && REV.day === d.rev.day &&
       REV.items.map(x => x.n).join("\n") === d.rev.items.map(x => x.n).join("\n");
     if (quiet && rtyping() && (same || rtyped())) {
       if (!same) return;                                       // список другой, но в поле есть цифры — после ввода
-      rsync(d.rev); REV = d.rev; revApplyQueue(); REV.items.forEach((_, i) => rpatch(i)); rqueueDraw(); revFlush();
+      rsync(d.rev); REV = d.rev; revApplyQueue();
+      if (rstate() !== "work") { revDraw(); revFlush(); return; }
+      rhead(); rzoneDraw(); REV.items.forEach((_, i) => rpatch(i)); revFlush();
       return;
     }
     rsync(d.rev); REV = d.rev; revApplyQueue(); revDraw(); revFlush();
@@ -80,35 +83,42 @@ async function revLoad(quiet){
   else if (quiet){ $("rqueue").textContent = "нет связи"; }
   else {
     if (!REV) $("rbody").hidden = true;
-    $("rinfo").textContent = d.error === "net" ? "Таблица не отвечает. Если интернет есть — в Apps Script запустите checkRevision, дайте разрешение и выпустите новую версию." : "Ошибка таблицы: " + (d.error || "нет ответа") + ".";
+    $("rinfo").textContent = d.ok ? "Ревизия ждёт новый Apps Script: вставьте код из apps-script/Code.gs и выпустите новую версию (см. README)."
+      : d.error === "net" ? "Таблица не отвечает. Если интернет есть — в Apps Script запустите checkRevision, дайте разрешение и выпустите новую версию."
+      : "Ошибка таблицы: " + (d.error || "нет ответа") + ".";
   }
 }
 
-/* неотправленные добавления — поверх данных с сервера */
+/* неотправленные добавления — поверх данных с сервера; зона, которую начал этот телефон, — уже «моя» */
 function revApplyQueue(){
-  if (!REV || !REV.open) return;
+  if (!REV) return;
   for (const q of rjson(RQ, [])){
-    if (q.rk !== REV.open.key) continue;
+    if (q.rk !== REV.day) continue;
     const it = REV.items.find(x => x.n === q.pos);
     const zi = REV.zones.indexOf(q.zone);
-    if (it && zi >= 0){ it.z[zi] += q.v; it.t += q.v; it.pend = true; }
+    if (it && zi >= 0){ it.z[zi] += q.v; it.t += q.v; it.pend = true; rclaim(q.zone); }
   }
+}
+function rclaim(z){
+  if (!me) return;
+  if (!REV.open) REV.open = {date: REV.day.split("-").reverse().join("."), key: REV.day, zones: {}, fin: {}};
+  if (!REV.open.zones[z]) REV.open.zones[z] = {who: me.name};
 }
 
 const rqueueDraw = () => { const q = rjson(RQ, []); $("rqueue").textContent = q.length ? "не отправлено: " + q.length : ""; };
 /* строка под позицией: что добавлено в этой зоне, все зоны, прошлый пересчёт */
 function rsubText(it, parts){
   const sub = [];
-  if (parts.length) sub.push(parts.map(hl).join(" + ").replace(/\+ -/g, "− "));
+  if (parts.length) sub.push("моё: " + parts.map(hl).join(" + ").replace(/\+ -/g, "− "));
   sub.push("все зоны: " + rfmt(it.t) + " " + it.u);
   if (it.p != null) sub.push("прошлый: " + rfmt(it.p));
   return sub.join(" · ");
 }
 /* одна позиция — без перерисовки всего списка: поле ввода, фокус и клавиатура на месте */
 function rpatch(i){
-  const r = REV, it = r && r.open && r.items[i], li = it && document.querySelector('#rlist li[data-i="' + i + '"]');
+  const r = REV, it = r && rview === "work" && r.items[i], li = it && document.querySelector('#rlist li[data-i="' + i + '"]');
   if (!li) return;
-  const zi = r.zones.indexOf(rzone), parts = (rjson(RH, {})[r.open.key] || {})[rzone + "|" + it.n] || [];
+  const zi = r.zones.indexOf(rzone), parts = (rjson(RH, {})[r.day] || {})[rzone + "|" + it.n] || [];
   const b = li.querySelector(".rtop > b");
   b.className = it.pend ? "pend" : "";
   b.innerHTML = rfmt(it.z[zi]) + '<small>' + esc(it.u) + '</small>';
@@ -116,28 +126,60 @@ function rpatch(i){
   li.querySelector("button.undo").disabled = !parts.length;
 }
 
+/* кто какую зону считает: «Кафе — Куклин · 23 поз. · завершил» */
+function rwho(){
+  const r = REV, open = r.open;
+  if (!open || !r.zones.some(z => open.zones[z])) return "";
+  return '<ul class="mwho">' + r.zones.map((z, zi) => {
+    const who = rowner(z);
+    if (!who) return "";
+    const n = r.items.filter(it => it.z[zi]).length;
+    return '<li' + (mnorm(who) === rme() ? ' class="me"' : '') + '>' + esc(z) + ' — <b>' + esc(who) + '</b> · ' + n + ' поз. · ' +
+      (rfinOf(who) ? 'завершил' : '<span class="on">считает</span>') + '</li>';
+  }).join("") + '</ul>';
+}
+
+function rhead(){
+  const r = REV, open = r.open, v = rview;
+  $("rtitle").textContent = "Ревизия · " + rdayName(r.day);
+  const prev = r.prev ? 'Для сравнения — пересчёт ' + esc(r.prev.date) + (r.prev.name ? ' · ' + esc(r.prev.name) : '') + '.' : '';
+  $("rinfo").innerHTML = '<span class="rtoday">День ревизии — с 9:00 до 9:00 · сегодня ' + rday(rnow()) + '</span>' +
+    (v === "lobby" ? (open ? 'Ревизия идёт. Войдите — увидите, что уже посчитано, и добавите своё.' : 'Сегодня ещё никто не считал. Войдите и выберите зону — её столбец появится в таблице с первым числом.') + ' ' + prev
+    : v === "sum" ? '<b>Вы завершили свой подсчёт.</b> Ниже — итог дня по всем зонам; другие могут добавлять до 9:00. ' + prev
+    : prev) + rwho();
+  $("rstart").textContent = v === "sum" ? "Вернуться в ревизию" : "Войти в ревизию";
+  $("rstart").hidden = v === "work";
+  $("rclose").hidden = v !== "work";
+}
+
+function rzoneDraw(){
+  const r = REV;
+  $("rzone").innerHTML = r.zones.map(z => {
+    const who = rowner(z);
+    return '<button type="button" data-z="' + esc(z) + '" aria-pressed="' + (z === rzone) + '">' + esc(z) +
+      '<small>' + (who ? esc(who) + (rfinOf(who) ? ' ✓' : '') : 'свободна') + '</small></button>';
+  }).join("");
+  const who = rowner(rzone);
+  $("rznote").textContent = !who ? "Зона свободна — первое число закрепит её столбец за вами."
+    : mnorm(who) === rme() ? "Ваша зона."
+    : "Зону считает " + who + ". Добавить можно — число прибавится в её столбец, в журнале — под вашей фамилией. Отменить можно только своё.";
+}
+
 function revDraw(){
   const r = REV;
   rqueueDraw();
   if (!r) return;
-  const open = r.open;
-  $("rtitle").textContent = open ? "Ревизия · " + rdate(open) : "Ревизия не начата";
-  const old = open && !rsameDay(open);
-  $("rinfo").innerHTML = '<span class="rtoday">Сегодня ' + rday(rnow()) + '</span> ' + (open
-    ? (old ? '<b class="rold">Эта ревизия начата не сегодня</b> — для сегодняшнего пересчёта нажмите «Начать новую». ' : '') +
-      'Считает <b>' + esc(open.name) + '</b>.' + (r.prev ? ' Для сравнения — пересчёт ' + esc(r.prev.date) + ' · ' + esc(r.prev.name) + '.' : '')
-    : (r.prev ? 'Последний пересчёт — ' + esc(r.prev.date) + ' · ' + esc(r.prev.name) + '. ' : '') + 'Нажмите «Начать ревизию» — в таблице появятся новые колонки с сегодняшней датой и вашей фамилией.');
-  $("rstart").textContent = open ? "Начать новую" : "Начать ревизию";
-  $("rclose").hidden = !open;
-  $("rbody").hidden = !open;
-  if (!open) return;
+  rview = rstate();
+  rhead();
+  $("rbody").hidden = rview === "lobby";
+  $("rzblock").hidden = rview !== "work";
+  if (rview === "lobby") return;
+  if (rview === "sum") return rsumDraw();
 
   if (!r.zones.includes(rzone)) rzone = r.zones[0];
-  $("rzone").innerHTML = r.zones.map(z =>
-    '<button type="button" data-z="' + esc(z) + '" aria-pressed="' + (z === rzone) + '">' + esc(z) + '</button>').join("");
-
+  rzoneDraw();
   const zi = r.zones.indexOf(rzone);
-  const hist = rjson(RH, {})[open.key] || {};
+  const hist = rjson(RH, {})[r.day] || {};
   $("rlist").innerHTML = r.items.length ? r.items.map((it, i) => {
     const parts = hist[rzone + "|" + it.n] || [];
     return '<li class="rrow" data-i="' + i + '">' +
@@ -152,24 +194,38 @@ function revDraw(){
   }).join("") : '<li class="rrow">В столбце A листа «Итог» нет позиций.</li>';
 }
 
+/* итог дня: позиции с числами — сумма и по зонам; без чисел — одной строкой */
+function rsumDraw(){
+  const r = REV, done = r.items.filter(it => it.t), left = r.items.length - done.length;
+  $("rlist").innerHTML = (done.length ? done.map(it => {
+    const sub = r.zones.map((z, zi) => it.z[zi] ? z + " " + rfmt(it.z[zi]) : "").filter(Boolean);
+    if (it.p != null) sub.push("прошлый: " + rfmt(it.p));
+    return '<li class="rrow"><div class="rtop"><span class="rn">' + esc(it.n) + '<small>' + esc(it.u) + '</small></span>' +
+      '<b' + (it.pend ? ' class="pend"' : '') + '>' + rfmt(it.t) + '<small>' + esc(it.u) + '</small></b></div>' +
+      '<div class="rsub">' + esc(sub.join(" · ")) + '</div></li>';
+  }).join("") : '<li class="rrow">Сегодня ещё ничего не посчитано.</li>') +
+    (left && done.length ? '<li class="rrow rleft">Без чисел: ' + left + ' поз.</li>' : '');
+}
+
 function revAdd(i, v, undo, e){
   const r = REV, it = r && r.items[i];
-  if (!it || !r.open || !isFinite(v) || !v) return;
+  if (!it || rview !== "work" || !isFinite(v) || !v) return;
   const zi = r.zones.indexOf(rzone);
   it.z[zi] += v; it.t += v; it.pend = true;
   buzz(undo ? 8 : 14);
 
   const all = rjson(RH, {});
-  const h = all[r.open.key] = all[r.open.key] || {};
+  const h = all[r.day] = all[r.day] || {};
   const k = rzone + "|" + it.n;
   h[k] = h[k] || [];
   undo ? h[k].pop() : h[k].push(e ? {v, e} : v);
-  for (const key of Object.keys(all)) if (key !== r.open.key) delete all[key];
+  for (const key of Object.keys(all)) if (key !== r.day) delete all[key];
   rsave(RH, all);
 
   const q = rjson(RQ, []);
-  q.push({id:rid(), rk:r.open.key, pos:it.n, zone:rzone, v});
+  q.push({id:rid(), rk:r.day, pos:it.n, zone:rzone, v});
   rsave(RQ, q);
+  if (!rowner(rzone)){ rclaim(rzone); rzoneDraw(); rhead(); }
   rpatch(i); rqueueDraw();
   revFlush();
 }
@@ -178,6 +234,7 @@ function revAdd(i, v, undo, e){
 async function revFlush(){
   if (rbusy) return;
   rbusy = true;
+  const lost = [];
   try {
     for (;;){
       const q = rjson(RQ, []);
@@ -191,18 +248,36 @@ async function revFlush(){
       }
       if (d.ok && /повторно/.test($("rwarn").textContent)) $("rwarn").textContent = "";
       rsave(RQ, rjson(RQ, []).filter(x => x.id !== a.id));
-      if (d.ok && d.add && REV && REV.open && REV.open.key === a.rk){
+      if (d.ok && d.add && REV && REV.day === a.rk){
         const it = REV.items.find(x => x.n === d.add.pos);
-        if (it){ it.z = d.add.z; it.t = d.add.t; }
+        if (it && d.add.z && d.add.z.length === REV.zones.length){ it.z = d.add.z; it.t = d.add.t; }
+        if (d.add.who && REV.open && REV.open.zones[a.zone] && REV.open.zones[a.zone].who !== d.add.who){
+          REV.open.zones[a.zone].who = d.add.who;                // зону успел начать другой — столбец его
+          if (rview === "work"){ rzoneDraw(); rhead(); }
+        }
       }
-      if (!d.ok){ $("rwarn").textContent = a.pos + ", " + a.zone + ": " + (d.error === "closed" ? "ревизия уже завершена — добавление не записано." : "не записано (" + d.error + ")."); }
+      if (!d.ok){
+        rhistDrop(a);
+        lost.push(a.pos + ", " + a.zone + " " + rfmt(a.v));
+        $("rwarn").textContent = (d.error === "closed" ? "День ревизии закончился в 9:00 — не записано: " : "Не записано: ") + lost.join("; ") +
+          (d.error === "closed" ? "." : " (" + d.error + ").");
+      }
     }
     if (REV){
       const left = rjson(RQ, []);
-      REV.items.forEach((it, i) => { it.pend = left.some(x => x.pos === it.n); rpatch(i); });
+      REV.items.forEach((it, i) => { it.pend = left.some(x => x.pos === it.n && x.rk === REV.day); rpatch(i); });
       rqueueDraw();
+      if (rview === "sum") rsumDraw();
     }
   } finally { rbusy = false; }
+}
+/* не записалось — убрать из истории отмены, иначе «↶» вычтет то, чего нет */
+function rhistDrop(a){
+  const all = rjson(RH, {}), h = all[a.rk], parts = h && h[a.zone + "|" + a.pos];
+  if (!parts) return;
+  if (a.v > 0){ for (let i = parts.length - 1; i >= 0; i--) if (hv(parts[i]) === a.v){ parts.splice(i, 1); break; } }
+  else parts.push(-a.v);
+  rsave(RH, all);
 }
 
 $("rzone").addEventListener("click", e => {
@@ -241,38 +316,50 @@ $("rlist").addEventListener("input", e => {
   out.textContent = c.e && isFinite(c.v) ? "= " + rfmt(c.v) : "";
 });
 
+/* отменить можно только своё: история — на этом телефоне */
 $("rlist").addEventListener("click", e => {
   const b = e.target.closest("button.undo");
   if (!b) return;
   const i = +b.closest("li").dataset.i, it = REV.items[i];
-  const parts = ((rjson(RH, {})[REV.open.key] || {})[rzone + "|" + it.n]) || [];
+  const parts = ((rjson(RH, {})[REV.day] || {})[rzone + "|" + it.n]) || [];
   if (!parts.length) return;
   const last = hv(parts[parts.length - 1]);
   if (confirm("Отменить последнее добавление (" + hl(parts[parts.length - 1]) + " " + it.u + ") — " + it.n + ", " + rzone + "?")) revAdd(i, -last, true);
 });
 
+/* «Войти в ревизию» / «Вернуться в ревизию» */
 $("rstart").addEventListener("click", async () => {
-  if (REV && REV.open && !confirm("Сейчас идёт ревизия " + REV.open.date + " (" + REV.open.name + "). Начать новую? Старая останется в таблице.")) return;
-  if (rjson(RQ, []).length && !confirm("Есть неотправленные добавления. Начать новую ревизию всё равно?")) return;
-  $("rinfo").textContent = "Создаём колонки в таблице…";
-  const d = await api({rev:"start", rn: me ? me.name : ""});
-  if (d.ok && d.rev){ REV = d.rev; rsave(RQ, []); revDraw(); }
-  else $("rinfo").textContent = "Не удалось начать: " + (d.error === "net" ? "нет связи" : d.error) + ".";
+  if (!REV) return;
+  rsave(RIN, REV.day);
+  if (rview === "sum"){
+    rsave(RF, "");
+    if (REV.open && rfinOf(me ? me.name : "")){
+      $("rinfo").textContent = "Возвращаем…";
+      const d = await api({rev:"fin", on:"0", rk:REV.day, rn: me ? me.name : ""});
+      if (d.ok && d.rev){ rsync(d.rev); REV = d.rev; revApplyQueue(); }
+      else { $("rwarn").textContent = "Не удалось вернуться: " + (d.error === "net" ? "нет связи" : d.error) + "."; revDraw(); return; }
+    }
+  }
+  revDraw();
 });
 
+/* «Завершить» — только свой подсчёт: остальные продолжают, итог — по всем зонам дня */
 $("rclose").addEventListener("click", async () => {
-  if (rjson(RQ, []).length){ alert("Сначала дождитесь отправки всех добавлений."); return; }
-  if (!confirm("Завершить ревизию? Добавлять в неё больше будет нельзя.")) return;
-  const d = await api({rev:"close"});
-  if (d.ok && d.rev){ REV = d.rev; revDraw(); }
-  else $("rinfo").textContent = "Не удалось завершить: " + (d.error === "net" ? "нет связи" : d.error) + ".";
+  if (rjson(RQ, []).length) await revFlush();
+  if (rjson(RQ, []).length){ alert("Есть неотправленные добавления — нет связи с таблицей. Попробуйте ещё раз, когда связь появится."); return; }
+  if (!confirm("Завершить свой подсчёт? Ревизия свернётся у вас, остальные продолжают. Вернуться можно до 9:00 — «Вернуться в ревизию».")) return;
+  rsave(RF, REV.day);
+  const d = await api({rev:"fin", on:"1", rk:REV.day, rn: me ? me.name : ""});
+  if (d.ok && d.rev){ rsync(d.rev); REV = d.rev; revApplyQueue(); }
+  else if (d.error !== "net") $("rwarn").textContent = "Не удалось отметить завершение: " + d.error + ".";
+  revDraw();
 });
 
-$("rreload").addEventListener("click", revLoad);
+$("rreload").addEventListener("click", () => revLoad());
 window.addEventListener("online", () => { if (R) revFlush(); });
 
 /* Синхронизация: пока открыт раздел — раз в 30 секунд сверяемся с таблицей
-   (числа от других телефонов и время). Не мешаем, если человек вводит число. */
+   (числа от других телефонов, кто какую зону начал, смена дня в 9:00). Не мешаем, если человек вводит число. */
 const rtyping = () => [...document.querySelectorAll("#rlist input")].some(i => i.value || i === document.activeElement);
 const rtyped = () => [...document.querySelectorAll("#rlist input")].some(i => i.value);
 function rtick(){
