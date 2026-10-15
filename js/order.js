@@ -163,11 +163,13 @@ const OL = () => OKINDS[okind].list();
 const OQ = "mechty-order-out";
 const ojson = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || "null") || d; } catch (e) { return d; } };
 const osave = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-const oday = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);          // день по Астане
+/* день бара — с 06:00 по Астане (как у чеклиста): заявку, дополненную после полуночи той же смены, не делит надвое */
+const oday = () => new Date(Date.now() + (5 - 6) * 3600e3).toISOString().slice(0, 10);
+/* одна заявка — один бармен за день бара: на общем телефоне другой бармен получает свою, не затирает чужую */
 function oid(kind){
-  const k = OKINDS[kind].key + "-sent", v = ojson(k, null);
-  if (v && v.id && v.day === oday()) return v.id;
-  const n = {id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), day: oday()};
+  const k = OKINDS[kind].key + "-sent", v = ojson(k, null), who = me ? me.name : "";
+  if (v && v.id && v.day === oday() && v.who === who) return v.id;
+  const n = {id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), day: oday(), who};
   osave(k, n);
   return n.id;
 }
@@ -194,15 +196,20 @@ async function orderFlush(){
   osentDraw();
 }
 async function orderSend(items){
-  const body = {order: "send", id: oid(okind), kind: okind, who: me ? me.name : "", items};
+  const body = {order: "send", id: oid(okind), kind: okind, who: me ? me.name : "", items, t: Date.now()};   // t — когда отправили (дойдёт позже — дата та же)
   const q = ojson(OQ, {}); q[body.id] = body; osave(OQ, q);
   await orderFlush();
+  if (ojson(OQ, {})[body.id]) await orderFlush();                       // шла прежняя отправка — ещё раз, уже с этой
   return !ojson(OQ, {})[body.id];
 }
+/* не ушло (сеть то есть, то нет) — повтор раз в минуту и при возвращении на сайт */
+setInterval(() => { if (TOKEN && !document.hidden && Object.keys(ojson(OQ, {})).length) orderFlush(); }, 60e3);
+document.addEventListener("visibilitychange", () => { if (TOKEN && !document.hidden && Object.keys(ojson(OQ, {})).length) orderFlush(); });
 /* под кнопкой: в архиве ли эта заявка */
 function osentDraw(){
   const v = ojson(OKINDS[okind].key + "-sent", null), wait = v && ojson(OQ, {})[v.id];
-  $("osent").textContent = wait ? "Не отправлено в архив — нет связи, уйдёт само." : v && v.at && v.day === oday() ? "В архиве у бар-менеджера · " + String(v.at).slice(-5) : "";
+  const mine = v && me && v.who === me.name;
+  $("osent").textContent = wait && mine ? "Не отправлено в архив — нет связи, уйдёт само." : mine && v.at && v.day === oday() ? "В архиве у бар-менеджера · " + String(v.at).slice(-5) : "";
 }
 window.addEventListener("online", () => { if (TOKEN && Object.keys(ojson(OQ, {})).length) orderFlush(); });
 

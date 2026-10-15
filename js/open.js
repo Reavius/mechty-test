@@ -154,6 +154,6 @@ $("ckList").addEventListener("change", e => {
 });
 $("ckList").addEventListener("click", e => {
   const b = e.target.closest("button[data-go]");
-  if (b) setSect(b.dataset.go);
+  if (b){ setSect(b.dataset.go); window.scrollTo({top: 0}); }            // раздел — с начала, а не с середины
 });
 window.addEventListener("online", () => { if (R && ckj(CKQ, []).length) ckFlush(); });

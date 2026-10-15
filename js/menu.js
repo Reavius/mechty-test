@@ -242,7 +242,7 @@ const cardItem = id => { for (const g of data) for (const it of g.items) if (it.
 /* название и описание позиции меню на текущем языке */
 function mName(x, lang){
   const ci = x.c && !x.n ? cardItem(x.c) : null, en = (lang || LANG) === "en";
-  if (ci) return en && CARD_EN[x.c] ? CARD_EN[x.c][0] : ci.n;
+  if (ci) return en && CARD_EN[x.c] && CARD_EN[x.c][0] || ci.n;          // пустое «Название EN» — русское
   return en ? x.e || x.n : x.n;
 }
 function mDesc(x, lang){
@@ -250,7 +250,7 @@ function mDesc(x, lang){
   if (x.d) return en ? x.de || enWords(x.d) || x.d : x.d;
   const ci = x.c ? cardItem(x.c) : null;
   if (!ci) return "";
-  return en && CARD_EN[x.c] ? CARD_EN[x.c][1] : ci.m || "";
+  return en && CARD_EN[x.c] && CARD_EN[x.c][1] || ci.m || "";
 }
 const mVol = x => x.v ? x.v + " " + t(x.u === "pcs" ? "pcs" : "ml") : "";
 

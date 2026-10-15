@@ -299,6 +299,39 @@ function revDay(save) {
 const revDaySave = st => PropertiesService.getScriptProperties().setProperty("REV_DAY", JSON.stringify(st));
 /* столбец «Итога» идущего дня — для сводок бар-менеджера (незаконченный день в них не берём) */
 function revOpenCol() { const st = revDay(false); return st ? st.tc : 0; }
+/* какие зоны посчитаны в каждый день: «dd.MM.yyyy» → «Кафе,Клуб» (по шапке «По зонам»; старая схема — дата над пятью зонами) */
+function revDayZones(ss) {
+  const zs = ss.getSheetByName(REV_ZONES), lc = zs ? zs.getLastColumn() : 0, out = {};
+  if (lc < 2) return out;
+  const h = zs.getRange(1, 1, 3, lc).getDisplayValues();
+  let d = "";
+  for (let c = 1; c < lc; c++) {
+    if (String(h[0][c]).trim()) d = String(h[0][c]).trim();
+    const z = String(h[2][c]).trim();
+    if (d && z) (out[d] = out[d] || []).indexOf(z) < 0 && out[d].push(z);
+  }
+  Object.keys(out).forEach(k => { out[k] = ZONES.filter(z => out[k].indexOf(z) >= 0).join(","); });
+  return out;
+}
+/* когда закончили считать день: время последнего добавления в «Ревизия журнал» («dd.MM.yyyy · …» → мс) */
+function revDayTimes(ss) {
+  const lg = ss.getSheetByName(REV_LOG) || ss.getSheetByName("Журнал ревизии"), last = lg ? lg.getLastRow() : 0, out = {};
+  if (last < 2) return out;
+  lg.getRange(2, 1, last - 1, 3).getValues().forEach(r => {
+    if (!(r[0] instanceof Date)) return;
+    const d = String(r[2]).split(" · ")[0].trim(), t = r[0].getTime();
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(d) && !(out[d] >= t)) out[d] = t;
+  });
+  return out;
+}
+/* «dd.MM.yyyy HH:mm» по Астане → мс */
+const ruTime = s => { const m = String(s || "").match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/); return m ? Date.UTC(+m[3], m[2] - 1, +m[1], m[4] - 5, +m[5]) : 0; };
+/* единица ежедневной ревизии: кг и шт — из справочника (однозначное название), остальное — литры (Корона, Ред Булл — штуки) */
+function dailyUnits(ref) {
+  const u = {};
+  (ref && ref.rows || []).forEach(r => { const k = nameKey(r[1]), x = String(r[2]).trim(); if (r[9] !== 1 && r[9] !== "1") return; u[k] = k in u && u[k] !== x ? null : x; });
+  return n => { const x = u[nameKey(n)]; return x === "кг" ? "кг" : x === "шт" ? "шт" : unitOf(n); };
+}
 
 /* Позиции — из столбца A итогового листа, с 3-й строки. */
 function revPositions(ts) {
@@ -370,6 +403,7 @@ function revWho(st) {
     .filter(w => { const k = mnorm(w); return seen[k] ? false : (seen[k] = 1); }).join(", ");
 }
 /* числа строки по зонам дня (порядок ZONES; зоны без столбца — 0) — одним чтением */
+/* null — ячейка пустая (не считали), 0 — посчитали ноль */
 function revZoneVals(zs, st, rows) {
   const cols = ZONES.map(z => st && st.zones[z] ? st.zones[z].col : 0), used = cols.filter(c => c);
   const out = {};
@@ -377,16 +411,39 @@ function revZoneVals(zs, st, rows) {
   const c0 = Math.min.apply(null, used), w = Math.max.apply(null, used) - c0 + 1;
   const r0 = Math.min.apply(null, rows), h = Math.max.apply(null, rows) - r0 + 1;
   const v = zs.getRange(r0, c0, h, w).getValues();
-  rows.forEach(r => { out[r] = cols.map(c => c ? round3(num(v[r - r0][c - c0])) : 0); });
+  rows.forEach(r => { out[r] = cols.map(c => { if (!c) return null; const x = v[r - r0][c - c0]; return x === "" || x == null ? null : round3(num(x)); }); });
   return out;
+}
+const revSum = z => z.some(x => x != null) ? round3(z.reduce((a, b) => a + (b || 0), 0)) : null;
+/* столбцы дня в «Итоге» и «По зонам» — на своих местах? Вставили или удалили столбец — найти по шапке (дата, зона).
+   Столбец зоны удалили — зона начнётся заново; столбец «Итога» удалили — ошибка, писать некуда. */
+function revFixCols(ts, zs, st) {
+  let ch = false;
+  if (String(ts.getRange(1, st.tc).getDisplayValue()).trim() !== st.date) {
+    const lc = ts.getLastColumn(), h = ts.getRange(1, 1, 1, lc).getDisplayValues()[0];
+    let c = -1;
+    for (let i = lc - 1; i >= 1; i--) if (String(h[i]).trim() === st.date) { c = i + 1; break; }
+    if (c < 0) throw new Error("Нет столбца " + st.date + " в листе «Итог» — его удалили?");
+    st.tc = c; ch = true;
+  }
+  const zl = zs.getLastColumn(), zh = zl ? zs.getRange(1, 1, 3, zl).getDisplayValues() : [[], [], []];
+  const at = (c, z) => c >= 1 && c <= zl && String(zh[2][c - 1]).trim() === z && [st.date, ""].indexOf(String(zh[0][c - 1]).trim()) >= 0;
+  Object.keys(st.zones).forEach(z => {
+    if (at(st.zones[z].col, z)) return;
+    let c = -1;
+    for (let i = zl; i >= 2; i--) if (at(i, z) && String(zh[0][i - 1]).trim() === st.date) { c = i; break; }
+    if (c < 0) delete st.zones[z]; else st.zones[z].col = c;
+    ch = true;
+  });
+  return ch;
 }
 
 function revAdd(p) {
-  const id = String(p.id || "").slice(0, 64);
+  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64);   // в журнал — без «=» в начале (не формула)
   const zi = ZONES.indexOf(String(p.zone || ""));
   const name = String(p.pos || "").trim();
   const v = num(p.v);
-  if (!id || zi < 0 || !name || !v || Math.abs(v) > 100000) return { error: "bad" };
+  if (!id || zi < 0 || !name || String(p.v == null ? "" : p.v).trim() === "" || Math.abs(v) > 100000) return { error: "bad" };   // 0 — «посчитано, ноль»
   const day = revDayKey();
   let st = revDay(true);
   /* сайт шлёт ключ дня; ключ ревизии старой схемы — пока идёт её день */
@@ -398,22 +455,25 @@ function revAdd(p) {
   const rn = clean(p.rn, 60) || "без фамилии", zone = ZONES[zi];
 
   const cache = CacheService.getScriptCache();
+  if (st && revFixCols(ts, zs, st)) revDaySave(st);
   if (!cache.get("rev:" + id)) {
     if (!st) st = revNewDay(ts, zs, day);
     const z = st.zones[zone] || revNewZone(ts, zs, st, zone, rn);
     revDaySave(st);
-    const cell = zs.getRange(zoneRow(zs, name), z.col);
-    cell.setValue(round3(num(cell.getValue()) + v));
+    const cell = zs.getRange(zoneRow(zs, name), z.col), was = cell.getValue();
+    const nv = round3(num(was) + v);
+    /* отменили всё своё (clr) и в ячейке ноль — снова «не посчитано»; иначе число, в том числе посчитанный ноль */
+    cell.setValue(p.clr === "1" && nv === 0 ? "" : nv);
     revLog(ss).appendRow([new Date(), rn, st.date + " · " + zone + " · " + z.who, zone, name, v, id]);
     cache.put("rev:" + id, "1", 21600);
   }
   if (!st) return { error: "closed" };
 
-  const zr = zoneRow(zs, name), z = revZoneVals(zs, st, [zr])[zr] || ZONES.map(() => 0);
-  const t = round3(z.reduce((a, b) => a + b, 0));
-  ts.getRange(pos.row, st.tc).setValue(t);
+  const zr = zoneRow(zs, name), z = revZoneVals(zs, st, [zr])[zr] || ZONES.map(() => null);
+  const t = revSum(z);
+  ts.getRange(pos.row, st.tc).setValue(t == null ? "" : t);              // ни одной зоны — позиция не посчитана
   SpreadsheetApp.flush();                                                  // записать до снятия блокировки
-  return { ok: true, add: { pos: name, z: z, t: t, zone: zone, who: st.zones[zone] ? st.zones[zone].who : "" } };
+  return { ok: true, add: { pos: name, z: z.map(x => x || 0), t: t || 0, zone: zone, who: st.zones[zone] ? st.zones[zone].who : "" } };
 }
 
 /* «Завершить» и «Вернуться в ревизию» — только для себя; видно остальным */
@@ -451,9 +511,25 @@ function revState() {
     if (last >= 4) {
       const names = zs.getRange(4, 1, last - 3, 1).getValues();
       const rows = revZoneVals(zs, st, names.map((_, i) => i + 4));
-      names.forEach((r, i) => { if (rows[i + 4]) zvals[String(r[0]).trim()] = rows[i + 4]; });
+      names.forEach((r, i) => { if (rows[i + 4]) zvals[String(r[0]).trim()] = rows[i + 4].map(x => x || 0); });
     }
   }
+  /* кг и шт — из справочника; сверка идёт часто, поэтому список единиц помнится 10 минут */
+  let du = unitOf;
+  try {
+    const cache = CacheService.getScriptCache();
+    let um = cache.get("dunits");
+    if (um == null) {
+      const rs = refSheet(false), rl = rs ? rs.getLastRow() : 0, map = {};
+      if (rl >= 2) {
+        const names = new Set(refBlank().map(x => nameKey(x.n))), f = dailyUnits({ rows: rs.getRange(2, 1, rl - 1, 3).getDisplayValues().map(r => [r[0], r[1], r[2], "", "", "", "", "", "", names.has(nameKey(r[1])) ? 1 : 0]) });
+        items.forEach(x => { const u = f(x.n); if (u !== unitOf(x.n)) map[nameKey(x.n)] = u; });
+      }
+      um = JSON.stringify(map); cache.put("dunits", um, 600);
+    }
+    const map = JSON.parse(um);
+    du = n => map[nameKey(n)] || unitOf(n);
+  } catch (e) {}
   const zones = {}, fin = {};
   if (st) {
     ZONES.forEach(z => { if (st.zones[z]) zones[z] = { who: st.zones[z].who }; });
@@ -469,7 +545,7 @@ function revState() {
     items: items.map(x => {
       const z = zvals[x.n] || ZONES.map(() => 0);
       const pv = prevVals[x.row - 3];
-      return { n: x.n, u: unitOf(x.n), z: z, t: round3(z.reduce((a, b) => a + b, 0)),
+      return { n: x.n, u: du(x.n), z: z, t: round3(z.reduce((a, b) => a + b, 0)),
                p: pv === "" || pv == null ? null : num(pv) };
     })
   };
@@ -662,10 +738,12 @@ function mrevState(ro) {
   });
   return {
     now: Date.now(),
-    block: b && ids[b.total] ? { title: b.title, date: b.date, open: b.open, started: b.started, done: !!(b.open && b.done),
+    block: b && ids[b.total] ? { title: b.title, date: b.date, end: b.end || "", open: b.open, started: b.started, done: !!(b.open && b.done),
       zst: mrevZst(cols), cols: cols.map(c => ({ id: c.id, name: c.name, zones: c.zones || null, date: c.date, open: c.open, sent: !!c.sent })) } : null,
     zones: ZONES,
     prev: P.MREV_PREV_TITLE || null,
+    /* дата прошлой ревизии (для прихода в автозаявке, пока идёт новая): сохранённая или из её «Итога» (строка 6) */
+    prevDate: P.MREV_PREV_DATE || (prevId && ids[prevId] ? String(sh.getRange(6, ids[prevId]).getDisplayValue()).trim() : ""),
     rows: rows
   };
 }
@@ -738,9 +816,18 @@ function mrevZst(cols) {
   return out;
 }
 /* все зоны отправлены — ревизия готова (для сводок менеджера — как закрытая) */
+/* Все зоны отправлены — ревизия готова. Её дата для сводок (строка 6 «Итога») — день, когда отправили последнюю зону
+   (день 9:00–9:00): приход до него уже в пересчёте, после — прибавится. «Итог» фиксируется на столбцах этой ревизии —
+   числа, вписанные в лист правее, в остаток не попадут. */
 function mrevDoneCheck(b, ids) {
-  const zst = mrevZst(b.cols.filter(c => ids[c.id]));
+  const was = !!b.done, zst = mrevZst(b.cols.filter(c => ids[c.id]));
   b.done = ZONES.every(z => zst[z] && zst[z].st === "sent");
+  if (!b.done || was) return;
+  const sh = mrevSheet(), tc = mrevTotalCol(sh, b, ids);
+  if (!tc) return;
+  b.end = revDayDate(revDayKey());
+  sh.getRange(6, tc).setNumberFormat("@").setValue(b.end);
+  mrevTotals(sh, tc, mrevRows(sh), Math.max(tc + 1, ...b.cols.map(c => ids[c.id] || 0)));
 }
 
 /* «Войти в ревизию» / «Добавить зону»: выбранные зоны, которые этот бармен уже считал, — его прежние столбцы
@@ -789,6 +876,10 @@ function mrevSend(name) {
   if (!b || !b.open) return { error: "closed" };
   const me = mnorm(name), mine = b.cols.filter(c => c.open && mnorm(c.name) === me);
   if (!mine.length) return { error: "closed" };
+  /* столбец без единого числа — не «посчитано»: впишите 0 (позиции нет) или «Не считать» */
+  const ids = mrevIds(sh), last = Math.max(sh.getLastRow(), 7);
+  const empty = mine.filter(c => ids[c.id] && !sh.getRange(7, ids[c.id], last - 6, 1).getValues().some(r => r[0] !== ""));
+  if (empty.length) return { error: "В столбце «" + empty.map(c => c.zones ? zoneLabel(c.zones) : c.name).join("», «") + "» нет ни одного числа — впишите 0 у пустых позиций или нажмите «Не считать»" };
   mine.forEach(c => { c.open = false; c.sent = true; c.sentAt = Date.now(); });
   mrevDoneCheck(b, mrevIds(sh));
   mrevSave(b);
@@ -825,22 +916,30 @@ function mrevFinish(cid, name) {
 function mrevEnd() {
   const sh = mrevSheet(), b = mrevBlock();
   if (!b || !b.open) return { ok: true, mrev: mrevState() };
-  const ids = mrevIds(sh), tc = mrevTotalCol(sh, b, ids);
-  if (tc) {
+  const ids = mrevIds(sh), tc = mrevTotalCol(sh, b, ids), has = b.cols.some(c => ids[c.id]);
+  if (tc && has) {
     const last = Math.max(tc + 1, ...b.cols.map(c => ids[c.id] || 0));
     mrevTotals(sh, tc, mrevRows(sh), last);               // «Итог» больше не тянет столбцы следующей ревизии
+  } else if (tc) {
+    /* ни одного столбца барменов — «Итог» пустой: формулы убрать, иначе они потянут столбцы следующей ревизии */
+    const lr = Math.max(sh.getLastRow(), 7);
+    sh.getRange(7, tc, lr - 6, 1).setValues(Array.from({ length: lr - 6 }, () => [""]));
   }
   b.open = false; b.cols.forEach(c => { c.open = false; });
+  if (!b.end) b.end = revDayDate(revDayKey());
   mrevSave(b);
-  mprops().setProperty("MREV_PREV", b.total);
-  mprops().setProperty("MREV_PREV_TITLE", b.title);
+  if (has) {                                              // пустая ревизия прошлой не становится
+    mprops().setProperty("MREV_PREV", b.total);
+    mprops().setProperty("MREV_PREV_TITLE", b.title);
+    mprops().setProperty("MREV_PREV_DATE", b.end);
+  }
   return { ok: true, mrev: mrevState() };
 }
 
 /* Добавление к позиции (add) или новая позиция (new: название, количество, ед. изм.) —
    в свой открытый столбец. Новая — вниз, в раздел «Новые позиции»; такое название уже есть — прибавляем к нему. */
 function mrevAdd(p, isNew) {
-  const id = String(p.id || "").slice(0, 64), v = num(p.v);
+  const id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 64), v = num(p.v);
   const name = String(p.pos || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 200);   // как в листе, без правок
   const text = (x, n) => String(x || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
   if (!id || !name || !isFinite(v) || Math.abs(v) > 100000) return { error: "bad" };   // 0 — «посчитано, ноль»
@@ -1124,7 +1223,10 @@ function woSave(p, recOnly) {
         sh.getRange(top, 1, n, WO_HEAD.length)                            // кол-во — числом, чтобы считать суммы
           .setValues(rows.map(r => [date, no, r[0], r[1], r[2], r[3], who, url, Utilities.formatDate(stamp, TZ, "dd.MM.yyyy HH:mm"), id]));
         /* чеклист: «Заполнить списания и отправить в систему» — отмечается сам */
-        if (kind === "wo") try { ckAuto("d5", who || "—", "Общие дела", "Заполнить списания и отправить в систему"); } catch (e) { console.error("ckAuto: " + e); }
+        /* только акт за сегодня (день бара или календарный — ночная смена): старый акт, ушедший позже, сегодняшний пункт не отмечает */
+        const aIso = date.split(".").reverse().join("-");
+        if (kind === "wo" && [ckDay(), Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd")].indexOf(aIso) >= 0)
+          try { ckAuto("d5", who || "—", "Общие дела", "Заполнить списания и отправить в систему"); } catch (e) { console.error("ckAuto: " + e); }
       }
       SpreadsheetApp.flush();                                             // записать до снятия блокировки — повтор увидит id
       out = { ok: true, url: url, rec: true };
@@ -1498,7 +1600,7 @@ function mgrWo(p) {
    позиции (0,7 — бутылка 0,7 л); норма — сколько держать, в тех же единицах. */
 const REF = "Справочник";
 const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка",
-  "Название в R-Keeper", "Коэф. R-Keeper"];                               // J, K — запоминает загрузка прихода
+  "Название в R-Keeper", "Коэф. R-Keeper", "Ед. R-Keeper"];               // J, K, L — запоминает загрузка прихода (K — для единицы L)
 const REF_F = ["u", "code", "tara", "norm", "sup", "price", "note"];      // столбцы C…I
 const refKey = (sec, n) => [sec, n].map(x => String(x).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ")).join("|");
 
@@ -1545,9 +1647,9 @@ function refSync() {
 function refVals(v) {
   return v.map(r => r.map(x => typeof x === "number" ? String(Math.round(x * 1000) / 1000).replace(".", ",") : x instanceof Date ? "" : String(x)));
 }
-/* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке, название R-Keeper, коэф.] */
+/* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке, название R-Keeper, коэф., ед. R-Keeper] */
 const refRow = (r, inBlank) => [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()),
-  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim()]);
+  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim(), String(r[11] || "").trim()]);
 /* справочник для сайта: по порядку бланка; строки, которых в бланке уже нет, — в конце с пометкой */
 function mgrRef() {
   const lock = lockOrBusy(15000);
@@ -1594,7 +1696,8 @@ function mgrRefSet(p) {
    (последняя закрытая; пока месячная идёт — прошлая). Приход из «Журнала прихода» после даты этой ревизии прибавляется
    к остатку. Округление до целой тары и группировку по поставщикам делает сайт. */
 const dmy = s => { const m = String(s || "").match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
-const nameKey = s => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+/* название для сопоставления между разделами: без регистра, ё, дефисов, кавычек и запятых («чили-барбарис» = «чили барбарис») */
+const nameKey = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/[-–—,«»"'()]+/g, " ").replace(/\s+/g, " ").trim();
 
 function mgrOrder() {
   const ref = mgrRef();
@@ -1606,7 +1709,8 @@ function mgrOrder() {
   /* месячная: последняя закрытая или готовая (идёт — прошлая) */
   const ms = mrevRead();
   if (ms && ms.block) {
-    const open = ms.block.open && !ms.block.done, date = open ? "" : dmy(ms.block.date);   // готовая (все зоны) — как закрытая
+    /* готовая (все зоны) — как закрытая; дата — когда закончили считать; пока идёт новая — прошлая со своей датой */
+    const open = ms.block.open && !ms.block.done, date = open ? dmy(ms.prevDate) : dmy(ms.block.end || ms.block.date);
     out.src.m = { title: open ? ms.prev || "" : ms.block.title, date: date, open: open };
     let sec = "";
     ms.rows.forEach(x => {
@@ -1618,12 +1722,22 @@ function mgrOrder() {
 
   /* ежедневная: последний законченный пересчёт листа «Итог» */
   try {
-    const ts = revTotal(revBook()), oc = revOpenCol(), col = oc ? oc - 1 : ts.getLastColumn(), items = revPositions(ts);
+    const ts = revTotal(revBook()), oc = revOpenCol(), items = revPositions(ts);
+    let col = oc ? oc - 1 : ts.getLastColumn(), partial = "";
+    /* день, где посчитали не все зоны (клуб закрыт) — не полный остаток: берём последний день с полным набором зон */
+    if (col >= 2) {
+      const zmap = revDayZones(revBook()), from = Math.max(2, col - 13), hd = ts.getRange(1, from, 1, col - from + 1).getDisplayValues()[0];
+      const zn = hd.map(d => (zmap[String(d).trim()] || "").split(",").filter(Boolean).length), full = Math.max.apply(null, zn);
+      if (full > 0 && zn[zn.length - 1] < full) {
+        partial = String(hd[hd.length - 1]).trim() + " (" + zmap[String(hd[hd.length - 1]).trim()] + ")";
+        for (let i = zn.length - 1; i >= 0; i--) if (zn[i] === full) { col = from + i; break; }
+      }
+    }
     if (col >= 2 && items.length) {
       const hd = ts.getRange(1, col, 2, 1).getDisplayValues(), date = dmy(hd[0][0]);
       const vals = ts.getRange(3, col, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
-      const byName = {};                                               // название → ключ справочника (только однозначные)
-      ref.rows.forEach(r => { const k = nameKey(r[1]); byName[k] = k in byName ? null : refKey(r[0], r[1]); });
+      const byName = {};                                               // название → ключ справочника (только однозначные, только из бланка)
+      ref.rows.forEach(r => { if (r[9] !== 1) return; const k = nameKey(r[1]); byName[k] = k in byName ? null : refKey(r[0], r[1]); });
       const miss = [];
       let n = 0;
       items.forEach(x => {
@@ -1632,7 +1746,7 @@ function mgrOrder() {
         if (v === "" || v == null) return;
         n++; put(k, num(v), "d", date || "0000-00-00");
       });
-      out.src.d = { date: date, name: String(hd[1][0] || ""), n: n, miss: miss };
+      out.src.d = { date: date, name: String(hd[1][0] || ""), n: n, miss: miss, partial: partial };
     }
   } catch (e) { out.src.d = null; }
 
@@ -1673,16 +1787,17 @@ function orderSave(p) {
   revBook();
   const lock = lockOrBusy(20000);
   try {
-    const sh = ordSheet(true), now = new Date();
+    /* время — когда бармен отправил (без связи заявка дошла позже — дата та же); не старше недели и не из будущего */
+    const t = num(p.t), now = t > Date.now() - 7 * 864e5 && t <= Date.now() + 6e5 ? new Date(t) : new Date(), sh = ordSheet(true);
     const at = Utilities.formatDate(now, TZ, "dd.MM.yyyy HH:mm"), day = Utilities.formatDate(now, TZ, "dd.MM.yyyy");
-    /* прошлая версия этой заявки — убрать (снизу вверх, отрезками подряд) */
+    /* прошлая версия этой заявки этого же бармена — убрать (снизу вверх, отрезками подряд); чужие строки с тем же id не трогаем */
     const last = sh.getLastRow();
     if (last >= 2) {
-      const ids = sh.getRange(2, ORD_HEAD.length, last - 1, 1).getValues().map(r => String(r[0]));
-      for (let i = ids.length - 1; i >= 0;) {
-        if (ids[i] !== id) { i--; continue; }
+      const v = sh.getRange(2, 1, last - 1, ORD_HEAD.length).getValues(), mine = v.map(r => String(r[ORD_HEAD.length - 1]) === id && String(r[3]).replace(/^'/, "") === who);
+      for (let i = mine.length - 1; i >= 0;) {
+        if (!mine[i]) { i--; continue; }
         let j = i;
-        while (j > 0 && ids[j - 1] === id) j--;
+        while (j > 0 && mine[j - 1]) j--;
         sh.deleteRows(j + 2, i - j + 1);
         i = j - 1;
       }
@@ -1740,13 +1855,14 @@ const ruDate = s => { const v = String(s || "").trim(), m = v.match(/^(\d{4})-(\
 /* запись прихода: {rows: [{date, no, sup, code, rkn, rku, rkq, price, sum, sec, n, k}], who} */
 function mgrIn(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
-  const src = (Array.isArray(p.rows) ? p.rows : []).slice(0, 1000), who = clean(p.who, 80);
+  if (Array.isArray(p.rows) && p.rows.length > 1000) return { error: "many" };    // сайт шлёт частями
+  const src = Array.isArray(p.rows) ? p.rows : [], who = clean(p.who, 80);
   const rows = [];
   for (const r of src) {
     const date = ruDate(r.date), rkq = num(r.rkq), k = num(r.k), n = clean(r.n, 200);
     if (!date || !(rkq > 0) || !(k > 0) || !n) return { error: "bad" };
     rows.push({ date: date, no: clean(r.no, 40), sup: clean(r.sup, 120), code: clean(r.code, 40), rkn: clean(r.rkn, 200),
-      rku: clean(r.rku, 20), rkq: rkq, price: num(r.price), sum: num(r.sum), sec: clean(r.sec, 120), n: n, k: k });
+      rku: clean(r.rku, 20), rkq: rkq, price: num(r.price), sum: num(r.sum), sec: clean(r.sec, 120), n: n, k: k, rep: Math.max(0, Math.floor(num(r.rep))) });
   }
   if (!rows.length) return { error: "bad" };
   const lock = lockOrBusy(20000);
@@ -1762,7 +1878,8 @@ function mgrIn(p) {
     rows.forEach(r => {
       const i = at[refKey(r.sec, r.n)];
       if (i == null) { miss.push(r.n); return; }
-      const id = sha([r.date, r.no, r.sup, r.code, r.rkn, r.rkq, r.price].join("|")).slice(0, 20);
+      /* одинаковые строки одной накладной различает номер вхождения (у первой его нет — id прежних записей не меняются) */
+      const id = sha([r.date, r.no, r.sup, r.code, r.rkn, r.rkq, r.price].join("|") + (r.rep ? "|" + r.rep : "")).slice(0, 20);
       if (ids.has(id)) { dup++; return; }
       ids.add(id);
       const q = Math.round(r.rkq * r.k * 1000) / 1000, pu = r.price > 0 ? Math.round(r.price / r.k * 100) / 100 : "";
@@ -1770,10 +1887,16 @@ function mgrIn(p) {
         r.code, r.rkn, r.rkq, r.rku, r.k, who, stamp, id]);
       const ref = rv[i];                                                // справочник: запомнить, как эта позиция зовётся в R-Keeper
       if (r.rkn) ref[9] = r.rkn;
-      ref[10] = r.k;
+      ref[10] = r.k; ref[11] = r.rku;                                   // коэффициент — для этой единицы R-Keeper
       if (r.code && !String(ref[3]).trim()) ref[3] = r.code;
       if (pu !== "") ref[7] = pu;
       touched[i] = 1;
+      /* сопоставление исправили: тот же код или название R-Keeper у другой позиции — снять, иначе следующая накладная уйдёт туда же */
+      rv.forEach((x, j) => {
+        if (j === i) return;
+        if (r.code && String(x[3]).trim() === r.code && String(ref[3]).trim() === r.code) { x[3] = ""; touched[j] = 1; }
+        if (r.rkn && nameKey(x[9]) === nameKey(r.rkn)) { x[9] = ""; x[10] = ""; x[11] = ""; touched[j] = 1; }
+      });
     });
     if (add.length) {
       ensureRows(sh, last + add.length);
@@ -1789,7 +1912,8 @@ function mgrIn(p) {
       const r = rv[i];
       rs.getRange(+i + 2, 4).setNumberFormat("@").setValue(r[3]);
       rs.getRange(+i + 2, 8).setValue(r[7]);
-      rs.getRange(+i + 2, 10, 1, 2).setValues([[r[9], r[10]]]);
+      rs.getRange(+i + 2, 12).setNumberFormat("@");
+      rs.getRange(+i + 2, 10, 1, 3).setValues([[r[9], r[10], r[11]]]);
     });
     SpreadsheetApp.flush();
     return { ok: true, added: add.length, dup: dup, miss: miss };
@@ -1825,19 +1949,25 @@ function inByKey() {
 const USE_D = 60, USE_M = 24;
 
 /* количество из акта — в единицах позиции; несовместимые единицы — null */
-function woConv(q, wu, pu) {
-  const w = String(wu || "").trim().toLowerCase(), u = String(pu || "").trim().toLowerCase();
-  const L = /^(л|литр)$/, KG = /^кг$/;
-  if (L.test(u)) return L.test(w) ? q : w === "мл" ? q / 1000 : null;
+/* tara — из справочника: у позиции в бутылках (ед. пусто / «бут») это объём бутылки в литрах, у литровой — объём упаковки */
+function woConv(q, wu, pu, tara) {
+  const w = String(wu || "").trim().toLowerCase().replace(/\.$/, ""), u = String(pu || "").trim().toLowerCase();
+  const L = /^(л|литр)$/, KG = /^кг$/, PC = /^(шт|бут)$/;
+  if (L.test(u)) return L.test(w) ? q : w === "мл" ? q / 1000 : PC.test(w) && tara > 0 ? q * tara : null;
   if (KG.test(u)) return KG.test(w) ? q : /^(г|гр)$/.test(w) ? q / 1000 : null;
-  if (u === "шт" || u === "") return w === "шт" || w === "бут" ? q : null;
+  if (u === "шт") return PC.test(w) ? q : null;
+  if (u === "" || u === "бут") {                                        // бутылки: 1000 мл при таре 0,5 — 2 бутылки
+    if (PC.test(w)) return q;
+    return tara > 0 ? (L.test(w) ? q / tara : w === "мл" ? q / 1000 / tara : null) : null;
+  }
   return w === u ? q : null;
 }
 function mgrUsage(p) {
   const kind = p.kind === "m" ? "m" : "d", ref = mgrRef();
   if (!ref.ok) return ref;
-  const byName = {}, refU = {};
-  ref.rows.forEach(r => { const k = nameKey(r[1]), key = refKey(r[0], r[1]); byName[k] = k in byName ? null : key; refU[key] = r[2]; });
+  const byName = {}, refU = {}, refT = {}, byAll = {};
+  ref.rows.forEach(r => { const k = nameKey(r[1]), key = refKey(r[0], r[1]); refU[key] = r[2]; refT[key] = num(String(r[4]).replace(",", "."));
+    if (r[9] === 1) { byName[k] = k in byName ? null : key; (byAll[k] = byAll[k] || []).push(key); } });   // строки, которых в бланке уже нет, не мешают
   const val = v => v === "" || v == null || isNaN(num(v)) ? null : Math.round(num(v) * 1000) / 1000;
   let cols = [], items = [];
   if (kind === "d") {
@@ -1846,11 +1976,12 @@ function mgrUsage(p) {
     if (last >= first && pos.length) {
       const w = last - first + 1, hd = ts.getRange(1, first, 2, w).getDisplayValues();
       const v = ts.getRange(3, first, pos[pos.length - 1].row - 2, w).getValues();
-      const ok = [];
-      for (let c = 0; c < w; c++) { const iso = dmy(hd[0][c]); if (iso) { ok.push(c); cols.push({ iso: iso, who: String(hd[1][c] || "") }); } }
+      const ok = [], zmap = revDayZones(revBook()), tmap = revDayTimes(revBook()), du = dailyUnits(ref);
+      /* z — какие зоны посчитаны (период — только между днями с одинаковыми зонами), t — когда закончили считать (акт позже — в следующий период) */
+      for (let c = 0; c < w; c++) { const iso = dmy(hd[0][c]), d = String(hd[0][c]).trim(); if (iso) { ok.push(c); cols.push({ iso: iso, who: String(hd[1][c] || ""), z: zmap[d] || "", t: tmap[d] || 0 }); } }
       items = pos.map(x => {
         const key = byName[nameKey(x.n)] || "";
-        return { n: x.n, sec: "", key: key, u: key ? refU[key] : unitOf(x.n), v: ok.map(c => val(v[x.row - 3][c])) };
+        return { n: x.n, sec: "", key: key, u: du(x.n), v: ok.map(c => val(v[x.row - 3][c])) };
       });
     }
   } else {
@@ -1879,18 +2010,24 @@ function mgrUsage(p) {
   }
   /* приход и списания — только для позиций из справочника */
   /* списания, которые не удалось учесть (название не как в справочнике, несовместимые единицы), — сайт покажет списком */
-  const inc = inByKey(), wo = {}, womiss = {}, since = cols.length ? cols[0].iso : "9999";
+  const inc = inByKey(), wo = {}, womiss = {}, since = cols.length ? cols[0].iso : "9999", dailyU = dailyUnits(ref);
   Object.keys(WO_KINDS).forEach(k => {
     const sh = woSheet(k, false), last = sh ? sh.getLastRow() : 0;
     if (last < 2) return;
-    sh.getRange(2, 1, last - 1, 5).getValues().forEach(r => {
-      const iso = dmy(r[0]), key = byName[nameKey(r[2])];
+    sh.getRange(2, 1, last - 1, 9).getValues().forEach(r => {
+      const nk = nameKey(r[2]);
+      let key = byName[nk];
+      /* одно название в двух разделах (Мандарин — фрукты и настойка): по единице акта, если подходит ровно одна позиция */
+      if (key === null) { const fit = (byAll[nk] || []).filter(k => woConv(1, r[3], refU[k], refT[k]) != null); if (fit.length === 1) key = fit[0]; }
+      const iso = dmy(r[0]);
       if (!iso) return;
       const miss = why => { if (iso > since) { const m = String(r[2]).trim() + "|" + why; womiss[m] = { n: String(r[2]).trim(), u: String(r[3]).trim(), why: why, pu: key ? refU[key] : "" }; } };
-      if (!key) return miss("name");
-      const q = woConv(num(r[4]), r[3], refU[key]);
+      if (!key) return miss(nk in byName ? "ambiguous" : "name");
+      /* в единицах того, в чём считали: месячная — единица справочника; ежедневная — её единица (л / шт / кг) */
+      const pu = kind === "d" ? dailyU(r[2]) : refU[key];
+      const q = woConv(num(r[4]), r[3], pu, refT[key]);
       if (q == null) return miss("unit");
-      if (q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000 });
+      if (q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000, t: ruTime(r[8] instanceof Date ? Utilities.formatDate(r[8], TZ, "dd.MM.yyyy HH:mm") : r[8]) });
     });
   });
   items.forEach(x => { x.inc = x.key ? inc[x.key] || [] : []; x.wo = x.key ? wo[x.key] || [] : []; });
@@ -1931,48 +2068,94 @@ function pubSheet(name, head, create) {
   n.setFrozenRows(1);
   return n;
 }
-function pubRows(sh, w) {
-  const last = sh ? sh.getLastRow() : 0;
-  return last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues().map(r => r.map(x => typeof x === "number" ? x : x instanceof Date ? "" : String(x).trim())) : [];
+/* Столбцы листов «Меню» / «Карта» / «Карта разделы» — по названиям в шапке: столбец переставили, удалили или вставили
+   свой — ничего не съезжает. Нет нужного заголовка — поле пусто (и mgrPubRaw скажет, какого). */
+function pubLayout(sh, head) {
+  const lc = Math.max(sh.getLastColumn(), 1), h = sh.getRange(1, 1, 1, lc).getDisplayValues()[0].map(x => String(x).trim());
+  const idx = head.map((name, i) => { const j = h.indexOf(name); return j >= 0 ? j : !h[i] ? i : -1; });   // нет заголовка — его место, если пусто
+  return { idx: idx, lc: Math.max(lc, ...idx.map(x => x + 1)), miss: head.filter((_, i) => idx[i] < 0 || !h[idx[i]]) };
 }
+function pubRows(sh, head) {
+  const last = sh ? sh.getLastRow() : 0;
+  if (last < 2) return [];
+  const L = pubLayout(sh, head);
+  return sh.getRange(2, 1, last - 1, L.lc).getValues().map(r => L.idx.map(j => {
+    const x = j < 0 ? "" : r[j];
+    return typeof x === "number" ? x : x instanceof Date ? "" : String(x == null ? "" : x).trim();
+  }));
+}
+/* одна строка листа: поля в порядке head → в их столбцы; остальные столбцы строки (свои пометки, формулы) не трогаем */
+function pubPut(sh, head, at, row) {
+  const L = pubLayout(sh, head), cols = L.idx.filter(j => j >= 0), c0 = Math.min.apply(null, cols), c1 = Math.max.apply(null, cols);
+  const rg = sh.getRange(at, c0 + 1, 1, c1 - c0 + 1), cur = rg.getValues()[0];
+  L.idx.forEach((j, i) => { if (j >= 0) cur[j - c0] = row[i]; });
+  rg.setNumberFormat("@").setValues([cur]);
+  const pc = head.indexOf("Цена");
+  if (pc >= 0 && L.idx[pc] >= 0) sh.getRange(at, L.idx[pc] + 1).setNumberFormat("General").setValue(row[pc]);
+}
+/* кэш для гостей: правка с сайта сбрасывает его и меняет «поколение» — чтение, начатое до правки, свою копию не положит */
+const pubDrop = () => { const c = CacheService.getScriptCache(); c.put("pubgen", String(Date.now()) + Math.random(), 21600); c.remove("pub"); };
 /* всё для гостей: меню, разделы и позиции карты (скрытые — без них) */
 function pubGet() {
   const cache = CacheService.getScriptCache(), c = cache.get("pub");
   if (c) return JSON.parse(c);
+  const gen = cache.get("pubgen");
   const ms = pubSheet(PUB_M, PUB_MH, false), cs = pubSheet(PUB_C, PUB_CH, false), gs = pubSheet(PUB_G, PUB_GH, false);
   if (!ms && !cs) return { ok: true, none: 1 };
-  const menu = pubRows(ms, PUB_MH.length).filter(r => (r[5] || r[12]) && !yes(r[14])).map(r => r.slice(0, 14));
-  const ids = {}, items = pubRows(cs, PUB_CH.length).filter(r => r[2] && !yes(r[14])).map(r => {
+  /* сломана шапка (нет «Название», «Цена», «Скрыть» …) — гости видят последнее исправное меню, пока менеджер не починит */
+  const need = (sh, head, req) => !sh || req.every(x => pubLayout(sh, head).miss.indexOf(x) < 0);
+  if (!need(ms, PUB_MH, ["Глава", "Раздел", "Название", "Цена", "id в карте", "Скрыть"]) || !need(cs, PUB_CH, ["Раздел", "id", "Название", "Скрыть"])) {
+    const good = cache.get("pubgood");
+    if (good) return JSON.parse(good);
+  }
+  const menu = pubRows(ms, PUB_MH).filter(r => (r[5] || r[12]) && !yes(r[14])).map(r => r.slice(0, 14));
+  const ids = {}, items = pubRows(cs, PUB_CH).filter(r => r[2] && !yes(r[14])).map(r => {
     let id = r[1] || pubId(r[2]);
     while (ids[id]) id += "-2";
     ids[id] = 1; r[1] = id;
     return r.slice(0, 14);
   });
-  const groups = pubRows(gs, PUB_GH.length).filter(r => r[0]);
+  const groups = pubRows(gs, PUB_GH).filter(r => r[0]);
   const out = { ok: true, menu: menu, groups: groups, items: items };
   out.v = sha(JSON.stringify(out)).slice(0, 12);
   const j = JSON.stringify(out);
-  if (j.length < 95000) cache.put("pub", j, PUB_TTL);
+  if (j.length < 95000 && cache.get("pubgen") === gen) { cache.put("pub", j, PUB_TTL); cache.put("pubgood", j, 21600); }
   return out;
 }
-const pubDrop = () => CacheService.getScriptCache().remove("pub");
 
-/* для редактора менеджера: всё, со скрытыми; строкам меню без uid и позициям без id — выдать (под блокировкой) */
+/* для редактора менеджера: всё, со скрытыми; строкам меню без uid (или с uid, скопированным вместе со строкой)
+   и позициям без id — выдать новый (под блокировкой) */
 function mgrPubRaw() {
   const ms = pubSheet(PUB_M, PUB_MH, false), cs = pubSheet(PUB_C, PUB_CH, false), gs = pubSheet(PUB_G, PUB_GH, false);
   if (!ms && !cs) return { ok: true, none: 1 };
   const lock = lockOrBusy(15000);
   try {
-    const menu = pubRows(ms, PUB_MH.length), items = pubRows(cs, PUB_CH.length);
+    /* листы прошлых версий: пустые ячейки шапки (например, «uid») — дописать */
+    [[ms, PUB_MH], [cs, PUB_CH], [gs, PUB_GH]].forEach(([sh, head]) => {
+      if (!sh) return;
+      const h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), head.length)).getDisplayValues()[0].map(x => String(x).trim());
+      head.forEach((name, i) => { if (!h[i] && h.indexOf(name) < 0) sh.getRange(1, i + 1).setValue(name).setFontWeight("bold"); });
+    });
+    const menu = pubRows(ms, PUB_MH), items = pubRows(cs, PUB_CH), seen = {};
     let fix = false;
-    menu.forEach(r => { if (!r[15] && (r[5] || r[12])) { r[15] = Utilities.getUuid().slice(0, 8); fix = true; } });
-    if (fix) ms.getRange(2, 16, menu.length, 1).setValues(menu.map(r => [r[15]]));
+    menu.forEach(r => {
+      if (!(r[5] || r[12])) return;
+      if (!r[15] || seen[r[15]]) { r[15] = Utilities.getUuid().slice(0, 8); fix = true; }
+      seen[r[15]] = 1;
+    });
+    const um = ms ? pubLayout(ms, PUB_MH).idx[15] : -1;
+    if (fix && um >= 0) ms.getRange(2, um + 1, menu.length, 1).setNumberFormat("@").setValues(menu.map(r => [r[15]]));
     const ids = {};
     let fixc = false;
     items.forEach(r => { if (!r[2]) return; let id = r[1] || pubId(r[2]); while (ids[id] && ids[id] !== r) id += "-2"; if (id !== r[1]) { r[1] = id; fixc = true; } ids[id] = r; });
-    if (fixc) cs.getRange(2, 2, items.length, 1).setValues(items.map(r => [r[1]]));
+    const ic = cs ? pubLayout(cs, PUB_CH).idx[1] : -1;
+    if (fixc && ic >= 0) cs.getRange(2, ic + 1, items.length, 1).setValues(items.map(r => [r[1]]));
     if (fix || fixc) pubDrop();
-    return { ok: true, menu: menu, items: items, groups: pubRows(gs, PUB_GH.length) };
+    const warn = [[ms, PUB_M, PUB_MH], [cs, PUB_C, PUB_CH], [gs, PUB_G, PUB_GH]].filter(x => x[0]).map(x => {
+      const m = pubLayout(x[0], x[2]).miss;
+      return m.length ? "в листе «" + x[1] + "» нет столбцов: " + m.join(", ") : "";
+    }).filter(Boolean).join("; ");
+    return { ok: true, menu: menu, items: items, groups: pubRows(gs, PUB_GH), warn: warn };
   } finally { lock.releaseLock(); }
 }
 
@@ -2002,21 +2185,31 @@ function mgrPubSeed(p) {
     return { ok: true };
   } finally { lock.releaseLock(); }
 }
-/* правка с сайта: {t: "m"|"c", act: "set"|"add"|"del", key: uid или id, after: uid/id, row: [...]} — лист переписывается целиком */
+/* правка с сайта: {t: "m"|"c", act: "set"|"add"|"del", key: uid или id, after: uid/id, row: [...], base: строка, как её загрузил сайт}.
+   Пишется одна строка (вставка / удаление строки листа): формулы и пометки в остальных строках не трогаются.
+   set — только поля, которые на сайте поменяли (сравнение с base): цену, поменявшуюся тем временем на другом телефоне
+   или в таблице, устаревшая форма не вернёт. Код R-Keeper с сайта не меняется. */
 function mgrPubSet(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   const isM = p.t === "m", head = isM ? PUB_MH : PUB_CH, w = head.length, kc = isM ? 15 : 1;
-  const row = Array.isArray(p.row) ? Array.from({ length: w }, (_, i) => { const v = p.row[i]; return typeof v === "number" ? v : clean(v == null ? "" : v, 400); }) : null;
+  const cl = v => typeof v === "number" ? v : clean(v == null ? "" : v, 400);
+  const row = Array.isArray(p.row) ? Array.from({ length: w }, (_, i) => cl(p.row[i])) : null;
+  const base = Array.isArray(p.base) ? Array.from({ length: w }, (_, i) => cl(p.base[i])) : null;
   const lock = lockOrBusy(15000);
   try {
     const sh = pubSheet(isM ? PUB_M : PUB_C, head, false);
     if (!sh) return { error: "none" };
-    const rows = pubRows(sh, w), at = rows.findIndex(r => String(r[kc]) === String(p.key || "")), n0 = rows.length;
-    if (p.act === "del") { if (at < 0) return { error: "gone" }; rows.splice(at, 1); }
-    else if (p.act === "set") {
+    const rows = pubRows(sh, head), hits = rows.map((r, i) => String(r[kc]) === String(p.key || "") ? i : -1).filter(i => i >= 0);
+    if (p.act !== "add" && hits.length > 1) return { error: "dup" };       // строку скопировали вместе с uid — сайт перезагрузит
+    const at = hits.length ? hits[0] : -1;
+    if (p.act === "del") {
+      if (at < 0) return { error: "gone" };
+      sh.deleteRow(at + 2);
+    } else if (p.act === "set") {
       if (at < 0 || !row) return { error: at < 0 ? "gone" : "bad" };
-      row[kc] = rows[at][kc];                                            // uid / id не меняются
-      rows[at] = row;
+      const cur = rows[at];
+      const out = cur.map((x, i) => i === kc || (isM && i === 13) ? x : base && String(row[i]) === String(base[i]) ? x : row[i]);
+      pubPut(sh, head, at + 2, out);
     } else if (p.act === "add") {
       if (!row) return { error: "bad" };
       if (isM) row[15] = Utilities.getUuid().slice(0, 8);
@@ -2025,15 +2218,12 @@ function mgrPubSet(p) {
         while (rows.some(r => r[1] === id)) id += "-2";
         row[1] = id;
       }
-      const after = rows.findIndex(r => String(r[kc]) === String(p.after || ""));
-      rows.splice(after < 0 ? rows.length : after + 1, 0, row);
+      const after = p.after ? rows.findIndex(r => String(r[kc]) === String(p.after)) : -1;   // пусто — в конец, не к пустым строкам
+      let to;
+      if (after >= 0 && after < rows.length - 1) { sh.insertRowAfter(after + 2); to = after + 3; }
+      else { to = Math.max(sh.getLastRow(), 1) + 1; ensureRows(sh, to); }
+      pubPut(sh, head, to, row);
     } else return { error: "action" };
-    if (rows.length) {
-      ensureRows(sh, rows.length + 1);
-      sh.getRange(2, 1, rows.length, w).setNumberFormat("@").setValues(rows);
-      if (isM) sh.getRange(2, 12, rows.length, 1).setNumberFormat("General").setValues(rows.map(r => [r[11]]));
-    }
-    if (n0 > rows.length) sh.getRange(rows.length + 2, 1, n0 - rows.length, w).setValues(Array.from({ length: n0 - rows.length }, () => Array(w).fill("")));
     SpreadsheetApp.flush();
     pubDrop();
     return { ok: true, key: p.act === "add" ? row[kc] : p.key };
@@ -2048,19 +2238,19 @@ function mgrPrices(p) {
   try {
     const sh = pubSheet(PUB_M, PUB_MH, false);
     if (!sh) return { error: "none" };
-    const rows = pubRows(sh, PUB_MH.length), by = {};
-    rows.forEach((r, i) => { by[r[15]] = i; });
+    const rows = pubRows(sh, PUB_MH), by = {}, L = pubLayout(sh, PUB_MH), pc = L.idx[11], cc = L.idx[13];
+    if (pc < 0) return { error: "none" };
+    rows.forEach((r, i) => { by[r[15]] = by[r[15]] == null ? i : -1; });     // одинаковые uid — ни одной не трогаем
     let n = 0;
     up.forEach(u => {
       const i = by[u.uid];
-      if (i == null) return;
-      rows[i][11] = Math.round(num(u.price) * 100) / 100;
-      if (u.code && !rows[i][13]) rows[i][13] = clean(u.code, 40);
+      if (i == null || i < 0) return;
+      /* только изменившиеся ячейки: формулы и оформление остального столбца не трогаем */
+      sh.getRange(i + 2, pc + 1).setValue(Math.round(num(u.price) * 100) / 100);
+      if (u.code && !rows[i][13] && cc >= 0) sh.getRange(i + 2, cc + 1).setNumberFormat("@").setValue(clean(u.code, 40));
       n++;
     });
     if (n) {
-      sh.getRange(2, 12, rows.length, 1).setValues(rows.map(r => [r[11]]));
-      sh.getRange(2, 14, rows.length, 1).setNumberFormat("@").setValues(rows.map(r => [r[13]]));
       SpreadsheetApp.flush();
       pubDrop();
     }
@@ -2099,12 +2289,14 @@ function mgrDishSet(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   const list = (Array.isArray(p.dishes) ? p.dishes : []).slice(0, 500);
   if (!list.length) return { error: "bad" };
-  const add = [], keys = new Set();
+  /* заменяются строки этого кода и строки того же названия без кода (сохранённые раньше по названию);
+     то же название с другим кодом (порция и бутылка навынос) — не трогаем */
+  const add = [], codes = new Set(), names = new Set();
   for (const d of list) {
     const name = clean(d.name, 200), code = clean(d.code, 40), src = clean(d.src, 40);
     if (!name && !code) return { error: "bad" };
-    keys.add(dishKey(name, code));
-    if (name) keys.add("n:" + nameKey(name));                           // то же блюдо, сохранённое раньше без кода
+    if (code) codes.add(code);
+    if (name) names.add(nameKey(name));
     if (d.none) { add.push([name, code, "", "—", "", "", src]); continue; }
     const comps = (Array.isArray(d.comps) ? d.comps : []).slice(0, 30).filter(c => c && c.n && num(c.q) > 0);
     if (!comps.length) return { error: "bad" };
@@ -2114,7 +2306,7 @@ function mgrDishSet(p) {
   try {
     const sh = dishSheet(true), last = sh.getLastRow(), w = DISH_HEAD.length;
     const old = last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues() : [];
-    const keep = old.filter(r => (r[0] || r[1]) && !keys.has(dishKey(r[0], r[1])) && !keys.has("n:" + nameKey(r[0])));
+    const keep = old.filter(r => (r[0] || r[1]) && !(String(r[1]).trim() ? codes.has(String(r[1]).trim()) : names.has(nameKey(r[0]))));
     const rows = keep.concat(add);
     ensureRows(sh, rows.length + 1);
     if (rows.length) {
@@ -2198,10 +2390,11 @@ function reportOdd() {
     for (let i = 1; i < C.length; i++) {
       if (x.v[i] == null) continue;
       let j = i - 1;
-      while (j >= 0 && x.v[j] == null) j--;
+      while (j >= 0 && (x.v[j] == null || (C[j].z && C[i].z && C[j].z !== C[i].z))) j--;   // только дни с теми же зонами
       if (j < 0) continue;
       const from = C[j].iso, to = C[i].iso, sum = a => a.filter(y => y.iso > from && y.iso <= to).reduce((s, y) => s + y.q, 0);
-      const use = x.v[j] + sum(x.inc) - x.v[i], woq = sum(x.wo);
+      const byT = C[j].t && C[i].t, woq = x.wo.filter(y => byT && y.t ? y.t > C[j].t && y.t <= C[i].t : y.iso > from && y.iso <= to).reduce((s, y) => s + y.q, 0);
+      const use = x.v[j] + sum(x.inc) - x.v[i];
       ps.push({ i: i, to: to, d: days(from, to), use: use, net: use - woq });
     }
     const last = ps[ps.length - 1];
@@ -2228,8 +2421,10 @@ function reportData(from, to) {
     const a = k + r[8];
     acts[a] = acts[a] || { k: k, who: r[6] };
     why[r[5] || "без причины"] = (why[r[5] || "без причины"] || 0) + 1;
-    const ik = String(r[2]).trim().toLowerCase() + "|" + String(r[3]).trim();
-    (items[ik] = items[ik] || { n: String(r[2]).trim(), u: String(r[3]).trim(), q: 0, c: 0 }).q += num(r[4]); items[ik].c++;
+    /* как в «Сводке» на сайте: одно название (без ё и регистра), единицы — к л / кг */
+    const U = { "л": ["л", 1], "мл": ["л", .001], "кг": ["кг", 1], "гр": ["кг", .001], "г": ["кг", .001], "шт": ["шт", 1] }, f = U[String(r[3]).trim().toLowerCase()] || [String(r[3]).trim(), 1];
+    const ik = nameKey(r[2]) + "|" + f[0];
+    (items[ik] = items[ik] || { n: String(r[2]).trim(), u: f[0], q: 0, c: 0 }).q += num(r[4]) * f[1]; items[ik].c++;
     (who[r[6] || "—"] = who[r[6] || "—"] || new Set()).add(a);
   }));
   d.wo = { acts: Object.values(acts), rows: (wo.wo || []).length + (wo.pr || []).length,
@@ -2253,7 +2448,7 @@ function reportData(from, to) {
       }
     }
   } catch (e) {}
-  try { d.odd = reportOdd(); } catch (e) { d.odd = { odd: [], date: "", prev: "" }; }
+  try { d.odd = reportOdd(); } catch (e) { d.odd = { odd: [], date: "", prev: "", err: String(e && e.message || e) }; }
   try { d.orders = orderList(from, to).map(o => [o.at, o.kind, o.who, o.items.length]); } catch (e) { d.orders = []; }
   /* приход */
   const inl = mgrInList({ from: from, to: to }), sup = {}, inv = {};
@@ -2265,7 +2460,7 @@ function reportData(from, to) {
     d.low = (o.rows || []).filter(r => r.q != null && r.norm - r.q - (r.inq || 0) > 1e-9)
       .map(r => ({ n: r.n, sup: r.sup || "без поставщика", need: r3(r.norm - r.q - (r.inq || 0)), u: r.u })).slice(0, 40);
     d.nonorm = o.nonorm || 0;
-  } catch (e) { d.low = []; d.nonorm = 0; }
+  } catch (e) { d.low = []; d.nonorm = 0; d.lowErr = String(e && e.message || e); }
   /* открытия смен и входы */
   /* открытия смен: [день, «Бар готов», кто, отмечено] — дни, когда чеклист начинали */
   d.open = [];
@@ -2297,12 +2492,12 @@ function reportHtml(d) {
     '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — неделя ' + hx(ru(d.from)) + ' — ' + hx(ru(d.to)) + '</h2>' +
     '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · заявок ' + (d.orders || []).length + ' · открытий смен ' + d.open.filter(r => /^\d/.test(r[1])).length + '</p>';
   h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
-    tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f]));
+    (d.odd.err ? '<p style="color:#c0392b;font:14px Arial,sans-serif;margin:0">Не удалось посчитать (таблица занята или ошибка) — смотрите вкладку «Расход» на сайте.</p>' : tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f])));
   h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
-    '<h3 style="' + H + '">Чаще всего списывали</h3>' + tb(["Позиция", "Всего", "Раз"], d.wo.items.map(x => [x.n, fmtN(x.q) + (x.u ? " " + x.u : ""), x.c])) +
+    '<h3 style="' + H + '">Чаще всего списывали</h3>' + tb(["Позиция", "Всего", "Раз"], d.wo.items.map(x => [x.n, x.u === "л" && x.q > 0 && x.q < 1 ? fmtN(x.q * 1000) + " мл" : x.u === "кг" && x.q > 0 && x.q < 1 ? fmtN(x.q * 1000) + " гр" : fmtN(x.q) + (x.u ? " " + x.u : ""), x.c])) +
     '<h3 style="' + H + '">Акты по барменам</h3>' + tb(["Кто", "Актов"], d.wo.who);
   h += '<h3 style="' + H + '">Приход</h3>' + tb(["Поставщик", "Сумма, ₸", "Накладных"], d.inc.sup.map(x => [x[0], x[1] ? fmtN(Math.round(x[1])) : "", x[2]]));
-  h += '<h3 style="' + H + '">Ниже нормы сейчас</h3>' + tb(["Позиция", "Не хватает", "Поставщик"], d.low.map(x => [x.n, fmtN(x.need) + (x.u ? " " + x.u : ""), x.sup])) +
+  h += '<h3 style="' + H + '">Ниже нормы сейчас</h3>' + (d.lowErr ? '<p style="color:#c0392b;font:14px Arial,sans-serif;margin:0">Не удалось посчитать (таблица занята или ошибка) — смотрите вкладку «Автозаявка» на сайте.</p>' : tb(["Позиция", "Не хватает", "Поставщик"], d.low.map(x => [x.n, fmtN(x.need) + (x.u ? " " + x.u : ""), x.sup]))) +
     (d.nonorm ? '<p style="color:#888;margin:6px 0 0">Без нормы в справочнике: ' + d.nonorm + ' позиций.</p>' : "");
   h += '<h3 style="' + H + '">Заявки бартендеров</h3>' + tb(["Отправлено", "Заявка", "Кто", "Позиций"], d.orders || []);
   h += '<h3 style="' + H + '">Ревизии</h3>' + tb(["Дата", "Кто"], d.revs.map(x => [x.date, x.who])) +
@@ -2379,8 +2574,7 @@ function installBackup() {
 
 function monthlyBackup() {
   MEMO = {};
-  const found = DriveApp.getFoldersByName(BACKUP_FOLDER);
-  const folder = found.hasNext() ? found.next() : DriveApp.createFolder(BACKUP_FOLDER);
+  const folder = woAlive(DriveApp.getFoldersByName(BACKUP_FOLDER)) || DriveApp.createFolder(BACKUP_FOLDER);   // папка в корзине — новая
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
   const ids = [SpreadsheetApp.getActiveSpreadsheet().getId()];
   if (REV_BOOK_ID && ids.indexOf(REV_BOOK_ID) < 0) ids.push(REV_BOOK_ID);

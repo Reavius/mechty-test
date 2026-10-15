@@ -50,27 +50,40 @@ const woRowsData = () => [...document.querySelectorAll("#woRows .worow")].map(li
   n: li.querySelector(".won").value.replace(/\s+/g, " ").trim(), q: li.querySelector(".woq").value.trim(),
   u: li.querySelector(".wou").value, why: wkind === "pr" ? WO_PR : li.querySelector(".woy").value.replace(/\s+/g, " ").trim()},
   li.dataset.nid ? {nid: li.dataset.nid, until: +li.dataset.until || 0} : {}));
-function woDraftSave(){
+/* дата акта в черновике — только выбранная руками: иначе новый акт через день получил бы вчерашнюю дату */
+let woDateMan = false;
+function woDraftSave(e){
   if (!me) return;
-  wsave(wdraft(), {date: $("woDate").value, no: $("woNo").value, rows: woRowsData(), paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
+  if (e && e.target && e.target.id === "woDate") woDateMan = true;
+  wsave(wdraft(), {date: woDateMan ? $("woDate").value : "", man: woDateMan, no: $("woNo").value, rows: woRowsData(), paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
   const ini = wjson(WI, {}); ini[me.name] = $("woIni").value; wsave(WI, ini);
 }
 
 /* подсказки названий — из бланка месячной ревизии (с единицами) и открытой карты */
 const WUNIT = {"литр": "л", "л": "л", "мл": "мл", "кг": "кг", "г": "гр", "гр": "гр", "шт": "шт"};
 let woUnitOf = {};
+/* названия как в бланке — тогда акт сопоставится со справочником (расход, продажи). Бланка на телефоне нет — загрузить;
+   название из карты — только если в бланке нет такого же (без учёта дефисов и кавычек) */
+const woNk = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/[-–—,«»"'()]+/g, " ").replace(/\s+/g, " ").trim();
+let woNamesTry = false;
 function woNames(){
   const st = wjson("mechty-mrev-state", null), seen = new Set(), opts = [];
   woUnitOf = {};
-  for (const x of (st && st.rows) || []) if (x.t === "i" && !seen.has(x.n)){ seen.add(x.n); opts.push(x.n); if (WUNIT[x.u]) woUnitOf[x.n] = WUNIT[x.u]; }
-  for (const g of typeof data !== "undefined" ? data : []) for (const it of g.items) if (!seen.has(it.n)){ seen.add(it.n); opts.push(it.n); }
+  for (const x of (st && st.rows) || []) if (x.t === "i" && !seen.has(woNk(x.n))){ seen.add(woNk(x.n)); opts.push(x.n); if (WUNIT[x.u]) woUnitOf[x.n] = WUNIT[x.u]; }
+  for (const g of typeof data !== "undefined" ? data : []) for (const it of g.items) if (!seen.has(woNk(it.n))){ seen.add(woNk(it.n)); opts.push(it.n); }
   $("woNames").innerHTML = opts.map(n => '<option value="' + esc(n) + '">').join("");
+  if (!(st && st.rows) && !woNamesTry && TOKEN){
+    woNamesTry = true;
+    api({mrev: "state"}).then(d => { if (d.ok && d.mrev && d.mrev.rows){ wsave("mechty-mrev-state", d.mrev); woNames(); } });
+  }
 }
 
 /* форма текущего вида — из его черновика */
 function woLoad(){
   const d = wjson(wdraft(), null);
-  $("woDate").value = d && d.date ? d.date : wtoday();
+  /* черновик прошлой версии (без man): его дату оставляем, только если в нём есть позиции */
+  woDateMan = !!(d && d.date && (d.man || (d.man === undefined && d.rows && d.rows.some(r => r && r.n))));
+  $("woDate").value = woDateMan ? d.date : wtoday();
   $("woNo").value = d && d.no || "";
   const rows = d && d.rows && d.rows.length ? d.rows.slice(0, WO_MAX) : [{}];
   $("woRows").innerHTML = rows.map(woRow).join("");
@@ -541,7 +554,7 @@ $("woForm").addEventListener("submit", async e => {
     const nids = wnIdsOf(rows);
     if (nids.length){ wsave(WNA, wnDone().concat(nids).slice(-300)); wsave(WNS, wjson(WNS, []).concat([{act: woLast.id, ids: nids, rn: me ? me.name : "", k: kind}])); wnSealFlush(); }
     /* акт готов — черновик очищаем: после перезагрузки не создать тот же акт второй раз */
-    if (me) wsave(wdraft(), {date: wtoday(), no: "", rows: [], paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
+    if (me) wsave(wdraft(), {date: "", no: "", rows: [], paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
     woDoneUi();
     $("woDone").scrollIntoView({behavior: "smooth", block: "start"});
     buzz(14);
@@ -598,7 +611,7 @@ $("woRetry").addEventListener("click", async () => {
   woFlush(true).then(woHistUp);
 });
 $("woNew").addEventListener("click", () => {
-  if (me) wsave(wdraft(), {date: wtoday(), no: "", rows: [], paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
+  if (me) wsave(wdraft(), {date: "", no: "", rows: [], paste: $("woPasteT").value, pasteWhy: $("woPasteWhy").value});
   woLast = woLastOf[wkind] = null;
   woLoad(); woSigReset(); woDoneUi();
   $("woForm").scrollIntoView({behavior: "smooth", block: "start"});
