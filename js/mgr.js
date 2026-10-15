@@ -106,7 +106,7 @@ async function mgrLoad(){
       : 'Нет связи с таблицей. <button type="button" class="link" id="mgrRetry">Повторить</button>';
     return;
   }
-  mgrData = {from, to, rows: [].concat((d.wo || []).map(r => ["wo"].concat(r)), (d.pr || []).map(r => ["pr"].concat(r)))};
+  mgrData = {from, to, gone: d.gone || 0, rows: [].concat((d.wo || []).map(r => ["wo"].concat(r)), (d.pr || []).map(r => ["pr"].concat(r)))};
   mgrDraw();
 }
 
@@ -144,7 +144,7 @@ let mgrMore = {};
 function mgrDraw(){
   if (!mgrData) return;
   const S = mgrCalc(), per = mgrRu(mgrData.from) + " — " + mgrRu(mgrData.to);
-  $("mgrSub").textContent = per;
+  $("mgrSub").textContent = per + (mgrData.gone ? " · удалены с Диска: " + mgrData.gone + " — не учитываются" : "");
   $("mgrCopy").disabled = !S.rows.length;
   if (!S.rows.length){
     $("mgrOut").innerHTML = '<p class="empty">За этот период ' + (mgrKindSel === "pr" ? "проработок" : mgrKindSel === "wo" ? "списаний" : "актов") + ' нет.</p>';
