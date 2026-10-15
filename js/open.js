@@ -2,7 +2,9 @@
 /* ════════════ Чеклист открытия ════════════
    Галочка — пункт зачёркнут, видно, кто и когда отметил. Отметки сразу видны на всех телефонах (сверка раз в 30 секунд).
    Без связи отметка ждёт на телефоне и уйдёт сама. «Е. Финальная проверка» — что ещё не отмечено, и «Бар готов к открытию».
-   Пункты по дням — всегда в списке, с пометкой дня (в свой день пометка выделена). */
+   Пункты по дням — всегда в списке, с пометкой дня (в свой день пометка выделена).
+   Каждая отметка сразу пишется и в таблицу журнала: «Чеклист журнал» (кто, когда, какой пункт) и строка дня в «Открытиях
+   смен» (сколько отмечено, по разделам, когда бар готов) — менеджер видит ход подготовки, не дожидаясь «Бар готов». */
 const CK = [
   {id: "a", t: "Открытие смены и зоны «Кафе»", items: [
     ["a1", "Проверить чистоту и порядок"],
@@ -30,12 +32,14 @@ const CK = [
     ["c7", "Черника и вишня — есть в морозильнике"],
     ["c8", "Тимьян, базилик, мята — в наличии"],
     ["c9", "Холодильник: пополнить всеми видами бутылочного пива"],
-    ["c10", "Пополнить винный холодильник"]]},
+    ["c10", "Пополнить винный холодильник"],
+    ["c11", "Пополнить запасы посуды на вынос и крышек к ней"]]},
   {id: "d", t: "Общие дела", items: [
     ["d1", "Принять и разгрузить поставку"],
     ["d2", "Обновить маркировки на всё открытое: безалкогольное, фрукты, вина, ликёры", [5]],
     ["d3", "Нарезки — по 6: апельсин, лимон, лайм"],
-    ["d4", "Пены — 4 игристого и 3 пломбир"]]},
+    ["d4", "Пены — 4 игристого и 3 пломбир"],
+    ["d5", "Заполнить списания и отправить в систему", null, "Отметится само, когда акт списания уйдёт в таблицу", "wo"]]},
   {id: "e", t: "Подготовка танцпола", items: [
     ["e1", "Протереть стойку, навести порядок"],
     ["e2", "Закинуть лёд в 2 станции"],
@@ -51,6 +55,7 @@ const CK = [
     ["e12", "2 графина воды"]]}
 ];
 const CK_LETTERS = "АБВГДЕ", CK_WD = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"], CK_FIN = "fin";
+const CK_GO = {zone: "Открыть список", wo: "Открыть списания"};
 const CKS = "mechty-ck", CKQ = "mechty-ck-q";
 let ckSt = null, ckBusy = false, ckTimer = 0, ckState = "load";
 const ckj = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || "null") || d; } catch (e) { return d; } };
@@ -78,7 +83,7 @@ function ckDraw(){
       '<span class="cktx"><span class="ckt">' + esc(text) + (days ? ' <em class="ckday' + (today ? " now" : "") + '">' + days.map(n => CK_WD[n]).join(", ") + '</em>' : "") + '</span>' +
       (sub ? '<span class="cksub">' + esc(sub) + '</span>' : "") +
       (on ? '<span class="ckwho">' + esc(on.w || "") + (on.t ? " · " + ckTime(on.t) : "") + (on.pend ? " · ждёт отправки" : "") + '</span>' : "") +
-      '</span><input type="checkbox" data-id="' + id + '"' + (on ? " checked" : "") + ' aria-label="' + esc(text) + '"></label>' + (link ? '<button type="button" class="link ckgo" data-go="' + link + '">Открыть список</button>' : "") + '</li>';
+      '</span><input type="checkbox" data-id="' + id + '"' + (on ? " checked" : "") + ' aria-label="' + esc(text) + '"></label>' + (link ? '<button type="button" class="link ckgo" data-go="' + link + '">' + (CK_GO[link] || "Открыть") + '</button>' : "") + '</li>';
   };
   const left = all.filter(x => !s[x[0]]), fin = s[CK_FIN];
   $("ckList").innerHTML = CK.map((g, i) => {
@@ -104,7 +109,8 @@ async function ckFlush(){
       if (!q.length) break;
       const a = q[0];
       if (a.day !== ckDayNow()){ cks(CKQ, q.slice(1)); continue; }     // вчерашняя отметка — уже не нужна
-      const d = await api(Object.assign({ck: "set", id: a.id, on: a.on ? "1" : "0", rn: a.w}, a.left != null ? {left: a.left} : {}));
+      const d = await api(Object.assign({ck: "set", id: a.id, on: a.on ? "1" : "0", rn: a.w}, a.left != null ? {left: a.left} : {},
+        a.of ? {of: a.of, tot: a.tot || "", g: a.g || "", tx: a.tx || ""} : {}));
       if (d.error === "net" || d.error === "denied"){ ckState = "net"; break; }
       if (d.ok && !d.s){ ckState = "old"; break; }
       cks(CKQ, ckj(CKQ, []).filter(x => x.n !== a.n));
@@ -136,13 +142,18 @@ $("ckList").addEventListener("change", e => {
   buzz(box.checked ? 14 : 8);
   const q = ckj(CKQ, []);
   const e2 = {id: box.dataset.id, on: box.checked, w: me.name, t: Date.now(), day: ckDayNow(), n: Math.random()};
-  if (e2.id === CK_FIN && e2.on){ const s = ckView(); e2.left = CK.flatMap(g => g.items).filter(x => !s[x[0]]).length; }   // для еженедельного отчёта
+  /* для таблицы журнала: какой пункт и сколько пунктов в разделах (ход по разделам считает таблица) */
+  const s = ckView(), all = CK.flatMap(g => g.items), g = CK.find(x => x.items.some(y => y[0] === e2.id));
+  if (e2.on) s[e2.id] = 1; else delete s[e2.id];
+  e2.of = all.length; e2.tot = CK.map(x => x.id + ":" + x.items.length).join(",");
+  e2.g = g ? g.t : "Финальная проверка"; e2.tx = g ? g.items.find(y => y[0] === e2.id)[1] : "Бар готов к открытию";
+  if (e2.id === CK_FIN && e2.on) e2.left = all.filter(x => !s[x[0]]).length;                         // для еженедельного отчёта
   q.push(e2);
   cks(CKQ, q);
   ckDraw(); ckFlush();
 });
 $("ckList").addEventListener("click", e => {
   const b = e.target.closest("button[data-go]");
-  if (b) setSect(b.dataset.go);
+  if (b){ setSect(b.dataset.go); window.scrollTo({top: 0}); }            // раздел — с начала, а не с середины
 });
 window.addEventListener("online", () => { if (R && ckj(CKQ, []).length) ckFlush(); });

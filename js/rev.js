@@ -209,7 +209,7 @@ function rsumDraw(){
 
 function revAdd(i, v, undo, e){
   const r = REV, it = r && r.items[i];
-  if (!it || rview !== "work" || !isFinite(v) || !v) return;
+  if (!it || rview !== "work" || !isFinite(v)) return;                  // 0 — «посчитано, ноль» (позиция кончилась)
   const zi = r.zones.indexOf(rzone);
   it.z[zi] += v; it.t += v; it.pend = true;
   buzz(undo ? 8 : 14);
@@ -223,7 +223,7 @@ function revAdd(i, v, undo, e){
   rsave(RH, all);
 
   const q = rjson(RQ, []);
-  q.push({id:rid(), rk:r.day, pos:it.n, zone:rzone, v});
+  q.push({id:rid(), rk:r.day, pos:it.n, zone:rzone, v, clr: undo && !h[k].length ? 1 : 0});   // отменили всё своё — ячейка снова пустая
   rsave(RQ, q);
   if (!rowner(rzone)){ rclaim(rzone); rzoneDraw(); rhead(); }
   rpatch(i); rqueueDraw();
@@ -240,7 +240,7 @@ async function revFlush(){
       const q = rjson(RQ, []);
       if (!q.length) break;
       const a = q[0];
-      const d = await api({rev:"add", id:a.id, rk:a.rk, pos:a.pos, zone:a.zone, v:String(a.v), rn: me ? me.name : ""});
+      const d = await api({rev:"add", id:a.id, rk:a.rk, pos:a.pos, zone:a.zone, v:String(a.v), clr: a.clr ? "1" : "", rn: me ? me.name : ""});
       if (d.error === "net" || d.error === "denied") break;
       if (!d.ok && !/^(closed|position|bad)$/.test(String(d.error))){   // таблица занята или временная ошибка — повторим, не теряя
         $("rwarn").textContent = "Таблица не ответила — добавления отправятся повторно.";
@@ -292,7 +292,7 @@ $("rlist").addEventListener("submit", e => {
   e.preventDefault();
   const li = e.target.closest("li"), inp = e.target.querySelector("input");
   const c = rcalc(inp.value);
-  if (!isFinite(c.v) || !c.v){ inp.focus(); return; }
+  if (!isFinite(c.v)){ inp.focus(); return; }
   const i = +li.dataset.i;
   revAdd(i, c.v, false, c.e);
   inp.value = ""; li.querySelector(".rprev").textContent = "";
