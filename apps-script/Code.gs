@@ -1051,19 +1051,19 @@ function woTrashedNow(id) {
 /* то же для списка актов — пачкой: кэш одним запросом, Диск — не больше WO_CHECK файлов за раз (новые — первыми);
    остальные считаем на месте и проверим при следующем открытии истории */
 const WO_CHECK = 10;
-function woGoneMap(ids) {
+/* id → true (удалён) / false (на месте); не проверенные в этот раз — без ответа (undefined): решает отметка в журнале */
+function woGoneMap(ids, max) {
   const out = {};
   if (!ids.length) return out;
   const cache = CacheService.getScriptCache(), got = cache.getAll(ids.map(id => "wot:" + id)) || {}, alive = {}, dead = {};
-  let left = WO_CHECK;
+  let left = max || WO_CHECK;
   ids.forEach(id => {
     const c = got["wot:" + id];
-    if (c) { out[id] = c === "1"; return; }                               // «?» — недавно не ответил Диск: на месте
-    out[id] = false;
+    if (c) { if (c !== "?") out[id] = c === "1"; return; }                // «?» — недавно не ответил Диск: не судим
     if (left <= 0) return;
     left--;
     const g = woTrashedNow(id);
-    if (g === null) { cache.put("wot:" + id, "?", 300); return; }      // сбой Диска — не удалён; спросим через 5 минут
+    if (g === null) { cache.put("wot:" + id, "?", 300); return; }      // сбой Диска — не судим; спросим через 5 минут
     out[id] = g;
     (g ? dead : alive)["wot:" + id] = g ? "1" : "0";
   });
@@ -1071,6 +1071,30 @@ function woGoneMap(ids) {
   if (Object.keys(dead).length) cache.putAll(dead, 3600);
   return out;
 }
+/* PDF акта удалили с Диска (корзина, удаление) — акт удалён для всех: его нет в истории у барменов, в сводке менеджера,
+   в расходе, продажах и отчёте. Отметка — столбец K журнала («Удалён с Диска» + дата): по ней остальные разделы не
+   спрашивают Диск. Файл вернули из корзины — при следующей проверке отметка снимается.
+   acts: [{fid, rows: [номера строк], mark}], gone — ответ woGoneMap. Пишется под короткой блокировкой; занято — в другой раз. */
+const WO_GONE_COL = 11;
+function woMarkGone(sh, acts, gone) {
+  const ch = acts.filter(x => x.fid && gone[x.fid] !== undefined && !!gone[x.fid] !== !!x.mark);
+  if (!ch.length) return;
+  let lock = null;
+  try { lock = lockOrBusy(3000); } catch (e) { return; }
+  try {
+    if (String(sh.getRange(1, WO_GONE_COL).getValue()) !== "Удалён с Диска") sh.getRange(1, WO_GONE_COL).setValue("Удалён с Диска").setFontWeight("bold");
+    const stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm");
+    ch.forEach(x => {
+      const v = gone[x.fid] ? stamp : "";
+      x.rows.forEach(r => sh.getRange(r, WO_GONE_COL).setNumberFormat("@").setValue(v));
+      x.mark = v;
+    });
+    SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
+}
+/* акт скрыт: Диск сказал «удалён» или (не проверяли сейчас) в журнале отметка */
+const woHidden = (x, gone) => x.fid && (gone[x.fid] === true || (gone[x.fid] === undefined && !!x.mark));
+
 /* первая не удалённая папка / файл из выдачи Диска */
 function woAlive(it) { while (it.hasNext()) { const x = it.next(); if (!x.isTrashed()) return x; } return null; }
 /* папка вида: id запоминается в свойствах (по имени Диск ищет дольше); папку удалили — ищем по имени или заводим */
@@ -1259,7 +1283,7 @@ function writeoffs(p) {
     let acts = [], by = {};
     const scan = n => {                                                   // последние n строк журнала (не больше 1500)
       acts = []; by = {};
-      const from = Math.max(2, last - n + 1), v = sh.getRange(from, 1, last - from + 1, WO_HEAD.length).getDisplayValues();
+      const from = Math.max(2, last - n + 1), v = sh.getRange(from, 1, last - from + 1, WO_GONE_COL).getDisplayValues();
       for (let i = v.length - 1; i >= 0; i--) {                           // строки акта идут подряд; снизу — новые
         const r = v[i], id = r[9];
         if (!id) continue;
@@ -1267,18 +1291,20 @@ function writeoffs(p) {
         if (!x) {
           if (acts.length >= WO_LIST * 2) return true;                    // с запасом — на случай удалённых PDF
           const m = String(r[7] || "").match(/\/d\/([\w-]{10,})/);
-          x = by[id] = { id: id, date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 0, rows: [], fid: m ? m[1] : "" };
+          x = by[id] = { id: id, date: r[0], no: r[1], who: r[6], url: r[7], at: r[8], n: 0, rows: [], fid: m ? m[1] : "", rn: [], mark: r[WO_GONE_COL - 1] };
           acts.push(x);
         }
         x.n++;
         x.rows.unshift([r[2], r[3], r[4], r[5]]);
+        x.rn.push(from + i);
       }
       return from === 2;                                                  // дошли до начала журнала
     };
     if (last >= 2 && !scan(400)) scan(1500);
     const gone = woGoneMap(acts.map(x => x.fid).filter(Boolean).slice(0, WO_LIST + 10));
-    const out = acts.filter(x => !(x.fid && gone[x.fid])).slice(0, WO_LIST);
-    out.forEach(x => { delete x.fid; });
+    if (sh) woMarkGone(sh, acts.map(x => ({ fid: x.fid, rows: x.rn, mark: x.mark, x: x })), gone);
+    const out = acts.filter(x => !woHidden(x, gone)).slice(0, WO_LIST);
+    out.forEach(x => { delete x.fid; delete x.rn; delete x.mark; });
     return { ok: true, acts: out };
   }
   return { error: "action" };
@@ -1577,15 +1603,21 @@ function mgrWo(p) {
   const iso = d => { const m = String(d).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
   const from = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : "0000-00-00";
   const to = /^\d{4}-\d{2}-\d{2}$/.test(p.to || "") ? p.to : "9999-99-99";
-  const out = { ok: true, from: from, to: to };
+  const out = { ok: true, from: from, to: to, gone: 0 };
   Object.keys(WO_KINDS).forEach(kind => {
-    const sh = woSheet(kind, false), last = sh ? sh.getLastRow() : 0, rows = [];
+    const sh = woSheet(kind, false), last = sh ? sh.getLastRow() : 0, rows = [], acts = {};
     if (last >= 2) {
-      sh.getRange(2, 1, last - 1, WO_HEAD.length).getValues().forEach(r => {
-        const d = iso(String(r[0]).trim());
+      sh.getRange(2, 1, last - 1, WO_GONE_COL).getValues().forEach((r, i) => {
+        const d = iso(String(r[0]).trim()), id = String(r[9]);
         if (!d || d < from || d > to || !r[9]) return;
-        rows.push([String(r[0]).trim(), String(r[1]), String(r[2]), String(r[3]), num(r[4]), String(r[5]), String(r[6]), String(r[7]), String(r[9])]);
+        const a = acts[id] || (acts[id] = { fid: (String(r[7]).match(/\/d\/([\w-]{10,})/) || [])[1] || "", rows: [], mark: String(r[WO_GONE_COL - 1] || ""), list: [] });
+        a.rows.push(i + 2);
+        a.list.push([String(r[0]).trim(), String(r[1]), String(r[2]), String(r[3]), num(r[4]), String(r[5]), String(r[6]), String(r[7]), id]);
       });
+      /* PDF удалили с Диска — акт в сводку не попадает (как и в историю у барменов); новые акты — первыми на проверку */
+      const all = Object.keys(acts).map(k => acts[k]).reverse(), gone = woGoneMap(all.map(a => a.fid).filter(Boolean), 40);
+      woMarkGone(sh, all, gone);
+      all.reverse().forEach(a => { if (woHidden(a, gone)) out.gone++; else a.list.forEach(x => rows.push(x)); });
     }
     out[kind] = rows;
   });
@@ -2014,7 +2046,8 @@ function mgrUsage(p) {
   Object.keys(WO_KINDS).forEach(k => {
     const sh = woSheet(k, false), last = sh ? sh.getLastRow() : 0;
     if (last < 2) return;
-    sh.getRange(2, 1, last - 1, 9).getValues().forEach(r => {
+    sh.getRange(2, 1, last - 1, WO_GONE_COL).getValues().forEach(r => {
+      if (String(r[WO_GONE_COL - 1] || "").trim()) return;              // PDF удалили с Диска — акта нет
       const nk = nameKey(r[2]);
       let key = byName[nk];
       /* одно название в двух разделах (Мандарин — фрукты и настойка): по единице акта, если подходит ровно одна позиция */
