@@ -297,8 +297,24 @@ function revDay(save) {
   return st;
 }
 const revDaySave = st => PropertiesService.getScriptProperties().setProperty("REV_DAY", JSON.stringify(st));
-/* столбец «Итога» идущего дня — для сводок бар-менеджера (незаконченный день в них не берём) */
-function revOpenCol() { const st = revDay(false); return st ? st.tc : 0; }
+/* день сдан: посчитаны все зоны и каждый, кто считал, нажал «Завершить» — ревизия готова сразу, не дожидаясь 9:00 */
+function revDone(st) {
+  if (!st || !ZONES.every(z => st.zones[z])) return false;
+  const fin = st.fin || {};
+  return ZONES.every(z => fin[mnorm(st.zones[z].who)]);
+}
+/* когда сдали день: «dd.MM.yyyy» → мс (время последнего «Завершить»); хранится, пока день есть в «Итоге» (последние 400) */
+const REV_AT = "REV_AT";
+function revAtMap() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(REV_AT) || "{}") || {}; } catch (e) { return {}; } }
+function revAtSet(date, t) {
+  const m = revAtMap();
+  if (t) m[date] = t; else delete m[date];
+  const keys = Object.keys(m).sort((a, b) => m[a] - m[b]);
+  keys.slice(0, Math.max(0, keys.length - 400)).forEach(k => { delete m[k]; });
+  PropertiesService.getScriptProperties().setProperty(REV_AT, JSON.stringify(m));
+}
+/* столбец «Итога» идущего дня — для сводок бар-менеджера (незаконченный день в них не берём; сданный — уже берём) */
+function revOpenCol() { const st = revDay(false); return st && !revDone(st) ? st.tc : 0; }
 /* какие зоны посчитаны в каждый день: «dd.MM.yyyy» → «Кафе,Клуб» (по шапке «По зонам»; старая схема — дата над пятью зонами) */
 function revDayZones(ss) {
   const zs = ss.getSheetByName(REV_ZONES), lc = zs ? zs.getLastColumn() : 0, out = {};
@@ -486,6 +502,7 @@ function revFin(p) {
     if (p.on === "1") st.fin[mnorm(rn)] = { name: rn, at: Date.now() };
     else delete st.fin[mnorm(rn)];
     revDaySave(st);
+    revAtSet(st.date, revDone(st) ? Date.now() : 0);                   // сдали всё — ревизия готова; вернулись — снова идёт
   }
   return { ok: true, rev: revState() };
 }
@@ -1072,6 +1089,9 @@ function doPost(e) {
     if (p.mgr === "prices") return jsonOut(mgrPrices(p));
     if (/^report(set|send|auto)$/.test(p.mgr || "")) return jsonOut(mgrReportPost(p));
     if (p.mgr === "dishset") return jsonOut(mgrDishSet(p));
+    if (p.mgr === "salesput") return jsonOut(mgrSalesPut(p));
+    if (p.mgr === "zagset") return jsonOut(mgrZagSet(p));
+    if (p.mgr === "refauto") return jsonOut(mgrRefAuto(p));
     return jsonOut({ error: "action" });
   } catch (err) {
     console.error("doPost " + p.wo + " " + String(p.id || "") + ": " + (err && err.stack || err));   // видно в «Выполнениях»
@@ -1641,6 +1661,10 @@ function manager(p) {
   if (p.mgr === "pubraw") return mgrPubRaw();
   if (p.mgr === "report") return mgrReport(p);
   if (p.mgr === "dishes") return mgrDishes();
+  if (p.mgr === "period") return mgrPeriod(p);
+  if (p.mgr === "sales") return mgrSales(p);
+  if (p.mgr === "zags") return mgrZags();
+  if (p.mgr === "refauto") return mgrRefAuto(p);
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -1768,6 +1792,42 @@ function mgrRefSet(p) {
   } finally { lock.releaseLock(); }
 }
 
+/* ── Справочник: единицы и объёмы бутылок по умолчанию ──
+   [раздел, позиция, ед., тара, уверенность 2/1/0] по позициям бланка: бар считает бутылочное в литрах, тара — объём бутылки
+   (по нему приход в бутылках переводится в литры). «Заполнить пустое» во вкладке «Справочник» пишет только в пустые ячейки,
+   в «Заметке» — «авто — проверьте» (0 — «авто, не уверен — проверьте»). Проверьте объёмы по своим бутылкам. */
+const REF_AUTO = [["Вермуты","Вермут Мартини Бьянко","литр",1.0,1],["Вермуты","Вермут Мартини Россо","литр",1.0,1],["Вермуты","Вермут Мартини Фиеро","литр",1.0,1],["Вермуты","Вермут Мартини Экстра Драй","литр",1.0,1],["Германия","Португизер","литр",0.75,2],["Германия","Гевюрцтраминер Ханс Баер","литр",0.75,2],["Германия","Урбан Рислинг","литр",0.75,2],["Испания","Сан валентин парельяда","литр",0.75,2],["Испания","Матсу","литр",0.75,2],["Италия","Гави Ла Сколько","литр",0.75,2],["Италия","Пфефферер","литр",0.75,2],["Италия","Верментино Вилла Солаис","литр",0.75,2],["Италия","Меро Каза Дкфра","литр",0.75,2],["Италия","Санджовезе Алма Романа","литр",0.75,2],["Новая Зеландия","мисти клифф совиньон блан","литр",0.75,2],["Португалия","Маре Гриль Белое","литр",0.75,2],["Португалия","Маре Гриль Розе","литр",0.75,2],["Россия","Голубицкое Каберне совиньон","литр",0.75,2],["США","Зинфандель Краб энд Мо","литр",0.75,2],["Франция","Ле Гранд Нуар Пино Нуар","литр",0.75,2],["Франция","Бордо Ситран Руж","литр",0.75,2],["Франция","Шабли Жан Марк","литр",0.75,2],["Чили","Токорнал Шардоне","литр",0.75,2],["Чили","Токорнал Розе","литр",0.75,2],["Чили","Селар Селекшн Совиньон Блан","литр",0.75,2],["Чили","Селар Селекшн Карменер","литр",0.75,2],["ЮАР","Шенен Блан Кейп ориджинал","литр",0.75,2],["Шампанские","Дево Кюве","литр",0.75,2],["Шампанские","Вдова Клико","литр",0.75,2],["Вина игристые","Игристое розлив","литр",0.75,1],["Вина игристые","Тет де Шеваль брют","литр",0.75,2],["Вина игристые","Мартини Просекко","литр",0.75,2],["Вина игристые","Мартини Просекко Розе","литр",0.75,2],["Вина игристые","Мартини Асти","литр",0.75,2],["Вина игристые","Мартини Брют","литр",0.75,2],["Вина игристые","Бруни Просекко","литр",0.75,2],["Вина игристые","Мартини Секко","литр",0.75,2],["Вина игристые","Мучо Мас","литр",0.75,2],["Виски","Дюарс Уайт Лейбл","литр",0.7,1],["Виски","Дюарс 8","литр",0.7,1],["Виски","Виски Чивас Ригал 12лет","литр",0.7,1],["Виски","Талмор Дью","литр",0.7,1],["Виски","Джемесон","литр",0.7,1],["Виски","Джим Бим","литр",0.7,1],["Виски","Манки Шолдер","литр",0.7,2],["Виски","Гленфиддик 12 лет","литр",0.7,1],["Виски","Виски Хаус","литр","",0],["Виски","Аберфелди","литр",0.7,2],["Виски","Тилинг","литр",0.7,2],["Водка","Лаб груша","литр",0.5,0],["Водка","Беленькая","литр",0.5,1],["Водка","Белуга Нобл","литр",0.7,0],["Водка","Белуга Голд Лайн","литр",0.7,0],["Водка","Ортодокс","литр",0.5,1],["Водка","Грей Гуз","литр",0.7,1],["Водка","Арктика","литр",0.5,0],["Водка","Онегин","литр",0.5,1],["Джин","Джин Хендрикс","литр",0.7,2],["Джин","Хинт","литр",0.7,0],["Джин","Босфорд","литр",0.7,0],["Джин","Антидот","литр",0.7,0],["Джин","Хопперс оригинал","литр",0.7,0],["Джин","Хопперс лаванда","литр",0.7,0],["Джин","Хопперс мандарин","литр",0.7,0],["Джин","Бомбей Сапфир","литр",0.7,1],["Джин","Джин Баристер","литр",0.7,0],["Коньяк","Бисквит вс","литр",0.5,0],["Коньяк","Бисквит всоп","литр",0.5,0],["Коньяк","Ной 5 зв","литр",0.5,1],["Коньяк","Камю вс","литр",0.5,0],["Коньяк","Камю всоп","литр",0.5,0],["Ликеры","Ликер Амаретто","литр",0.7,0],["Ликеры","Ликер Банан","литр",0.7,0],["Ликеры","Ликер Бенедиктин","литр",0.7,1],["Ликеры","Ликер Бэйлис","литр",0.7,1],["Ликеры","Ликер Какао","литр",0.7,0],["Ликеры","Ликер Кофе","литр",0.7,0],["Ликеры","Ликер мараскино","литр",0.7,1],["Ликеры","Ликер Смородина","литр",0.7,0],["Ликеры","Ликер Трипл Сек","литр",0.7,0],["Ликеры","Ликер Фиалка","литр",0.7,0],["Ликеры","Ликер Ягермайстер","литр",0.7,1],["Ликеры","Италикус","литр",0.7,2],["Ликеры","Ликер мята","литр",0.7,0],["Ликеры","Белуга Хантинг Ягодная","литр",0.7,0],["Ликеры","Белуга Хантинг Травяная","литр",0.7,0],["Ликеры","Белуга Ботаника Роза Лайм","литр",0.7,0],["Ликеры","Белуга Ботаника Огурец Мята","литр",0.7,0],["Ликеры","Фернет Бранка","литр",0.7,1],["Ликеры","Бранка менте","литр",0.7,1],["Напитки, настойки","Ангостура Биттерс","литр",0.2,1],["Напитки, настойки","Апероль","литр",1.0,0],["Напитки, настойки","Апперитив Земляника","литр","",0],["Напитки, настойки","Херес","литр",0.75,1],["Напитки, настойки","Кампари","литр",1.0,0],["Напитки, настойки","Сарти","литр",0.7,1],["Напитки, настойки","Соджу","литр",0.36,1],["Ром","Бакарди Оакхарт","литр",0.7,1],["Ром","Ром Хаус","литр","",0],["Ром","Матусалем платино","литр",0.7,1],["Ром","Матусалем 7","литр",0.7,1],["Ром","Ангостура Тамбу","литр",0.7,1],["Ром","Ром Девис Айленд","литр",0.7,0],["Текила","Текила Хаус","литр","",0],["Текила","Хосе Куэрво сильвер","литр",0.7,1],["Текила","Хосе Куэрво Репосадо","литр",0.7,1],["Текила","Текила Ла Павеса","литр",0.7,0],["Б/алко","Сан Бенедето","шт","",1],["Б/алко","Вода Бон аква/Байкал","шт","",1],["Б/алко","Байкал стекло","шт","",1],["Б/алко","Кола тоник литровые","литр",1.0,2],["Б/алко","Вода минеральная розлив","литр","",0],["Б/алко","Кока кола тоник 330 мл","шт","",1],["Б/алко","Ред Булл 250мл","шт",24,2],["Б/алко","Сок, л","литр",1.0,1],["Б/алко","Лимонад Шихан","шт","",0],["Б/алко","Сок Лайма","литр","",0],["Б/алко","милкис","шт","",1],["Б/алко","Вода кокосовая","литр","",0],["Пиво в бутылках","Корона","шт",24,1],["Пиво в бутылках","Блю Мун","шт","",1],["Пиво в бутылках","Бакалар темный","шт","",1],["Пиво в бутылках","МортСюбите","шт","",1],["Пиво в бутылках","Августинер","шт",20,1],["Пиво в бутылках","Сидр","шт","",1],["Пиво в бутылках","Крушовице безалко","шт","",1],["Пиво в бутылках","Ла коста фреска","шт","",1],["Пиво в бутылках","Балтика нулевка грейпфрут","шт","",1],["Пиво разлив","Шихан/Жигули","литр","",1],["Пиво разлив","Мейзон","литр","",1],["Пиво разлив","Крушовице","литр","",1],["Сиропы, пюре","Пюре Маракуйя с/м","кг",1.0,1],["Сиропы, пюре","Пюре в ассортименте","литр","",0],["Сиропы, пюре","Сироп в ассортименте","литр",1.0,0],["Сиропы, пюре","Клавис","литр","",0],["Сиропы, пюре","Концентрат в ассортименте","литр","",0],["Чай, кофе","Горячиий шоколад","кг","",2],["Чай, кофе","Кофе","кг",1.0,1],["Чай, кофе","Чай ассам, кг","кг","",2],["Чай, кофе","Чай башкирский, кг","кг","",2],["Чай, кофе","Чай гречишный, кг","кг","",2],["Чай, кофе","Чай лапсанг сушонг","кг","",2],["Чай, кофе","Чай молочный улун, кг","кг","",2],["Чай, кофе","Чай пуэр, кг","кг","",2],["Чай, кофе","Чай сладкий поцелуй, кг","кг","",2],["Чай, кофе","Чай таежный, кг","кг","",2],["Чай, кофе","Чай татарский, кг","кг","",2],["Чай, кофе","Чай те гуань инь, кг","кг","",2],["Чай, кофе","Саган Дайля","кг","",2],["Чай, кофе","Матча","кг","",2],["Чай, кофе","Каркаде","кг","",2],["Чай, кофе","Роза","кг","",2],["Чай, кофе","Ройбуш","кг","",2],["Чай, кофе","Марокканская мята","кг","",2],["Чай, кофе","Дикая вишня","кг","",2],["Десерты","Мёд","кг","",2],["Десерты","Сахар","кг","",2],["Десерты","Сахарная вата","кг","",2],["Десерты","Сахар ванильный","кг","",2],["Десерты","Фруктоза","кг","",2],["Десерты","Шоколад, кг","кг","",2],["Десерты","Конфеты","кг","",1],["Десерты","варенье шишковое","кг","",1],["Десерты","Ванилин","кг","",2],["Десерты","Малина сублимированная","кг","",2],["Десерты","Паста фисташковая","кг","",2],["Заправки, соуса, масло","Соус Табаско","литр",0.06,1],["Заправки, соуса, масло","ворчестер","литр","",1],["Консервация, заморозка","Ягоды с/м","кг","",2],["Молочные продукты","Молоко","литр",1.0,1],["Молочные продукты","Молоко кокосовое","литр","",1],["Молочные продукты","Молоко сгущ","кг","",1],["Молочные продукты","Сливки 33 % и 11%","литр","",1],["Молочные продукты","Мороженое","кг","",1],["Молочные продукты","Яичный белок, желток","литр","",2],["Специи, зелень","Пищевая кислота","кг","",2],["Специи, зелень","Соль","кг","",2],["Специи, зелень","Специи","кг","",2],["Специи, зелень","Корица в палочках","кг","",2],["Специи, зелень","Желатин","кг","",2],["Фрукты, овощи","Апельсин свежий","кг","",2],["Фрукты, овощи","Клубника свежая","кг","",2],["Фрукты, овощи","Малина","кг","",2],["Фрукты, овощи","Лайм свежий","кг","",2],["Фрукты, овощи","Лимон свежий","кг","",2],["Фрукты, овощи","Огурец свежий","кг","",2],["Фрукты, овощи","Яблоко свежее","кг","",2],["Фрукты, овощи","Фейхоа","кг","",2],["Фрукты, овощи","Грейп","кг","",2],["Фрукты, овощи","Груша","кг","",2],["Фрукты, овощи","Имбирь","кг","",2],["Фрукты, овощи","Мандарин","кг","",2],["Фрукты, овощи","Маракуйя","кг","",2],["Фрукты, овощи","Тархун","кг","",2],["Фрукты, овощи","Щавель, шпинат свежий","кг","",2],["Фрукты, овощи","Хрен","кг","",2],["Фрукты, овощи","Лимонная трава","кг","",2],["Фрукты, овощи","Листья лайма","кг","",2],["Фрукты, овощи","Базилик/розмарин/мята/тимьян","кг","",2],["Фрукты, овощи","Папая сушеная","кг","",2],["Настойки","Малина мята","литр","",2],["Настойки","Вишня виски","литр","",2],["Настойки","Айриш","литр","",2],["Настойки","Лимончелло","литр","",2],["Настойки","Мандарин","литр","",2],["Настойки","Маракуйя Пломбир","литр","",2],["Настойки","Клубника каркаде","литр","",2],["Заготовки","Микс кислот","литр","",2],["Заготовки","Сироп сахарный","литр","",2],["Заготовки","Фреш апельсиновый пф","литр","",2],["Заготовки","Лимонный сок пф","литр","",2],["Заготовки","Облепиха шраб","литр","",2],["Заготовки","Кордиал Гибискус","литр","",2],["Заготовки","Пена игристого","литр","",2],["Заготовки","Пена пломбир","литр","",2],["Заготовки","Медовый сироп","литр","",2],["Заготовки","Колд брю","литр","",2],["Заготовки","Сироп Щавель пф","литр","",2],["Заготовки","Сироп Базилик п/ф","литр","",2],["Заготовки","Кордиал чили барбарис","литр","",2],["Заготовки","Кордиал цитрусовый","литр","",2],["Заготовки","Кордиал цитрус тархун","литр","",2],["Заготовки","Пюре вишня п/ф","литр","",2],["Заготовки","Премикс для лимонада вишня персик","литр","",2],["Заготовки","Лимонад грейпфрут","литр","",2],["Премиксы на коктейли","Пф для Лонг Айленд","литр","",2],["Премиксы на коктейли","Пф для Негрони","литр","",2],["Премиксы на коктейли","порнстар мартини (без игристого)","литр","",2],["Премиксы на коктейли","Сигма бой","литр","",2],["Премиксы на коктейли","Розовая пантера","литр","",2],["Премиксы на коктейли","Мандариновый Спритс","литр","",2],["Премиксы на коктейли","Пинк Леди","литр","",2],["Премиксы на коктейли","Вишневый Пирог","литр","",2],["Премиксы на коктейли","Брекфест Тини","литр","",2],["Премиксы на коктейли","Тропики","литр","",2],["Премиксы на коктейли","Чили барбарис","литр","",2],["Премиксы на коктейли","Саммер Спритц","литр","",2],["Премиксы на коктейли","Огуречный хьюго","литр","",2],["Премиксы на коктейли","Груша жасмин","литр","",2],["Премиксы на коктейли","Блю Колада","литр","",2],["Премиксы на коктейли","Май тай","литр","",2]];
+/* p.go = "1" (POST) — записать; иначе — что будет записано: [{sec, n, u, tara, c}] */
+function mgrRefAuto(p) {
+  const go = String(p.go) === "1";
+  if (go && !mgrOk(p.mk)) return { error: "mgr" };
+  const auto = {};
+  REF_AUTO.forEach(x => { auto[refKey(x[0], x[1])] = x; });
+  const lock = go ? lockOrBusy(15000) : null;
+  try {
+    const sh = refSheet(go), last = sh ? sh.getLastRow() : 0, out = [];   // предпросмотр ничего не пишет
+    if (last < 2) return { ok: true, rows: out };
+    const v = sh.getRange(2, 1, last - 1, 9).getValues();
+    v.forEach((r, i) => {
+      const a = auto[refKey(r[0], r[1])];
+      if (!a) return;
+      const u = String(r[2]).trim() ? "" : a[2], t = String(r[4]).trim() === "" && a[3] !== "" ? a[3] : "";
+      if (!u && t === "") return;
+      out.push({ sec: r[0], n: r[1], u: u, tara: t, c: a[4], row: i + 2, note: String(r[8]).trim() });
+    });
+    if (go) {
+      out.forEach(x => {
+        if (x.u) sh.getRange(x.row, 3).setNumberFormat("@").setValue(x.u);
+        if (x.tara !== "") sh.getRange(x.row, 5).setValue(x.tara);
+        if (!x.note) sh.getRange(x.row, 9).setValue(x.c ? "авто — проверьте" : "авто, не уверен — проверьте");
+      });
+      SpreadsheetApp.flush();
+      CacheService.getScriptCache().remove("dunits");                     // единицы ежедневной ревизии — заново
+    }
+    return { ok: true, rows: out.map(x => ({ sec: x.sec, n: x.n, u: x.u, tara: x.tara, c: x.c })), done: go };
+  } finally { if (lock) lock.releaseLock(); }
+}
+
 /* ── Автозаявка (бар-менеджер) ──
    К заказу = норма − последний остаток, по позициям справочника с нормой. Остаток — из той ревизии, что свежее:
    ежедневной (лист «Итог», последний законченный пересчёт; позиции сопоставляются по названию) или месячной
@@ -1781,10 +1841,12 @@ function mgrOrder() {
   const ref = mgrRef();
   if (!ref.ok) return ref;
   const out = { ok: true, src: { m: null, d: null }, rows: [], nonorm: 0 };
-  const stock = {};                                                    // ключ справочника → {q, from, date}
-  const put = (k, q, from, date) => { const s = stock[k]; if (!s || date > s.date) stock[k] = { q: q, from: from, date: date }; };
+  const stock = {};                                                    // ключ справочника → {q — в единице справочника, from, date, at}
+  const put = (k, q, from, date, at) => { const s = stock[k]; if (!s || at > s.at) stock[k] = { q: q, from: from, date: date, at: at }; };
+  const RU = {}, RT = {};
+  ref.rows.forEach(r => { const k = refKey(r[0], r[1]); RU[k] = refUn(r[2]); RT[k] = num(String(r[4]).replace(",", ".")); });
 
-  /* месячная: последняя закрытая или готовая (идёт — прошлая) */
+  /* месячная: последняя закрытая или готовая (идёт — прошлая); числа — в единице справочника */
   const ms = mrevRead();
   if (ms && ms.block) {
     /* готовая (все зоны) — как закрытая; дата — когда закончили считать; пока идёт новая — прошлая со своей датой */
@@ -1794,37 +1856,28 @@ function mgrOrder() {
     ms.rows.forEach(x => {
       if (x.t === "h" || x.t === "s") { sec = x.n; return; }
       const q = open ? x.p : x.tot;
-      if (q != null) put(refKey(sec, x.n), q, "m", date || "0000-00-00");
+      if (q != null) put(refKey(sec, x.n), q, "m", date || "0000-00-00", date ? isoAt(date, 33) - 60000 : 0);
     });
   }
 
-  /* ежедневная: последний законченный пересчёт листа «Итог» */
+  /* ежедневная: последняя ревизия (все зоны; сданная — сразу), числа — из единицы ревизии в единицу справочника */
   try {
-    const ts = revTotal(revBook()), oc = revOpenCol(), items = revPositions(ts);
-    let col = oc ? oc - 1 : ts.getLastColumn(), partial = "";
-    /* день, где посчитали не все зоны (клуб закрыт) — не полный остаток: берём последний день с полным набором зон */
-    if (col >= 2) {
-      const zmap = revDayZones(revBook()), from = Math.max(2, col - 13), hd = ts.getRange(1, from, 1, col - from + 1).getDisplayValues()[0];
-      const zn = hd.map(d => (zmap[String(d).trim()] || "").split(",").filter(Boolean).length), full = Math.max.apply(null, zn);
-      if (full > 0 && zn[zn.length - 1] < full) {
-        partial = String(hd[hd.length - 1]).trim() + " (" + zmap[String(hd[hd.length - 1]).trim()] + ")";
-        for (let i = zn.length - 1; i >= 0; i--) if (zn[i] === full) { col = from + i; break; }
-      }
-    }
-    if (col >= 2 && items.length) {
-      const hd = ts.getRange(1, col, 2, 1).getDisplayValues(), date = dmy(hd[0][0]);
-      const vals = ts.getRange(3, col, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
-      const byName = {};                                               // название → ключ справочника (только однозначные, только из бланка)
+    const tl = revTimeline(), R = tl.revs[tl.revs.length - 1], L = tl.all[tl.all.length - 1], ts = revTotal(revBook()), items = revPositions(ts);
+    if (R && items.length) {
+      const date = R.iso, vals = ts.getRange(3, R.col, items[items.length - 1].row - 2, 1).getValues().map(r => r[0]);
+      const byName = {}, du = dailyUnits(ref);                         // название → ключ справочника (только однозначные, только из бланка)
       ref.rows.forEach(r => { if (r[9] !== 1) return; const k = nameKey(r[1]); byName[k] = k in byName ? null : refKey(r[0], r[1]); });
-      const miss = [];
+      const miss = [], unc = [];
       let n = 0;
       items.forEach(x => {
         const v = vals[x.row - 3], k = byName[nameKey(x.n)];
         if (!k) { miss.push(x.n); return; }
         if (v === "" || v == null) return;
-        n++; put(k, num(v), "d", date || "0000-00-00");
+        const q = conv(num(v), du(x.n) === "л" ? "литр" : du(x.n), RU[k], RT[k]);
+        if (q == null) { unc.push(x.n); return; }
+        n++; put(k, q, "d", date, R.at);
       });
-      out.src.d = { date: date, name: String(hd[1][0] || ""), n: n, miss: miss, partial: partial };
+      out.src.d = { date: date, name: R.who, n: n, miss: miss, unc: unc, partial: L && L !== R ? L.d + (L.z ? " (" + L.z + ")" : "") : "" };
     }
   } catch (e) { out.src.d = null; }
 
@@ -1832,8 +1885,8 @@ function mgrOrder() {
   ref.rows.forEach(r => {
     const norm = num(String(r[5]).replace(",", "."));
     if (!String(r[5]).trim() || !(norm > 0)) { out.nonorm++; return; }
-    const s = stock[refKey(r[0], r[1])] || null;
-    const inq = s && s.date > "0000-00-00" ? (inc[refKey(r[0], r[1])] || []).filter(x => x.iso > s.date).reduce((a, x) => a + x.q, 0) : 0;
+    const k = refKey(r[0], r[1]), s = stock[k] || null;
+    const inq = s && s.at ? (inc[k] || []).filter(x => incAt(x.iso, x.w) > s.at).reduce((a, x) => a + (conv(x.q, x.u, RU[k], RT[k]) || 0), 0) : 0;
     out.rows.push({ sec: r[0], n: r[1], u: r[2], code: r[3], tara: num(String(r[4]).replace(",", ".")), norm: norm,
       sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "", inq: Math.round(inq * 1000) / 1000 });
   });
@@ -1916,7 +1969,9 @@ function mgrOrders(p) {
    В справочник запоминаются название и коэффициент R-Keeper (J, K), код — если пуст, цена закупки — за единицу позиции. */
 const IN_SHEET = "Журнал прихода";
 const IN_HEAD = ["Дата", "№ накладной", "Поставщик", "Раздел", "Позиция", "Кол-во", "Ед. изм.", "Цена за ед.", "Сумма",
-  "Код R-Keeper", "Название в R-Keeper", "Кол-во в R-Keeper", "Ед. R-Keeper", "Коэф.", "Загрузил", "Записано", "id"];
+  "Код R-Keeper", "Название в R-Keeper", "Кол-во в R-Keeper", "Ед. R-Keeper", "Коэф.", "Загрузил", "Записано", "id", "До/после ревизии"];
+/* id строки — 17-й столбец; 18-й — поставка в день ревизии пришла «до» или «после» неё (пусто — в середине дня) */
+const IN_ID = 17, IN_WHEN = 18;
 
 function inSheet(create) {
   const ss = revBook(), sh = ss.getSheetByName(IN_SHEET);
@@ -1940,7 +1995,8 @@ function mgrIn(p) {
     const date = ruDate(r.date), rkq = num(r.rkq), k = num(r.k), n = clean(r.n, 200);
     if (!date || !(rkq > 0) || !(k > 0) || !n) return { error: "bad" };
     rows.push({ date: date, no: clean(r.no, 40), sup: clean(r.sup, 120), code: clean(r.code, 40), rkn: clean(r.rkn, 200),
-      rku: clean(r.rku, 20), rkq: rkq, price: num(r.price), sum: num(r.sum), sec: clean(r.sec, 120), n: n, k: k, rep: Math.max(0, Math.floor(num(r.rep))) });
+      rku: clean(r.rku, 20), rkq: rkq, price: num(r.price), sum: num(r.sum), sec: clean(r.sec, 120), n: n, k: k, rep: Math.max(0, Math.floor(num(r.rep))),
+      when: r.when === "до" || r.when === "после" ? r.when : "" });
   }
   if (!rows.length) return { error: "bad" };
   const lock = lockOrBusy(20000);
@@ -1950,7 +2006,8 @@ function mgrIn(p) {
     const at = {};
     rv.forEach((r, i) => { at[refKey(r[0], r[1])] = i; });
     const sh = inSheet(true), last = sh.getLastRow();
-    const ids = new Set(last >= 2 ? sh.getRange(2, IN_HEAD.length, last - 1, 1).getValues().map(r => String(r[0])) : []);
+    if (sh.getLastColumn() < IN_HEAD.length) sh.getRange(1, 1, 1, IN_HEAD.length).setValues([IN_HEAD]).setFontWeight("bold");   // лист прошлой версии
+    const ids = new Set(last >= 2 ? sh.getRange(2, IN_ID, last - 1, 1).getValues().map(r => String(r[0])) : []);
     const stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm"), add = [], touched = {}, miss = [];
     let dup = 0;
     rows.forEach(r => {
@@ -1961,13 +2018,16 @@ function mgrIn(p) {
       if (ids.has(id)) { dup++; return; }
       ids.add(id);
       const q = Math.round(r.rkq * r.k * 1000) / 1000, pu = r.price > 0 ? Math.round(r.price / r.k * 100) / 100 : "";
-      add.push([r.date, r.no, r.sup, rv[i][0], rv[i][1], q, rv[i][2], pu, r.sum || (r.price > 0 ? Math.round(r.price * r.rkq * 100) / 100 : ""),
-        r.code, r.rkn, r.rkq, r.rku, r.k, who, stamp, id]);
+      add.push([r.date, r.no, r.sup, rv[i][0], rv[i][1], q, refUn(rv[i][2]), pu, r.sum || (r.price > 0 ? Math.round(r.price * r.rkq * 100) / 100 : ""),
+        r.code, r.rkn, r.rkq, r.rku, r.k, who, stamp, id, r.when]);
       const ref = rv[i];                                                // справочник: запомнить, как эта позиция зовётся в R-Keeper
       if (r.rkn) ref[9] = r.rkn;
       ref[10] = r.k; ref[11] = r.rku;                                   // коэффициент — для этой единицы R-Keeper
       if (r.code && !String(ref[3]).trim()) ref[3] = r.code;
       if (pu !== "") ref[7] = pu;
+      if (r.sup && !String(ref[6]).trim()) ref[6] = r.sup;               // поставщик — из первой накладной
+      /* литровая позиция пришла бутылками — коэффициент и есть объём бутылки: тара, если её ещё нет */
+      if (!String(ref[4]).trim() && refUn(ref[2]) === "литр" && /^(бут|шт)/i.test(r.rku) && r.k > 0 && r.k <= 5) ref[4] = r.k;
       touched[i] = 1;
       /* сопоставление исправили: тот же код или название R-Keeper у другой позиции — снять, иначе следующая накладная уйдёт туда же */
       rv.forEach((x, j) => {
@@ -1983,12 +2043,14 @@ function mgrIn(p) {
       sh.getRange(top, 7, add.length, 1).setNumberFormat("@");
       sh.getRange(top, 10, add.length, 2).setNumberFormat("@");
       sh.getRange(top, 13, add.length, 1).setNumberFormat("@");
-      sh.getRange(top, 15, add.length, 3).setNumberFormat("@");
+      sh.getRange(top, 15, add.length, 4).setNumberFormat("@");
       sh.getRange(top, 1, add.length, IN_HEAD.length).setValues(add);
     }
     Object.keys(touched).forEach(i => {
       const r = rv[i];
       rs.getRange(+i + 2, 4).setNumberFormat("@").setValue(r[3]);
+      rs.getRange(+i + 2, 5).setValue(r[4]);
+      rs.getRange(+i + 2, 7).setValue(r[6]);
       rs.getRange(+i + 2, 8).setValue(r[7]);
       rs.getRange(+i + 2, 12).setNumberFormat("@");
       rs.getRange(+i + 2, 10, 1, 3).setValues([[r[9], r[10], r[11]]]);
@@ -2009,15 +2071,16 @@ function mgrInList(p) {
   });
   return { ok: true, from: from, to: to, rows: rows };
 }
-/* приход по позициям: ключ справочника → [{iso, q}] */
+/* приход по позициям: ключ справочника → [{iso, q, u — единица позиции на момент записи (пусто — тогда «бутылки»), w — до / после ревизии}] */
 function inByKey() {
-  const sh = inSheet(false), last = sh ? sh.getLastRow() : 0, out = {};
-  if (last >= 2) sh.getRange(2, 1, last - 1, 6).getValues().forEach(r => {
+  if (MEMO.inc) return MEMO.inc;
+  const sh = inSheet(false), last = sh ? sh.getLastRow() : 0, out = {}, wc = sh && sh.getLastColumn() >= IN_WHEN ? IN_WHEN : 7;
+  if (last >= 2) sh.getRange(2, 1, last - 1, wc).getValues().forEach(r => {
     const d = dmy(r[0]);
     if (!d) return;
-    (out[refKey(r[3], r[4])] = out[refKey(r[3], r[4])] || []).push({ iso: d, q: num(r[5]) });
+    (out[refKey(r[3], r[4])] = out[refKey(r[3], r[4])] || []).push({ iso: d, q: num(r[5]), u: String(r[6]).trim() || "бут", w: wc >= IN_WHEN ? String(r[IN_WHEN - 1]).trim() : "" });
   });
-  return out;
+  return MEMO.inc = out;
 }
 
 /* ── Расход и странности (бар-менеджер) ──
@@ -2027,14 +2090,15 @@ function inByKey() {
 const USE_D = 60, USE_M = 24;
 
 /* количество из акта — в единицах позиции; несовместимые единицы — null */
-/* tara — из справочника: у позиции в бутылках (ед. пусто / «бут») это объём бутылки в литрах, у литровой — объём упаковки */
+/* tara — из справочника: у литровой позиции (ед. «литр» или пусто — бар считает бутылочное в литрах) это объём бутылки
+   или упаковки в литрах, у позиции в бутылках («бут») — объём бутылки */
 function woConv(q, wu, pu, tara) {
-  const w = String(wu || "").trim().toLowerCase().replace(/\.$/, ""), u = String(pu || "").trim().toLowerCase();
+  const w = String(wu || "").trim().toLowerCase().replace(/\.$/, ""), u = String(pu || "").trim().toLowerCase() || "литр";
   const L = /^(л|литр)$/, KG = /^кг$/, PC = /^(шт|бут)$/;
   if (L.test(u)) return L.test(w) ? q : w === "мл" ? q / 1000 : PC.test(w) && tara > 0 ? q * tara : null;
   if (KG.test(u)) return KG.test(w) ? q : /^(г|гр)$/.test(w) ? q / 1000 : null;
   if (u === "шт") return PC.test(w) ? q : null;
-  if (u === "" || u === "бут") {                                        // бутылки: 1000 мл при таре 0,5 — 2 бутылки
+  if (u === "бут") {                                                    // бутылки: 1000 мл при таре 0,5 — 2 бутылки
     if (PC.test(w)) return q;
     return tara > 0 ? (L.test(w) ? q / tara : w === "мл" ? q / 1000 / tara : null) : null;
   }
@@ -2109,8 +2173,342 @@ function mgrUsage(p) {
       if (q > 0) (wo[key] = wo[key] || []).push({ iso: iso, q: Math.round(q * 1000) / 1000, t: ruTime(r[8] instanceof Date ? Utilities.formatDate(r[8], TZ, "dd.MM.yyyy HH:mm") : r[8]) });
     });
   });
-  items.forEach(x => { x.inc = x.key ? inc[x.key] || [] : []; x.wo = x.key ? wo[x.key] || [] : []; });
+  /* приход — в единицах того, в чём считали (записан в единице справочника на момент накладной) */
+  items.forEach(x => {
+    const pu = kind === "d" ? (dailyU(x.n) === "л" ? "литр" : dailyU(x.n)) : refU[x.key];
+    x.inc = x.key ? (inc[x.key] || []).map(y => ({ iso: y.iso, q: Math.round((conv(y.q, y.u, pu, refT[x.key]) || 0) * 1000) / 1000 })) : [];
+    x.wo = x.key ? wo[x.key] || [] : [];
+  });
   return { ok: true, kind: kind, cols: cols, items: items.filter(x => x.v.some(y => y != null)), womiss: Object.values(womiss).slice(0, 40) };
+}
+
+/* ═════════════ Период ревизии: ревизия против продаж (бар-менеджер) ═════════════
+   Ревизия — день ежедневной ревизии, где посчитаны все зоны (у бара — чт перед открытием и вс после закрытия). День,
+   где посчитали меньше зон, чем обычно (проверка одной позиции, случайное число), — не ревизия: период через него не режется.
+   Ревизия готова, как только все зоны сданы и все, кто считал, нажали «Завершить» (иначе — в 9:00 следующего утра).
+   Текущая — последняя готовая; период — от прошлой ревизии до неё. Всё, что было между ними, раскладывается по моментам:
+   — ревизия — когда её сдали (последнее «Завершить», иначе последняя запись журнала ревизии);
+   — продажи дня — в 20:00 этого дня (смена вечером: ревизия чт перед открытием — раньше, вс после закрытия — позже);
+   — акт списания или проработки — когда записан, если записан в свой день (до 9:00 следующего); оформили задним числом —
+     в 20:00 дня акта, как смена (бой в воскресную смену — до ночной ревизии, в четверговую — после дневной);
+   — приход — в полдень дня накладной, а с отметкой «до / после ревизии» — в начале / в конце дня.
+   Ожидалось = было + приход − продано (по «Расходу на блюдо») − списания − проработки; расхождение = стало − ожидалось
+   (минус — недостача, плюс — излишек), в тенге — по цене закупки из справочника. Порога нет: показываются все позиции.
+   Заготовки с рецептом («Рецепты заготовок») раскладываются на сырьё: их остаток, списания и продажи через них — сырьё по рецепту. */
+const AST = 5 * 3600e3;
+const isoAt = (iso, h) => Date.parse(iso + "T00:00:00Z") - AST + h * 3600e3;          // день по Астане, час h (33 — 9:00 следующего)
+const saleAt = iso => isoAt(iso, 20);
+const actAt = (iso, rec) => rec && rec <= isoAt(iso, 33) ? rec : isoAt(iso, 20);
+const incAt = (iso, when) => isoAt(iso, when === "до" ? 0.02 : when === "после" ? 23.98 : 12);
+const WD_RU = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+const isoWd = iso => new Date(iso + "T00:00:00Z").getUTCDay();
+/* рабочие дни (смены): свойство WORK_DAYS «4,5,6,0» — чт, пт, сб, вс; по ним видно, за какие дни ждать продажи */
+const workDays = () => String(PropertiesService.getScriptProperties().getProperty("WORK_DAYS") || "4,5,6,0").split(",").map(x => parseInt(x, 10)).filter(x => x >= 0 && x <= 6);
+/* единица справочника: пустая — литры (бармены считают бутылочное в литрах: полная 0,7 — это 0,7) */
+const refUn = u => String(u || "").trim() || "литр";
+const conv = (q, from, to, tara) => woConv(q, refUn(from), refUn(to), tara);
+
+/* лента ревизий: {all: [дни «Итога»], revs: [ревизии]} — день {col, d, iso, who, z, nz, full, at} */
+function revTimeline() {
+  if (MEMO.tl) return MEMO.tl;
+  const ss = revBook(), ts = revTotal(ss), oc = revOpenCol(), last = oc ? oc - 1 : ts.getLastColumn(), out = { all: [], revs: [] };
+  if (last < 2) return MEMO.tl = out;
+  const hd = ts.getRange(1, 2, 2, last - 1).getDisplayValues(), zmap = revDayZones(ss), tmap = revDayTimes(ss), amap = revAtMap();
+  for (let i = 0; i < last - 1; i++) {
+    const d = String(hd[0][i]).trim(), iso = dmy(d);
+    if (!iso) continue;
+    const z = zmap[d] || "";
+    out.all.push({ col: i + 2, d: d, iso: iso, who: String(hd[1][i] || "").trim(), z: z, nz: z ? z.split(",").length : 0,
+      at: amap[d] || tmap[d] || isoAt(iso, 33) - 60000 });
+  }
+  /* полный день — зон не меньше, чем в лучшем из 6 последних дней (закрыли зону насовсем — через неделю снова «полный») */
+  out.all.forEach((x, i) => {
+    const best = Math.max.apply(null, out.all.slice(Math.max(0, i - 5), i + 1).map(y => y.nz));
+    x.full = !x.nz || x.nz >= best;
+    if (x.full) out.revs.push(x);
+  });
+  return MEMO.tl = out;
+}
+const revOut = (x, i) => ({ i: i, d: x.d, iso: x.iso, who: x.who, wd: WD_RU[isoWd(x.iso)], at: x.at });
+
+/* продажи по дням: лист «Продажи» в таблице ревизии (строка — блюдо за день); загрузка за те же дни заменяет их */
+const SALES = "Продажи";
+const SALES_HEAD = ["Дата", "Код R-Keeper", "Блюдо", "Кол-во", "Сумма", "Файл", "Загружено"];
+function salesSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(SALES);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(SALES);
+  n.getRange(1, 1, 1, SALES_HEAD.length).setValues([SALES_HEAD]).setFontWeight("bold");
+  n.setFrozenRows(1);
+  n.setColumnWidth(3, 240);
+  return n;
+}
+/* [{iso, code, name, qty, sum, file, at}] */
+function salesRows() {
+  if (MEMO.sales) return MEMO.sales;
+  const sh = salesSheet(false), last = sh ? sh.getLastRow() : 0;
+  return MEMO.sales = last < 2 ? [] : sh.getRange(2, 1, last - 1, SALES_HEAD.length).getValues().map(r => ({
+    iso: dmy(r[0]) || (/^\d{4}-\d{2}-\d{2}$/.test(String(r[0]).trim()) ? String(r[0]).trim() : ""), code: String(r[1]).trim(), name: String(r[2]).trim(),
+    qty: num(r[3]), sum: num(r[4]), file: String(r[5]), at: String(r[6]) })).filter(x => x.iso && (x.code || x.name) && x.qty);
+}
+/* загрузка с сайта: {days: [ГГГГ-ММ-ДД], rows: [[ГГГГ-ММ-ДД, код, блюдо, кол-во, сумма]], file} — строки этих дней заменяются */
+function mgrSalesPut(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
+  const days = (Array.isArray(p.days) ? p.days : []).filter(isoOk).slice(0, 120), set = new Set(days);
+  const src = Array.isArray(p.rows) ? p.rows : [];
+  if (!days.length || src.length > 6000) return { error: "bad" };
+  const file = clean(p.file, 120), stamp = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm"), add = [];
+  for (const r of src) {
+    if (!Array.isArray(r) || !set.has(r[0])) return { error: "bad" };
+    const q = num(r[3]);
+    if (!q || !(clean(r[1], 40) || clean(r[2], 200))) continue;
+    add.push([r[0].split("-").reverse().join("."), clean(r[1], 40), clean(r[2], 200), Math.round(q * 1000) / 1000, Math.round(num(r[4]) * 100) / 100, file, stamp]);
+  }
+  const lock = lockOrBusy(20000);
+  try {
+    const sh = salesSheet(true), last = sh.getLastRow(), w = SALES_HEAD.length;
+    const old = last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues() : [];
+    const keep = old.filter(r => { const d = dmy(r[0]); return (r[1] || r[2]) && !(d && set.has(d)); });
+    const rows = keep.concat(add);
+    ensureRows(sh, rows.length + 1);
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, 3).setNumberFormat("@");
+      sh.getRange(2, 6, rows.length, 2).setNumberFormat("@");
+      sh.getRange(2, 1, rows.length, w).setValues(rows);
+    }
+    if (old.length > rows.length) sh.getRange(rows.length + 2, 1, old.length - rows.length, w).setValues(Array.from({ length: old.length - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    MEMO.sales = null;
+    return { ok: true, n: add.length, days: days.length };
+  } finally { lock.releaseLock(); }
+}
+/* для сайта: какие дни загружены и блюда за последние 35 дней (у каких задан расход — сайт смотрит сам) */
+function mgrSales(p) {
+  const rows = salesRows(), byDay = {}, by = {};
+  const since = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : new Date(Date.now() + AST - 35 * 864e5).toISOString().slice(0, 10);
+  rows.forEach(r => {
+    const d = byDay[r.iso] || (byDay[r.iso] = { iso: r.iso, n: 0, qty: 0, sum: 0, file: r.file, at: r.at });
+    d.n++; d.qty += r.qty; d.sum += r.sum;
+    if (r.iso < since) return;
+    const k = dishKey(r.name, r.code), x = by[k] || (by[k] = { name: r.name, code: r.code, qty: 0 });
+    x.qty += r.qty;
+  });
+  return { ok: true, days: Object.values(byDay).sort((a, b) => b.iso.localeCompare(a.iso)).slice(0, 60),
+    dishes: Object.values(by).filter(x => x.qty > 0).sort((a, b) => b.qty - a.qty), since: since, work: workDays() };
+}
+
+/* рецепты заготовок: лист «Рецепты заготовок» — сколько сырья на 1 единицу заготовки (1 л сиропа — столько-то сахара) */
+const ZAG = "Рецепты заготовок";
+const ZAG_HEAD = ["Раздел заготовки", "Заготовка", "Раздел", "Позиция", "На 1 ед.", "Ед.", "Как задано"];
+function zagSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(ZAG);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(ZAG);
+  n.getRange(1, 1, 1, ZAG_HEAD.length).setValues([ZAG_HEAD]).setFontWeight("bold");
+  n.getRange(1, 5).setNote("Сколько этой позиции уходит на 1 единицу заготовки (на 1 л), в единицах позиции: 300 г сахара = 0,3 кг");
+  n.setFrozenRows(1);
+  n.setColumnWidth(2, 220);
+  n.setColumnWidth(4, 220);
+  return n;
+}
+function mgrZags() {
+  const sh = zagSheet(false), last = sh ? sh.getLastRow() : 0;
+  const rows = last >= 2 ? sh.getRange(2, 1, last - 1, ZAG_HEAD.length).getValues().map(r => r.map(x => typeof x === "number" ? x : String(x).trim())) : [];
+  return { ok: true, rows: rows.filter(r => r[1] && r[3]) };
+}
+/* {zags: [{sec, n, comps: [{sec, n, q, u}], src}]} — строки этих заготовок заменяются целиком; comps пусто — рецепт убран */
+function mgrZagSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const list = (Array.isArray(p.zags) ? p.zags : []).slice(0, 200);
+  if (!list.length) return { error: "bad" };
+  const add = [], keys = new Set();
+  for (const z of list) {
+    const sec = clean(z.sec, 120), n = clean(z.n, 200), src = clean(z.src, 60);
+    if (!n) return { error: "bad" };
+    keys.add(refKey(sec, n));
+    (Array.isArray(z.comps) ? z.comps : []).slice(0, 30).filter(c => c && c.n && num(c.q) > 0)
+      .forEach(c => add.push([sec, n, clean(c.sec, 120), clean(c.n, 200), Math.round(num(c.q) * 100000) / 100000, clean(c.u, 20), src]));
+  }
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = zagSheet(true), last = sh.getLastRow(), w = ZAG_HEAD.length;
+    const old = last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues() : [];
+    const rows = old.filter(r => r[1] && !keys.has(refKey(r[0], r[1]))).concat(add);
+    ensureRows(sh, rows.length + 1);
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, 4).setNumberFormat("@");
+      sh.getRange(2, 1, rows.length, w).setValues(rows);
+    }
+    if (old.length > rows.length) sh.getRange(rows.length + 2, 1, old.length - rows.length, w).setValues(Array.from({ length: old.length - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    return { ok: true, n: list.length };
+  } finally { lock.releaseLock(); }
+}
+
+/* расчёт периода: p.i — номер ревизии в ленте (конец периода), по умолчанию последняя.
+   Строка: {n, key, u — единица ежедневной ревизии, was, inc, sold, wo, pr, exp, now, diff, price — ₸ за u, money, zag, raw, miss} */
+function mgrPeriod(p) {
+  const ref = mgrRef();
+  if (!ref.ok) return ref;
+  const tl = revTimeline(), R = tl.revs, out = { ok: true, revs: R.map(revOut), rows: [] };
+  if (R.length < 2) return out;
+  let i = p && p.i != null && String(p.i) !== "" ? parseInt(p.i, 10) : R.length - 1;
+  if (!(i >= 1 && i < R.length)) i = R.length - 1;
+  const A = R[i - 1], B = R[i], inP = t => t > A.at && t <= B.at;
+  out.i = i; out.from = revOut(A, i - 1); out.to = revOut(B, i);
+  out.skipped = tl.all.filter(x => !x.full && x.iso >= A.iso && x.iso <= B.iso && x !== A && x !== B).map(x => ({ d: x.d, z: x.z }));
+
+  /* справочник: ключ, единица, тара, цена */
+  const byName = {}, byAll = {}, RU = {}, RT = {}, RP = {}, RN = {};
+  ref.rows.forEach(r => {
+    const key = refKey(r[0], r[1]), k = nameKey(r[1]);
+    RU[key] = refUn(r[2]); RT[key] = num(String(r[4]).replace(",", ".")); RP[key] = num(String(r[7]).replace(",", ".")); RN[key] = { sec: r[0], n: r[1] };
+    if (r[9] === 1) { byName[k] = k in byName ? null : key; (byAll[k] = byAll[k] || []).push(key); }
+  });
+  const keyOf = (sec, n) => { const k = refKey(sec || "", n); if (sec && k in RU) return k; const b = byName[nameKey(n)]; return b || ""; };
+
+  /* остатки двух ревизий */
+  const ss = revBook(), ts = revTotal(ss), pos = revPositions(ts), du = dailyUnits(ref);
+  const h = pos.length ? pos[pos.length - 1].row - 2 : 0;
+  const va = h ? ts.getRange(3, A.col, h, 1).getValues() : [], vb = h ? ts.getRange(3, B.col, h, 1).getValues() : [];
+  const val = v => v === "" || v == null || isNaN(num(v)) ? null : round3(num(v));
+  const items = {}, nokey = [];
+  pos.forEach(x => {
+    const key = byName[nameKey(x.n)] || "";
+    if (!key) { nokey.push(x.n); return; }
+    if (items[key]) return;                                              // одна позиция дважды в «Итоге» — первая
+    items[key] = { n: x.n, key: key, u: du(x.n), was: val(va[x.row - 3][0]), now: val(vb[x.row - 3][0]), inc: 0, sold: 0, wo: 0, pr: 0, zwas: 0, znow: 0, zin: 0 };
+  });
+  /* в единицы позиции ревизии; несовместимо — null */
+  const toU = (key, q, u) => items[key] ? conv(q, u, items[key].u === "л" ? "литр" : items[key].u, RT[key]) : null;
+
+  /* рецепты заготовок: ключ заготовки → [{key, q (в единице справочника сырья на 1 ед. заготовки), u}] */
+  const zag = {};
+  mgrZags().rows.forEach(r => {
+    const zk = keyOf(r[0], r[1]), ck = keyOf(r[2], r[3]);
+    if (!zk || !ck || !(num(r[4]) > 0)) return;
+    (zag[zk] = zag[zk] || []).push({ key: ck, q: num(r[4]), u: refUn(r[5] || RU[ck]) });
+  });
+  /* q единиц позиции key (в единице справочника) → сырьё: [{key, q, u}]; заготовка без рецепта — сама собой */
+  const expand = (key, q, u, depth) => {
+    const rc = zag[key];
+    if (!rc || depth > 2) return [{ key: key, q: q, u: u }];
+    const qz = conv(q, u, RU[key], RT[key]);
+    if (qz == null) return [{ key: key, q: q, u: u }];
+    return [].concat.apply([], rc.map(c => expand(c.key, qz * c.q, c.u, (depth || 0) + 1)));
+  };
+  const put = (field, key, q, u) => expand(key, q, u, 0).forEach(c => {
+    const x = items[c.key];
+    if (!x) return;
+    const v = toU(c.key, c.q, c.u);
+    if (v == null) { (out.unconv = out.unconv || {})[x.n] = 1; return; }
+    x[field] += v;
+    if (c.key !== key) x.zin = 1;                                         // в сырьё вошли заготовки
+  });
+
+  /* заготовки, посчитанные в ревизии, с рецептом — их остаток уходит в сырьё (сама строка — для справки) */
+  Object.keys(items).forEach(k => {
+    const x = items[k];
+    if (!zag[k]) return;
+    x.zag = 1;
+    const ru = x.u === "л" ? "литр" : x.u;
+    if (x.was != null) put("zwas", k, x.was, ru);
+    if (x.now != null) put("znow", k, x.now, ru);
+  });
+
+  /* приход */
+  const inl = inByKey();
+  Object.keys(inl).forEach(k => inl[k].forEach(y => { if (inP(incAt(y.iso, y.w))) put("inc", k, y.q, y.u); }));
+
+  /* списания и проработки — по моменту; акт, PDF которого удалили с Диска, не учитывается */
+  const womiss = {}, lo = new Date(A.at + AST - 2 * 864e5).toISOString().slice(0, 10);
+  Object.keys(WO_KINDS).forEach(kind => {
+    const sh = woSheet(kind, false), last = sh ? sh.getLastRow() : 0;
+    if (last < 2) return;
+    const acts = {}, lines = [];
+    sh.getRange(2, 1, last - 1, WO_GONE_COL).getValues().forEach((r, ri) => {
+      const iso = dmy(r[0]);
+      if (!iso || iso < lo) return;
+      const rec = ruTime(r[8] instanceof Date ? Utilities.formatDate(r[8], TZ, "dd.MM.yyyy HH:mm") : r[8]), t = actAt(iso, rec);
+      if (!inP(t)) return;
+      const id = String(r[9]), a = acts[id] || (acts[id] = { fid: (String(r[7]).match(/\/d\/([\w-]{10,})/) || [])[1] || "", rows: [], mark: String(r[WO_GONE_COL - 1] || "") });
+      a.rows.push(ri + 2);
+      lines.push({ a: a, r: r });
+    });
+    const all = Object.values(acts), gone = woGoneMap(all.map(a => a.fid).filter(Boolean), 40);
+    woMarkGone(sh, all, gone);
+    lines.forEach(L => {
+      if (woHidden(L.a, gone)) return;
+      const r = L.r, nk = nameKey(r[2]);
+      let key = byName[nk];
+      if (key === null) { const fit = (byAll[nk] || []).filter(k => woConv(1, r[3], RU[k], RT[k]) != null); if (fit.length === 1) key = fit[0]; }
+      const miss = why => { womiss[String(r[2]).trim() + "|" + why] = { n: String(r[2]).trim(), u: String(r[3]).trim(), why: why, pu: key && items[key] ? items[key].u : "" }; };
+      if (!key) return miss(nk in byName ? "ambiguous" : "name");
+      if (!expand(key, 1, RU[key], 0).some(c => items[c.key])) return miss("norev");   // позиции нет в ежедневной ревизии
+      const q0 = woConv(num(r[4]), r[3], RU[key], RT[key]);
+      if (q0 == null) return miss("unit");
+      if (q0 > 0) put(kind === "pr" ? "pr" : "wo", key, q0, RU[key]);
+    });
+  });
+  out.womiss = Object.values(womiss).slice(0, 40);
+
+  /* продажи периода × «Расход на блюдо» */
+  const dishes = {}, dcodes = {}, DR = mgrDishes().rows;
+  DR.forEach(r => {
+    const k = dishKey(r[0], r[1]);
+    if (r[1]) (dcodes[nameKey(r[0])] = dcodes[nameKey(r[0])] || new Set()).add(String(r[1]));
+    const d = dishes[k] || (dishes[k] = { none: false, comps: [] });
+    if (/^[—–-]$/.test(String(r[3]).trim())) { d.none = true; return; }
+    const ck = keyOf(r[2], r[3]);
+    /* «Ед.» пусто — сохранено, когда пустая единица значила «бутылки» */
+    if (ck && num(r[4]) > 0) d.comps.push({ key: ck, q: num(r[4]), u: String(r[5]).trim() || "бут" });
+  });
+  DR.forEach(r => { const n = nameKey(r[0]); if (r[1] && !dishes["n:" + n] && dcodes[n] && dcodes[n].size === 1) dishes["n:" + n] = dishes[dishKey(r[0], r[1])]; });
+  const sold = {}, days = {}, nodish = {};
+  salesRows().forEach(s => {
+    if (!inP(saleAt(s.iso))) return;
+    days[s.iso] = (days[s.iso] || 0) + s.qty;
+    const d = dishes[dishKey(s.name, s.code)] || dishes["n:" + nameKey(s.name)];
+    if (!d || (!d.none && !d.comps.length)) { const nk = s.code || s.name; (nodish[nk] = nodish[nk] || { name: s.name, code: s.code, qty: 0 }).qty += s.qty; return; }
+    if (d.none) return;
+    d.comps.forEach(c => { sold[c.key + "|" + c.u] = (sold[c.key + "|" + c.u] || 0) + c.q * s.qty; });
+  });
+  Object.keys(sold).forEach(k => { const j = k.lastIndexOf("|"); put("sold", k.slice(0, j), sold[k], k.slice(j + 1)); });
+  /* за какие дни ждём продажи: рабочие дни, чья смена внутри периода */
+  const W = workDays(), want = [];
+  for (let t = Date.parse(A.iso + "T00:00:00Z"); t <= Date.parse(B.iso + "T00:00:00Z") + 864e5; t += 864e5) {
+    const iso = new Date(t).toISOString().slice(0, 10);
+    if (inP(saleAt(iso)) && W.indexOf(isoWd(iso)) >= 0) want.push(iso);
+  }
+  out.sales = { want: want, have: Object.keys(days).sort(), miss: want.filter(d => !days[d]), qty: Object.values(days).reduce((a, b) => a + b, 0),
+    nodish: Object.values(nodish).sort((a, b) => b.qty - a.qty).slice(0, 60) };
+
+  /* строки */
+  let short = 0, over = 0;
+  Object.keys(items).forEach(k => {
+    const x = items[k], r = { n: x.n, key: k, u: x.u, inc: r3(x.inc), sold: r3(x.sold), wo: r3(x.wo), pr: r3(x.pr), zag: !!x.zag, raw: !!x.zin };
+    /* остаток сырья вместе с заготовками из него */
+    const was = x.was == null ? null : x.was + (x.zwas || 0), now = x.now == null ? null : x.now + (x.znow || 0);
+    r.was = was == null ? null : r3(was); r.now = now == null ? null : r3(now);
+    r.zwas = x.zwas ? r3(x.zwas) : 0; r.znow = x.znow ? r3(x.znow) : 0;
+    const f = conv(1, x.u === "л" ? "литр" : x.u, RU[k], RT[k]);           // сколько единиц справочника в 1 единице ревизии
+    r.price = RP[k] && f != null ? Math.round(RP[k] * f * 100) / 100 : 0;
+    if (x.zag) { r.info = 1; out.rows.push(r); return; }                  // заготовка с рецептом — уже в сырье
+    if (was == null || now == null) { r.miss = was == null ? "from" : "to"; out.rows.push(r); return; }
+    r.exp = r3(was + x.inc - x.sold - x.wo - x.pr);
+    r.diff = r3(now - r.exp);
+    r.money = Math.round(r.diff * r.price);
+    if (r.money < 0) short -= r.money; else over += r.money;
+    out.rows.push(r);
+  });
+  out.rows.sort((a, b) => (a.info || a.miss ? 1 : 0) - (b.info || b.miss ? 1 : 0) || Math.abs(b.money || 0) - Math.abs(a.money || 0) || Math.abs(b.diff || 0) - Math.abs(a.diff || 0) || a.n.localeCompare(b.n, "ru"));
+  out.short = short; out.over = over;
+  out.nokey = nokey;
+  out.noprice = out.rows.filter(r => !r.info && !r.miss && r.diff && !r.price).length;
+  out.unconv = Object.keys(out.unconv || {});
+  out.zagno = Object.keys(items).filter(k => /^(заготовки|премиксы на коктейли)\|/.test(k) && !zag[k]).map(k => items[k].n);
+  return out;
 }
 
 /* ═════════════ Для гостей: меню и «Состав и аллергены» из таблицы ═════════════
@@ -2528,6 +2926,7 @@ function reportData(from, to) {
     }
   } catch (e) {}
   try { d.odd = reportOdd(); } catch (e) { d.odd = { odd: [], date: "", prev: "", err: String(e && e.message || e) }; }
+  try { const pp = mgrPeriod({}); d.per = pp.ok && pp.to ? pp : null; } catch (e) { d.per = null; }
   try { d.orders = orderList(from, to).map(o => [o.at, o.kind, o.who, o.items.length]); } catch (e) { d.orders = []; }
   /* приход */
   const inl = mgrInList({ from: from, to: to }), sup = {}, inv = {};
@@ -2570,7 +2969,14 @@ function reportHtml(d) {
   let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
     '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — неделя ' + hx(ru(d.from)) + ' — ' + hx(ru(d.to)) + '</h2>' +
     '<p style="margin:0;color:#666">Списаний ' + nwo + ', проработок ' + npr + ' · ревизий ' + d.revs.length + ' · накладных ' + d.inc.n + ' · заявок ' + (d.orders || []).length + ' · открытий смен ' + d.open.filter(r => /^\d/.test(r[1])).length + '</p>';
-  h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
+  if (d.per) {
+    const P = d.per, lab = x => x.wd + " " + x.d.slice(0, 5);
+    h += '<h3 style="' + H + '">Последняя ревизия против продаж (' + hx(lab(P.from) + " → " + lab(P.to)) + ')</h3>' +
+      '<p style="margin:0 0 6px">Недостача <b style="color:#c0392b">' + fmtN(Math.round(P.short)) + ' ₸</b> · излишек <b>' + fmtN(Math.round(P.over)) + ' ₸</b>' +
+        (P.sales.miss.length ? ' · <span style="color:#a0522d">нет продаж за ' + P.sales.miss.length + ' дн.</span>' : "") + '</p>' +
+      tb(["Позиция", "Расхождение", "₸"], P.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).slice(0, 15)
+        .map(r => [r.n, (r.diff > 0 ? "+" : "") + fmtN(r.diff) + " " + r.u, r.money ? fmtN(r.money) : ""]));
+  } else h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
     (d.odd.err ? '<p style="color:#c0392b;font:14px Arial,sans-serif;margin:0">Не удалось посчитать (таблица занята или ошибка) — смотрите вкладку «Расход» на сайте.</p>' : tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f])));
   h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
     '<h3 style="' + H + '">Чаще всего списывали</h3>' + tb(["Позиция", "Всего", "Раз"], d.wo.items.map(x => [x.n, x.u === "л" && x.q > 0 && x.q < 1 ? fmtN(x.q * 1000) + " мл" : x.u === "кг" && x.q > 0 && x.q < 1 ? fmtN(x.q * 1000) + " гр" : fmtN(x.q) + (x.u ? " " + x.u : ""), x.c])) +
@@ -2602,9 +3008,81 @@ function weeklyReport() {
 function installWeeklyReport() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN).forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create();
-  Logger.log("Отчёт включён: каждый понедельник в 9:00. Получатели: " + (reportTo().join(", ") || Session.getEffectiveUser().getEmail()) +
+  revMailInstall();
+  Logger.log("Отчёт включён: каждый понедельник в 9:00 и после каждой ревизии. Получатели: " + (reportTo().join(", ") || Session.getEffectiveUser().getEmail()) +
     ". Писем сегодня ещё можно отправить: " + MailApp.getRemainingDailyQuota());
 }
+
+/* ── Письмо после каждой ревизии ──
+   Таймер раз в 15 минут (installWeeklyReport или «Отчёт» на сайте). Ревизия готова (все зоны сданы и все нажали «Завершить»,
+   или наступило 9:00) — письмо с итогом её периода: ревизия против продаж, приход, списания, проработки. Если продажи R-Keeper
+   за смены периода ещё не загружены — письмо уходит сразу, с пометкой, а когда их загрузят — второе, уже с продажами.
+   Ревизия старше 3 дней (таймер только включили) — не шлём. Обычно таймер ничего не читает, кроме шапки «Итога». */
+const REV_MAIL_FN = "revMailTick", REV_MAIL = "REV_MAIL";
+function revMailTick() {
+  MEMO = {};
+  const P = PropertiesService.getScriptProperties();
+  let st = {};
+  try { st = JSON.parse(P.getProperty(REV_MAIL) || "{}") || {}; } catch (e) { st = {}; }
+  const ts = revTotal(revBook()), sig = ts.getLastColumn() + "|" + revOpenCol(), wait = st.s === "r";
+  if (sig === st.sig && !wait) return;
+  let sold = false;
+  if (wait) {                                                           // ждём продажи: второе письмо — когда загружены все дни
+    const sh = salesSheet(false), last = sh ? sh.getLastRow() : 0;
+    const have = new Set(last >= 2 ? sh.getRange(2, 1, last - 1, 1).getDisplayValues().map(r => dmy(r[0])) : []);
+    sold = (st.want || []).every(d => have.has(d));
+  }
+  if (sig === st.sig && !sold) return;
+  st.sig = sig;
+  const R = revTimeline().revs, B = R[R.length - 1];
+  if (!B || R.length < 2 || (B.d === st.d && !sold)) { P.setProperty(REV_MAIL, JSON.stringify(st)); return; }
+  const per = mgrPeriod({});
+  if (!per.ok || !per.to) return;
+  const full = !per.sales.miss.length, fresh = Date.now() - B.at < 3 * 864e5;
+  if (fresh) revMailSend(per);
+  P.setProperty(REV_MAIL, JSON.stringify({ sig: sig, d: B.d, s: full ? "s" : "r", want: per.sales.want }));
+}
+function revMailSend(per) {
+  const list = reportTo(), rcpt = list.length ? list.join(",") : Session.getEffectiveUser().getEmail();
+  if (!rcpt) return { error: "noto" };
+  const lab = x => x.wd + " " + x.d.slice(0, 5), miss = per.sales.miss;
+  MailApp.sendEmail({ to: rcpt, subject: "Бар «Мечты» — ревизия " + lab(per.to) + ": недостача " + fmtN(Math.round(per.short)) + " ₸" +
+    (miss.length ? " (без продаж за " + miss.map(d => WD_RU[isoWd(d)]).join(", ") + ")" : ""), htmlBody: periodHtml(per), name: "Бар «Мечты»" });
+  return { ok: true, to: rcpt };
+}
+/* итог периода для письма: все позиции, самые дорогие расхождения — первыми */
+function periodHtml(per) {
+  const lab = x => x.wd + " " + x.d.slice(0, 5), S = per.sales, ru = iso => WD_RU[isoWd(iso)] + " " + iso.slice(8, 10) + "." + iso.slice(5, 7);
+  const td = (x, l, st) => '<td style="text-align:' + (l ? "left" : "right") + ';padding:5px 6px;border-bottom:1px solid #eee;' + (st || "") + '">' + hx(x) + '</td>';
+  const th = (x, l) => '<th style="text-align:' + (l ? "left" : "right") + ';padding:5px 6px;border-bottom:2px solid #ddd;color:#666;font-size:11px">' + hx(x) + '</th>';
+  const n = x => x ? fmtN(x) : "";
+  const warn = [
+    !S.want.length ? "В этом периоде смен не было — продаж не ждём: любое расхождение — потери или ошибка пересчёта." :
+      S.miss.length ? "Нет продаж R-Keeper за " + S.miss.map(ru).join(", ") + " — загрузите их на сайте («Менеджер» → «Продажи»), придёт письмо с продажами." : "",
+    S.nodish.length ? "Блюда без расхода на блюдо (" + S.nodish.length + "): " + S.nodish.slice(0, 10).map(x => x.name).join(", ") + (S.nodish.length > 10 ? "…" : "") + " — их ингредиенты выглядят недостачей." : "",
+    (per.zagno || []).length ? "Заготовки без рецепта: " + per.zagno.join(", ") + "." : "",
+    (per.nokey || []).length ? "Нет в справочнике: " + per.nokey.join(", ") + "." : "",
+    per.noprice ? "Без цены закупки (не в сумме ₸): " + per.noprice + " поз." : ""].filter(Boolean);
+  const rows = per.rows.filter(r => !r.info && !r.miss);
+  let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
+    '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — ревизия ' + hx(lab(per.to)) + '</h2>' +
+    '<p style="margin:0;color:#666">Период ' + hx(lab(per.from) + " → " + lab(per.to)) + (per.to.who ? " · считали: " + hx(per.to.who) : "") + '</p>' +
+    '<p style="margin:10px 0 0;font-size:16px">Недостача <b style="color:#c0392b">' + fmtN(Math.round(per.short)) + ' ₸</b> · излишек <b>' + fmtN(Math.round(per.over)) + ' ₸</b></p>' +
+    warn.map(w => '<p style="margin:8px 0 0;color:#a0522d">' + hx(w) + '</p>').join("") +
+    '<p style="margin:14px 0 6px;color:#666;font-size:12px">Ожидалось = было + приход − продано − списано − проработки; расхождение = стало − ожидалось (минус — недостача).</p>' +
+    '<table style="border-collapse:collapse;width:100%;max-width:760px;font:13px Arial,sans-serif"><tr>' +
+    [["Позиция", 1], ["Было"], ["Приход"], ["Продано"], ["Списано"], ["Прораб."], ["Ожидалось"], ["Стало"], ["Расхожд."], ["₸"]].map(x => th(x[0], x[1])).join("") + '</tr>' +
+    rows.map(r => '<tr>' + td(r.n + " (" + (r.u === "л" ? "л" : r.u) + ")", 1) + td(n(r.was)) + td(n(r.inc)) + td(n(r.sold)) + td(n(r.wo)) + td(n(r.pr)) + td(n(r.exp)) + td(n(r.now)) +
+      td(Math.abs(r.diff) < 1e-9 ? "0" : (r.diff > 0 ? "+" : "") + fmtN(r.diff), 0, r.diff < -1e-9 ? "color:#c0392b;font-weight:700" : r.diff > 1e-9 ? "color:#b9770e;font-weight:700" : "color:#999") +
+      td(r.money ? fmtN(r.money) : "", 0, r.money < 0 ? "color:#c0392b" : "") + '</tr>').join("") + '</table>';
+  const miss = per.rows.filter(r => r.miss);
+  if (miss.length) h += '<p style="margin:12px 0 0;color:#888">Не посчитаны в одной из ревизий: ' + hx(miss.map(r => r.n).join(", ")) + '.</p>';
+  return h + '<p style="color:#aaa;font-size:12px;margin:24px 0 0">Подробнее — на сайте: «Бартендерам» → «Менеджер» → «Расход».</p></div>';
+}
+const revMailInstall = () => {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REV_MAIL_FN).forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger(REV_MAIL_FN).timeBased().everyMinutes(15).create();
+};
 
 /* для сайта */
 function mgrReport(p) {
@@ -2626,8 +3104,8 @@ function mgrReportPost(p) {
   }
   if (p.mgr === "reportauto") {
     try {
-      ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN).forEach(t => ScriptApp.deleteTrigger(t));
-      if (String(p.on) === "1") ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create();
+      ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === REPORT_FN || t.getHandlerFunction() === REV_MAIL_FN).forEach(t => ScriptApp.deleteTrigger(t));
+      if (String(p.on) === "1") { ScriptApp.newTrigger(REPORT_FN).timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone("Asia/Almaty").create(); revMailInstall(); }
       return { ok: true, auto: String(p.on) === "1" };
     } catch (e) { console.error("reportauto: " + e); return { error: authErr(e) ? "auth" : String(e && e.message || e) }; }
   }

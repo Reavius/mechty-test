@@ -462,14 +462,18 @@
       </div>
 
       <div id="mgrUse" hidden>
-        <p class="wnhint mgrrhint">Расход между двумя ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него объяснено актами.
-          Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов; у ежедневной — по тем же дням недели,
-          если истории хватает). Подсвечивается то, что заметно выше или ниже обычного, и остаток, выросший без прихода.</p>
+        <p class="wnhint mgrrhint" id="useHintD">Период — от прошлой ревизии до последней (ревизия — день, когда посчитаны все зоны: чт перед открытием, вс после закрытия;
+          готова, как только все нажали «Завершить»). <b>Ожидалось = было + приход − продано − списания − проработки</b>; продано — по продажам R-Keeper
+          и расходу на блюдо (вкладка «Продажи»), заготовки разложены на сырьё по рецептам. Расхождение = стало − ожидалось: минус — недостача, плюс — излишек,
+          в тенге — по цене закупки. Показаны все позиции, самые дорогие расхождения — первыми.</p>
+        <p class="wnhint mgrrhint" id="useHintM" hidden>Месячная: расход между двумя месячными ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него
+          объяснено актами. Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов).</p>
         <div class="modes mgrkind" id="useKind" role="group" aria-label="Какая ревизия">
-          <button type="button" data-k="d" aria-pressed="true">Ежедневная</button>
+          <button type="button" data-k="d" aria-pressed="true">Период ревизии</button>
           <button type="button" data-k="m" aria-pressed="false">Месячная</button>
         </div>
-        <div class="quick" id="useSens" aria-label="Чувствительность">
+        <div class="wo2 mgrd" id="usePerBox"><div><label class="label" for="usePer">Период</label><select id="usePer"></select></div></div>
+        <div class="quick" id="useSens" aria-label="Чувствительность" hidden>
           <button type="button" data-s="0.3" aria-pressed="false">±30%</button>
           <button type="button" data-s="0.5" aria-pressed="true">±50%</button>
           <button type="button" data-s="1" aria-pressed="false">±100%</button>
@@ -480,24 +484,16 @@
       </div>
 
       <div id="mgrSal" hidden>
-        <p class="wnhint mgrrhint">Продажи R-Keeper против ревизии: сколько каждой позиции <b>должно было уйти</b> по проданным блюдам и сколько
-          <b>ушло на самом деле</b> (было + приход − стало − списания) — разница в единицах и в тенге (по цене закупки из справочника).
-          Выберите две ревизии, выгрузите из R-Keeper «продажи по блюдам» за период между ними (Excel или CSV) и загрузите сюда.
-          Расход на блюдо сайт предложит сам — по техкартам и меню; подтвердите один раз, дальше он запомнится (лист «Расход на блюдо»).</p>
-        <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Период</h3></div><div class="wobody">
-          <div class="modes mgrkind" id="salKind" role="group" aria-label="Какая ревизия">
-            <button type="button" data-k="m" aria-pressed="true">Месячная</button>
-            <button type="button" data-k="d" aria-pressed="false">Ежедневная</button>
-          </div>
-          <div class="wo2 mgrd">
-            <div><label class="label" for="salFrom">С ревизии</label><select id="salFrom"></select></div>
-            <div><label class="label" for="salTo">По ревизию</label><select id="salTo"></select></div>
-          </div>
+        <p class="wnhint mgrrhint">Выгрузите из R-Keeper «продажи по блюдам» <b>с разбивкой по дням</b> — можно сразу за неделю: продажи сохранятся по дням
+          и сами разложатся по периодам ревизий во вкладке «Расход». Повторная загрузка тех же дней заменяет их.
+          Здесь же — расход на блюдо и рецепты заготовок: сайт предложит их сам по техкартам и меню, подтвердите один раз.</p>
+        <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Продажи R-Keeper</h3></div><div class="wobody">
           <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
           <p class="warn" id="salWarn" role="status"></p>
+          <div id="salDays"></div>
         </div></div>
         <div id="salDish"></div>
-        <div id="salRes"></div>
+        <div id="salZag"></div>
         <datalist id="salRefs"></datalist>
       </div>
 
@@ -552,8 +548,9 @@
       </div>
 
       <div id="mgrRep" hidden>
-        <p class="wnhint mgrrhint">Каждый понедельник в 9:00 — письмо за прошлую неделю: странности последней ревизии, списания и проработки,
-          приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — как оно выглядит.</p>
+        <p class="wnhint mgrrhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₸ (если продажи
+          ещё не загружены — второе письмо, когда их загрузят). Каждый понедельник в 9:00 — письмо за прошлую неделю: последняя ревизия против продаж,
+          списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p>
         <div class="result tcard wo"><div class="tname"><em id="repAuto"></em><h3>Письмо</h3></div><div class="wobody">
           <label class="label" for="repTo">Кому (через запятую; пусто — владельцу таблицы)</label>
           <input id="repTo" type="text" inputmode="email" autocomplete="off" placeholder="manager@example.com">
@@ -570,7 +567,7 @@
 
       <div id="mgrRef" hidden>
         <p class="wnhint mgrrhint">Позиции — из бланка месячной ревизии, новые добавляются сами. Заполняйте здесь или в таблице ревизии,
-          лист «Справочник». <b>Тара</b> — объём или вес одной бутылки / упаковки в единицах позиции (0,7 — бутылка 0,7 л),
+          лист «Справочник». Бутылочное бар считает в литрах: <b>тара</b> — объём одной бутылки (0,7), по ней приход бутылками переводится в литры; у кг — вес упаковки, у шт — штук в упаковке,
           <b>норма</b> — сколько держать, в тех же единицах.</p>
         <input id="mgrRq" class="tq" type="search" placeholder="Поиск по позиции" autocomplete="off" aria-label="Поиск по справочнику">
         <div class="quick" id="mgrRf">
@@ -580,6 +577,7 @@
           <button type="button" data-f="code" aria-pressed="false">Без кода</button>
         </div>
         <p class="mgrsum" id="mgrRinfo"></p>
+        <div id="refAuto"></div>
         <p class="warn" id="mgrRwarn" role="status"></p>
         <div id="mgrRlist"></div>
         <datalist id="mgrSups"></datalist>

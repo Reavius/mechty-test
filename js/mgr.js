@@ -77,7 +77,7 @@ $("mgrIn").addEventListener("submit", async e => {
 function mgrLeave(){
   const k = mgrj(MGR, null);
   mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null; sal = null;
-  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = ""; $("salDish").innerHTML = ""; $("salRes").innerHTML = "";
+  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = ""; $("salDish").innerHTML = ""; $("salZag").innerHTML = ""; $("salDays").innerHTML = ""; perData = null; perI = null;
   $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
@@ -254,8 +254,9 @@ async function refLoad(){
   if (!mk) return mgrInit();
   $("mgrRwarn").textContent = "";
   if (!refRows) $("mgrRlist").innerHTML = '<ul class="olist mgrskel">' + skel(8) + '</ul>';
-  const d = await api({mgr: "ref", mk});
+  const [d, a] = await Promise.all([api({mgr: "ref", mk}), api({mgr: "refauto", mk})]);
   if (d.error === "mgr") return mgrExpired();
+  refAutoDraw(a && a.ok ? a.rows : []);
   if (!d.ok){
     if (!refRows) $("mgrRlist").innerHTML = "";
     $("mgrRwarn").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)."
@@ -271,6 +272,23 @@ async function refLoad(){
   refDraw();
 }
 
+/* единицы и объёмы бутылок по умолчанию — только в пустые ячейки, с пометкой «авто — проверьте» */
+function refAutoDraw(rows){
+  const nu = rows.filter(x => x.u).length, nt = rows.filter(x => x.tara !== "").length, low = rows.filter(x => !x.c).length;
+  $("refAuto").innerHTML = rows.length ? '<div class="result tcard wo"><div class="tname"><em>' + mgrPl(rows.length, "позиция", "позиции", "позиций") + '</em><h3>Заполнить пустое</h3></div><div class="wobody">' +
+    '<p class="wnhint">Единицы (' + nu + ') и объёмы бутылок (' + nt + ') — по названиям: бутылочное в литрах, тара — объём бутылки. Пишется только в пустые ячейки, в заметке — «авто — проверьте»' +
+      (low ? '; у ' + low + ' объём не точный (бренд бывает в разных бутылках) — «не уверен»' : "") + '. Потом поправьте по своим бутылкам.</p>' +
+    '<details class="incmapd"><summary>Что будет записано</summary><p class="wnhint">' + rows.map(x => esc(x.n) + ": " + [x.u, x.tara !== "" ? "тара " + mgrNum(x.tara) : ""].filter(Boolean).join(", ") + (x.c ? "" : " (?)")).join("; ") + '</p></details>' +
+    '<p class="warn" id="refAutoMsg" role="status"></p><div class="refbtns"><button type="button" class="wogo" id="refAutoGo">Заполнить (' + rows.length + ')</button></div></div></div>' : "";
+}
+$("refAuto").addEventListener("click", async e => {
+  if (e.target.id !== "refAutoGo") return;
+  e.target.disabled = true;
+  const d = await pubPost({mgr: "refauto", go: "1"});
+  if (!d || !d.ok){ e.target.disabled = false; if (d) $("refAutoMsg").textContent = pubErr(d); return; }
+  buzz(14); refRows = null; ordData = null; perData = null;
+  refLoad();
+});
 const refMiss = (r, f) => f === "norm" ? !r[5] : f === "tara" ? !r[4] : f === "code" ? !r[3] : false;
 function refMeta(r){
   const p = [];
@@ -294,8 +312,8 @@ function refForm(r, i){
     fld("refSup", "Поставщик", r[6], 'type="text" list="mgrSups" maxlength="80"') +
     fld("refPrice", "Цена, ₸", r[7], 'type="text" inputmode="decimal" maxlength="12"') +
     '</div>' + fld("refNote", "Заметка", r[8], 'type="text" maxlength="200"') +
-    '<p class="wnhint">Тара: позиция в бутылках (ед. «—») — объём бутылки в литрах (0,7); литр / кг — объём или вес упаковки; шт — штук в упаковке (24). ' +
-      'Норма и остаток — в единицах позиции (у бутылок — в бутылках).</p>' +
+    '<p class="wnhint">Тара: литровая позиция (ед. «литр» или «—» — бар считает бутылочное в литрах) — объём бутылки (0,7); кг — вес упаковки; шт — штук в упаковке (24); «бут» — объём бутылки. ' +
+      'Норма и остаток — в единицах позиции.</p>' +
     '<p class="warn" id="refMsg" role="status"></p>' +
     '<div class="refbtns"><button type="submit" class="wogo">Сохранить</button><button type="button" class="link" data-cancel="1">Отмена</button></div></form>';
 }
@@ -384,9 +402,9 @@ const ordKey = r => r.sec + "|" + r.n;
 function ordLine(r){
   const need = r.norm - (r.q || 0) - (r.inq || 0);
   if (!(need > 1e-9)) return null;
-  const u = String(r.u || "").trim().toLowerCase();
-  /* позиция в бутылках (ед. пусто / «бут»): остаток и норма — в бутылках, тара — объём бутылки (подпись) */
-  if (u === "" || u === "бут"){ const k = Math.ceil(need - 1e-9); return {k, text: k + " бут." + (r.tara > 0 && r.tara !== 1 ? " по " + mgrNum(r.tara) + " л" : "")}; }
+  const u = String(r.u || "").trim().toLowerCase() || "литр";             // пустая единица — литры (бутылочное бар считает в литрах)
+  /* позиция в бутылках («бут»): остаток и норма — в бутылках, тара — объём бутылки (подпись) */
+  if (u === "бут"){ const k = Math.ceil(need - 1e-9); return {k, text: k + " бут." + (r.tara > 0 && r.tara !== 1 ? " по " + mgrNum(r.tara) + " л" : "")}; }
   if (r.tara > 0){
     const k = Math.ceil(need / r.tara - 1e-9);
     const w = u === "шт" ? (r.tara === 1 ? "шт" : "уп.") : u === "кг" ? "уп." : "бут.";
@@ -709,7 +727,7 @@ function incBuild(){
    единицы R-Keeper, для которой его подтвердили (L справочника; старые записи без L — если не 1).
    {k, q}: q — коэффициент не известен (единицы разные, правила нет) — строка помечается «проверьте». */
 function incK(ref, rku){
-  const ru = incU(rku), pu = incU(ref[2]), tara = mgrN(ref[4]), raw = String(rku || "").trim().toLowerCase();
+  const ru = incU(rku), pu = incU(ref[2]) || "л", tara = mgrN(ref[4]), raw = String(rku || "").trim().toLowerCase();   // пустая единица — литры
   if (ref[11] && (ref[12] ? incU(ref[12]) === ru : mgrN(ref[11]) !== 1)) return {k: mgrN(ref[11])};
   if (!ru || !pu || ru === pu) return {k: 1};
   if ((ru === "шт" || ru === "бут") && (pu === "л" || pu === "кг")) return tara > 0 ? {k: tara} : {k: 1, q: 1};
@@ -740,6 +758,7 @@ function incDraw(){
     '<div class="refgrid incmap">' + INC_F.map(([k, label]) => '<div><label class="label" for="incC' + k + '">' + label + '</label><select id="incC' + k + '" data-k="' + k + '">' + opt(k, inc.map[k]) + '</select></div>').join("") + '</div></details>' +
     (lack("date") || lack("no") || lack("sup") ? '<p class="label incml">Накладная — для строк, где в файле нет своей даты / № / поставщика' + (inc.meta.date || !lack("date") ? "" : ' · <b>укажите дату</b>') + '</p>' : "") +
     '<div class="refgrid">' + meta("date", "Дата", "date", inc.meta.date) + meta("no", "№", "text", inc.meta.no) + meta("sup", "Поставщик", "text", inc.meta.sup) + '</div>' +
+    incWhenHtml() +
     '<p class="mgrsum">Строк: <b>' + inc.rows.length + '</b> · сопоставлено ' + ready + (guess ? ' · <span class="incg">проверьте ' + guess + '</span>' : "") +
       (inc.rows.length - ready ? ' · не найдено ' + (inc.rows.length - ready) : "") + '</p>' +
     '<ul class="olist incl">' + inc.rows.map((r, i) => {
@@ -756,6 +775,17 @@ function incDraw(){
     '<div class="refbtns"><button type="button" class="wogo" id="incSave"' + (ready ? "" : " disabled") + '>Записать приход (' + ready + ')</button><button type="button" class="link" id="incX">Отмена</button></div>' +
     '</div></div>';
 }
+/* поставка в день ревизии «перед открытием» (чт): пришла до пересчёта или после — от этого зависит, в какой период она войдёт.
+   В остальные дни ясно и так (пн–ср — между ревизиями, вс — до ночной ревизии). */
+const INC_ASK_WD = [4];
+const incDates = () => { const mv = $("incMdate") ? $("incMdate").value : inc.meta.date; return [...new Set(inc.rows.filter(r => r.ri >= 0).map(r => r.date || mv).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)))]; };
+const incAsk = () => incDates().filter(d => INC_ASK_WD.indexOf(new Date(d + "T00:00:00Z").getUTCDay()) >= 0).sort();
+function incWhenHtml(){
+  inc.when = inc.when || {};
+  return incAsk().map(d => '<div class="incwhen"><label class="label" for="incW' + d + '">Поставка за ' + ["вс", "пн", "вт", "ср", "чт", "пт", "сб"][new Date(d + "T00:00:00Z").getUTCDay()] + " " + mgrRu(d).slice(0, 5) +
+    ' пришла *</label><select id="incW' + d + '" data-when="' + d + '"><option value="">— до или после ревизии? —</option>' +
+    ["до", "после"].map(w => '<option value="' + w + '"' + (inc.when[d] === w ? " selected" : "") + '>' + w + ' ревизии</option>').join("") + '</select></div>').join("");
+}
 /* перерисовка — после события: поле, теряющее фокус, ещё в документе */
 $("incImp").addEventListener("toggle", e => { if (e.target.id === "incMapD" && inc) inc.mapOpen = e.target.open; }, true);
 let incT = 0;
@@ -763,7 +793,8 @@ const incRedraw = () => { clearTimeout(incT); incT = setTimeout(() => { if (inc)
 $("incImp").addEventListener("change", e => {
   const t = e.target;
   if (t.id === "incSheet"){ inc.si = +t.value; incDetect(); incBuild(); return incRedraw(); }
-  if (t.id && t.id.startsWith("incM") && t.id.length > 4){ inc.meta[t.id.slice(4)] = t.value; return; }
+  if (t.dataset.when){ inc.when = inc.when || {}; inc.when[t.dataset.when] = t.value; return; }
+  if (t.id && t.id.startsWith("incM") && t.id.length > 4){ inc.meta[t.id.slice(4)] = t.value; if (t.id === "incMdate") incRedraw(); return; }
   if (t.dataset.k && t.id.startsWith("incC")){ if (t.value === "") delete inc.map[t.dataset.k]; else inc.map[t.dataset.k] = +t.value; incBuild(); return incRedraw(); }
   const li = t.closest("li[data-i]");
   if (!li) return;
@@ -796,6 +827,9 @@ $("incImp").addEventListener("click", async e => {
     return x;
   });
   if (rows.some(r => !/^\d{4}-\d{2}-\d{2}$/.test(r.date))){ $("incMsg").textContent = "Укажите дату накладной."; return; }
+  const ask = incAsk().filter(d => !(inc.when || {})[d]);
+  if (ask.length){ $("incMsg").textContent = "Укажите, поставка за " + ask.map(d => mgrRu(d).slice(0, 5)).join(", ") + " пришла до или после ревизии."; return; }
+  rows.forEach(r => { r.when = (inc.when || {})[r.date] || ""; });
   btn.disabled = true; $("incMsg").textContent = "Записываем…";
   /* частями по 400 строк: большой файл не обрезается; повтор после сбоя не задвоит (id) */
   let d = {ok: true, added: 0, dup: 0, miss: []};
@@ -829,7 +863,7 @@ $("incImp").addEventListener("click", async e => {
 let useData = null, useKind = mgrj("mechty-mgr-use", {k: "d"}).k === "m" ? "m" : "d", useSens = 0.5, useOpen = -1;
 const isoDays = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 const median = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-const useU = u => { const s = String(u || "").trim(); return s === "литр" ? "л" : s || "бут."; };
+const useU = u => { const s = String(u || "").trim(); return s === "литр" || !s ? "л" : s === "бут" ? "бут." : s; };
 const useTol = u => /^(шт|бут\.)$/.test(useU(u)) ? 1 : 0.1;              // меньше этого — не странность, а погрешность пересчёта
 
 function usePeriods(x){
@@ -872,6 +906,9 @@ async function useLoad(){
   const mk = mgrKey();
   if (!mk) return mgrInit();
   document.querySelectorAll("#useKind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === useKind)));
+  $("useHintD").hidden = useKind !== "d"; $("useHintM").hidden = useKind === "d";
+  $("useSens").hidden = useKind === "d"; $("usePerBox").hidden = useKind !== "d";
+  if (useKind === "d") return perLoad();
   document.querySelectorAll("#useSens button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === useSens)));
   $("useWarn").textContent = "";
   if (!useData || useData.kind !== useKind) $("useList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
@@ -943,12 +980,99 @@ $("useSens").addEventListener("click", e => {
   if (useData) useDraw();
 });
 $("useList").addEventListener("click", e => {
+  if (useKind === "d") return perClick(e);
   const b = e.target.closest("button.userow");
   if (!b) return;
   const i = +b.dataset.i;
   useOpen = useOpen === i ? -1 : i; buzz(8); useDraw();
 });
 $("useWarn").addEventListener("click", e => { if (e.target.id === "useRetry") useLoad(); });
+
+/* ── период ревизии: ревизия против продаж ──
+   всё считает сервер (mgr: "period"): строка {n, u, was, inc, sold, wo, pr, exp, now, diff, price, money, zag/raw/info/miss}.
+   Ожидалось = было + приход − продано − списания − проработки; расхождение = стало − ожидалось (минус — недостача). */
+let perData = null, perI = null, perOpen = "";
+const perLab = (a, b) => a.wd + " " + mgrRu(a.iso).slice(0, 5) + " → " + b.wd + " " + mgrRu(b.iso).slice(0, 5);
+const perMoney = x => mgrNum(Math.round(Math.abs(x || 0)));
+async function perLoad(){
+  const mk = mgrKey();
+  if (!mk) return mgrInit();
+  $("useWarn").textContent = "";
+  if (!perData) $("useList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
+  const d = await api(Object.assign({mgr: "period", mk}, perI != null ? {i: perI} : {}));
+  if (d.error === "mgr") return mgrExpired();
+  if (!d.ok){
+    $("useList").innerHTML = "";
+    $("useWarn").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)."
+      : 'Нет связи с таблицей. <button type="button" class="link" id="useRetry">Повторить</button>';
+    return;
+  }
+  if (useKind !== "d") return;                                           // пока грузили, переключили на месячную
+  perData = d; perDraw();
+}
+function perDraw(){
+  const d = perData, R = d.revs || [];
+  $("usePer").innerHTML = R.slice(1).map((b, j) => '<option value="' + (j + 1) + '"' + (j + 1 === d.i ? " selected" : "") + '>' + perLab(R[j], b) + (j + 1 === R.length - 1 ? " · последний" : "") + '</option>').reverse().join("");
+  $("usePerBox").hidden = R.length < 2;
+  if (R.length < 2 || !d.from){
+    $("useSum").textContent = "";
+    $("useList").innerHTML = '<p class="empty">Нужны хотя бы две ревизии — дни, когда посчитаны все зоны и все нажали «Завершить». Расход считается между ними.</p>';
+    return;
+  }
+  const S = d.sales || {want: [], miss: [], nodish: [], have: []}, rows = d.rows.filter(r => !r.info && !r.miss);
+  const info = d.rows.filter(r => r.info), miss = d.rows.filter(r => r.miss);
+  const dd = iso => ["вс", "пн", "вт", "ср", "чт", "пт", "сб"][new Date(iso + "T00:00:00Z").getUTCDay()] + " " + mgrRu(iso).slice(0, 5);
+  $("useSum").innerHTML = '<b>' + perLab(d.from, d.to) + '</b>' + (d.to.who ? " (" + esc(d.to.who) + ")" : "") + ' · недостача <b class="salshort">' + perMoney(d.short) + ' ₸</b> · излишек <b>' + perMoney(d.over) + ' ₸</b> · позиций ' + rows.length;
+  const wm = d.womiss || [];
+  const W = [
+    !S.want.length ? "В этом периоде смен не было — продаж не ждём: любое расхождение — потери или ошибка пересчёта." :
+      S.miss.length ? "Нет продаж R-Keeper за " + S.miss.map(dd).join(", ") + " — загрузите во вкладке «Продажи», иначе всё проданное в эти дни покажется недостачей." : "",
+    S.nodish.length ? mgrPl(S.nodish.length, "блюдо", "блюда", "блюд") + " без расхода на блюдо (" + S.nodish.slice(0, 8).map(x => x.name + " ×" + mgrNum(x.qty)).join(", ") + (S.nodish.length > 8 ? "…" : "") +
+      ") — задайте во вкладке «Продажи», иначе их ингредиенты покажутся недостачей." : "",
+    (d.zagno || []).length ? "Заготовки без рецепта (их сырьё не сойдётся — задайте рецепт во вкладке «Продажи»): " + d.zagno.join(", ") + "." : "",
+    (d.skipped || []).length ? "Пересчёты не всех зон — не ревизия, период через них не режется: " + d.skipped.map(x => x.d.slice(0, 5) + (x.z ? " (" + x.z + ")" : "")).join(", ") + "." : "",
+    (d.nokey || []).length ? "Не найдены в справочнике — приход, продажи и списания для них не учитываются: " + d.nokey.join(", ") + "." : "",
+    wm.filter(x => x.why === "name").length ? "Списания не учтены — названия нет в бланке ревизии (назовите в акте как в бланке): " + wm.filter(x => x.why === "name").map(x => x.n).join(", ") + "." : "",
+    wm.filter(x => x.why === "ambiguous").length ? "Списания не учтены — в бланке несколько позиций с таким названием: " + wm.filter(x => x.why === "ambiguous").map(x => x.n).join(", ") + "." : "",
+    wm.filter(x => x.why === "unit").length ? "Списания не учтены — единица акта не переводится в единицу позиции (задайте единицу и тару в справочнике): " + wm.filter(x => x.why === "unit").map(x => x.n + " (" + (x.u || "?") + (x.pu ? " → " + x.pu : "") + ")").join(", ") + "." : "",
+    (d.unconv || []).length ? "Не переводится единица (задайте единицу и тару в справочнике): " + d.unconv.join(", ") + "." : "",
+    d.noprice ? "У " + mgrPl(d.noprice, "позиции", "позиций", "позиций") + " с расхождением нет цены закупки — в сумму ₸ не вошли (цена заполнится из накладных или в справочнике)." : ""
+  ].filter(Boolean);
+  $("useWarn").innerHTML = W.map(esc).join("<br>");
+  const n = x => mgrNum(r2(x));
+  const why = r => {
+    const t = ["было " + n(r.was)];
+    if (r.inc) t.push("+ приход " + n(r.inc));
+    if (r.sold) t.push("− продано " + n(r.sold));
+    if (r.wo) t.push("− списано " + n(r.wo));
+    if (r.pr) t.push("− проработки " + n(r.pr));
+    return t.join(" ") + (t.length > 1 ? " = ожидалось " + n(r.exp) : "") + " · стало " + n(r.now) + (r.raw ? " · с заготовками" : "");
+  };
+  const line = r => {
+    const u = useU(r.u), cls = Math.abs(r.diff) < 1e-9 ? "per0" : r.diff < 0 ? "perneg" : "perpos";
+    return '<li class="' + cls + '"><div class="userow"><span class="usen"><span class="refn">' + esc(r.n) + '</span><small class="mgrwhy">' + esc(why(r)) + '</small></span>' +
+      '<span class="usev"><b>' + (Math.abs(r.diff) < 1e-9 ? "сходится" : (r.diff < 0 ? "−" : "+") + n(Math.abs(r.diff)) + " " + u) + '</b>' +
+      (r.money ? '<small>' + (r.money < 0 ? "−" : "+") + perMoney(r.money) + ' ₸</small>' : r.diff && !r.price ? '<small>нет цены</small>' : "") + '</span></div></li>';
+  };
+  let html = '<div class="result tcard mgrt"><div class="tname"><em>' + perLab(d.from, d.to) + '</em><h3>Ревизия против продаж</h3></div>' +
+    (rows.length ? '<ul class="olist usel">' + rows.map(line).join("") + '</ul>' : '<p class="empty">Нет позиций, посчитанных в обеих ревизиях.</p>');
+  if (info.length) html += '<details class="incmapd perd"><summary>Заготовки — разложены на сырьё (' + info.length + ')</summary><ul class="olist usel">' +
+    info.map(r => '<li><div class="userow"><span class="usen"><span class="refn">' + esc(r.n) + '</span><small class="mgrwhy">было ' + n(r.was) + ' · стало ' + n(r.now) + ' ' + useU(r.u) + ' — уже в остатке сырья по рецепту</small></span></div></li>').join("") + '</ul></details>';
+  if (miss.length) html += '<details class="incmapd perd"><summary>Не посчитаны в одной из ревизий (' + miss.length + ')</summary><p class="wnhint">' +
+    miss.map(r => esc(r.n) + (r.miss === "from" ? " — нет в " + d.from.wd : " — нет в " + d.to.wd)).join(", ") + '</p></details>';
+  html += '<p class="mgrfoot"><button type="button" class="link" id="perCopy">Скопировать итог</button></p></div>';
+  $("useList").innerHTML = html;
+}
+async function perClick(e){
+  if (e.target.id !== "perCopy" || !perData) return;
+  const d = perData, t = ["Ревизия против продаж, " + perLab(d.from, d.to), "Недостача: " + perMoney(d.short) + " ₸, излишек: " + perMoney(d.over) + " ₸", ""]
+    .concat(d.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).map(r => "— " + r.n + ": " + (r.diff < 0 ? "−" : "+") + mgrNum(r2(Math.abs(r.diff))) + " " + useU(r.u) + (r.money ? " (" + perMoney(r.money) + " ₸)" : ""))).join("\n");
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch (err) {}
+  e.target.textContent = ok ? "Скопировано ✓" : "Не скопировалось";
+  setTimeout(() => { e.target.textContent = "Скопировать итог"; }, 1800);
+}
+$("usePer").addEventListener("change", () => { perI = +$("usePer").value; buzz(8); perLoad(); });
 
 /* ── гостям: меню и «Состав и аллергены» из таблицы ──
    строка меню: [глава, глава EN, раздел, раздел EN, плитки, название, EN, описание, EN, объём, ед., цена, id в карте, код R-Keeper, скрыть, uid]
@@ -1293,8 +1417,8 @@ async function repLoad(){
 }
 function repAutoDraw(){
   const a = repData && repData.auto;
-  $("repAuto").textContent = a === true ? "по понедельникам — включено" : a === false ? "по понедельникам — выключено" : "";
-  $("repToggle").textContent = a === true ? "Выключить по понедельникам" : "Включить по понедельникам";
+  $("repAuto").textContent = a === true ? "после ревизий и по понедельникам — включено" : a === false ? "выключено" : "";
+  $("repToggle").textContent = a === true ? "Выключить письма" : "Включить письма";
 }
 const REP_AUTH = "Нет разрешения на почту или таймеры. Откройте Apps Script, выберите в списке функций вверху installWeeklyReport и нажмите «Выполнить» — Google спросит доступ; после этого всё заработает.";
 async function repPost(body, btn){
@@ -1318,7 +1442,7 @@ $("repSave").addEventListener("click", async () => {
 $("repToggle").addEventListener("click", async () => {
   const on = !(repData && repData.auto === true);
   const d = await repPost({mgr: "reportauto", on: on ? "1" : "0"}, $("repToggle"));
-  if (d){ repData.auto = d.auto; repAutoDraw(); $("repMsg").textContent = d.auto ? "Включено: письмо будет приходить каждый понедельник в 9:00." : "Выключено."; buzz(14); }
+  if (d){ repData.auto = d.auto; repAutoDraw(); $("repMsg").textContent = d.auto ? "Включено: письмо после каждой ревизии и каждый понедельник в 9:00." : "Выключено."; buzz(14); }
 });
 $("repSend").addEventListener("click", async () => {
   if (!repData) return;
@@ -1336,14 +1460,14 @@ $("repMsg").addEventListener("click", e => { if (e.target.id === "repRetry") rep
 /* ── продажи R-Keeper против ревизии ──
    sal = {kind, use (как во «Расходе»), ref (справочник), map: ключ блюда → {comps: [{ri, q}], none, src}, sales: [{name, code, qty}], open}
    Ключ блюда — код R-Keeper, иначе название. Расход на блюдо — в единицах позиции (40 мл джина = 0,04 л). */
-let sal = null, salKindSel = "m";
+let sal = null;
 const nmKey = s => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
 const salKey = d => d.code ? "c:" + d.code : "n:" + nmKey(d.name);
 const LAT = [["sh", "ш"], ["ch", "ч"], ["zh", "ж"], ["kh", "х"], ["ts", "ц"], ["ya", "я"], ["yu", "ю"], ["yo", "ё"]];
 const LAT1 = {a: "а", b: "б", c: "к", d: "д", e: "е", f: "ф", g: "г", h: "х", i: "и", j: "дж", k: "к", l: "л", m: "м", n: "н", o: "о", p: "п", q: "к", r: "р", s: "с", t: "т", u: "у", v: "в", w: "в", x: "кс", y: "и", z: "з"};
 /* латиница → кириллица для сравнения названий («Beluga Noble» ~ «Белуга Нобл») */
 const toCyr = s => { let t = String(s).toLowerCase(); for (const [a, b] of LAT) t = t.split(a).join(b); return t.replace(/[a-z]/g, c => LAT1[c]).replace(/(.)\1+/g, "$1"); };
-const salU = u => { const s = String(u || "").trim().toLowerCase(); return s === "литр" || s === "л" ? "л" : s === "кг" ? "кг" : s === "шт" ? "шт" : ""; };
+const salU = u => { const s = String(u || "").trim().toLowerCase(); return s === "литр" || s === "л" || !s ? "л" : s === "кг" ? "кг" : s === "шт" ? "шт" : ""; };   // "" — бутылки («бут»)
 
 /* лучшая позиция справочника для названия: однозначно лучшая и не ниже порога. Редкое слово весит больше частого:
    «Спиртной напиток «Сарти Роза»» — это «Сарти», а не чай «Роза» («роза» встречается в нескольких позициях) */
@@ -1419,69 +1543,67 @@ function salSuggest(d){
 async function salLoad(){
   const mk = mgrKey();
   if (!mk) return mgrInit();
-  document.querySelectorAll("#salKind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === salKindSel)));
   $("salWarn").textContent = "Загрузка…";
-  const kind = salKindSel;
-  const [u, r, m] = await Promise.all([api({mgr: "usage", mk, kind}), api({mgr: "ref", mk}), api({mgr: "dishes", mk})]);
-  if (kind !== salKindSel) return;                                      // пока грузили, переключили вид ревизии
-  if ([u, r, m].some(x => x.error === "mgr")) return mgrExpired();
-  if (!u.ok || !r.ok || !m.ok){
-    $("salWarn").innerHTML = [u, r, m].some(x => x.error === "action") ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : 'Нет связи с таблицей. <button type="button" class="link" id="salRetry">Повторить</button>';
+  const [r, m, sl, z] = await Promise.all([api({mgr: "ref", mk}), api({mgr: "dishes", mk}), api({mgr: "sales", mk}), api({mgr: "zags", mk})]);
+  if ([r, m, sl, z].some(x => x.error === "mgr")) return mgrExpired();
+  if (![r, m, sl, z].every(x => x.ok)){
+    $("salWarn").innerHTML = [r, m, sl, z].some(x => x.error === "action") ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : 'Нет связи с таблицей. <button type="button" class="link" id="salRetry">Повторить</button>';
     return;
   }
-  const sales = sal && sal.sales, file = sal && sal.file, typing = !!document.querySelector("#salDish form.salf");
-  sal = {kind: salKindSel, use: u, ref: r.rows, refTok: r.rows.map(x => incTok(x[1])), df: {}, map: {}, sales: sales || null, file, open: typing && sal ? sal.open : ""};
+  const typing = !!document.querySelector("#salDish form.salf, #salZag form.salf");
+  sal = {ref: r.rows, refTok: r.rows.map(x => incTok(x[1])), df: {}, map: {}, zag: {}, sales: sl.dishes, days: sl.days, since: sl.since,
+    open: typing && sal ? sal.open : "", zopen: typing && sal ? sal.zopen : "", okOpen: sal && sal.okOpen, zokOpen: sal && sal.zokOpen};
   /* «Расход на блюдо»: позиция — по разделу и названию, а без раздела — по одному названию, если оно в справочнике одно.
      Строку, позиция которой не нашлась, не считаем заданной — блюдо останется «расход не задан», а менеджер увидит, что поправить. */
   const at = {}, byN = {};
   r.rows.forEach((x, i) => { at[nmKey(x[0]) + "|" + nmKey(x[1])] = i; byN[nmKey(x[1])] = nmKey(x[1]) in byN ? -1 : i; });
+  const find = (sec, n) => { let ri = at[nmKey(sec) + "|" + nmKey(n)]; if (ri == null && !String(sec).trim() && byN[nmKey(n)] >= 0) ri = byN[nmKey(n)]; return ri; };
   const bad = new Set(), codes = {};
   for (const row of m.rows){
     if (row[1]) (codes[nmKey(row[0])] = codes[nmKey(row[0])] || new Set()).add(String(row[1]));
     const k = row[1] ? "c:" + row[1] : "n:" + nmKey(row[0]);
     if (/^[—–-]$/.test(String(row[3]).trim())){ (sal.map[k] = sal.map[k] || {comps: [], none: false, src: row[6] || "", name: row[0]}).none = true; continue; }
-    let ri = at[nmKey(row[2]) + "|" + nmKey(row[3])];
-    if (ri == null && !String(row[2]).trim() && byN[nmKey(row[3])] >= 0) ri = byN[nmKey(row[3])];
+    const ri = find(row[2], row[3]);
     if (ri == null || !(mgrN(row[4]) > 0)){ bad.add(row[0] + " → «" + row[3] + "»"); continue; }
     (sal.map[k] = sal.map[k] || {comps: [], none: false, src: row[6] || "", name: row[0]}).comps.push({ri, q: mgrN(row[4])});
   }
-  sal.bad = [...bad];
   /* по названию — тоже, но только если у этого названия один код (у «Hendrick's» 40 мл и бутылки навынос — разные расходы) */
   m.rows.forEach(row => { const n = nmKey(row[0]); if (row[1] && !sal.map["n:" + n] && codes[n].size === 1 && sal.map["c:" + row[1]]) sal.map["n:" + n] = sal.map["c:" + row[1]]; });
-  const C = u.cols, opt = (i, sel) => '<option value="' + i + '"' + (sel ? " selected" : "") + '>' + mgrRu(C[i].iso) + (C[i].who ? " · " + esc(C[i].who) : "") + '</option>';
-  $("salFrom").innerHTML = C.map((c, i) => opt(i, i === C.length - 2)).join("");
-  $("salTo").innerHTML = C.map((c, i) => opt(i, i === C.length - 1)).join("");
-  $("salSrc").textContent = C.length < 2 ? "" : mgrRu(C[C.length - 2].iso) + " — " + mgrRu(C[C.length - 1].iso);
+  /* рецепты заготовок: заготовка (раздел|название) → {comps: [{ri, q}], src} */
+  for (const row of z.rows){
+    const zi = find(row[0], row[1]), ri = find(row[2], row[3]);
+    if (zi == null || ri == null || !(mgrN(row[4]) > 0)){ bad.add("заготовка " + row[1] + " → «" + row[3] + "»"); continue; }
+    (sal.zag[zi] = sal.zag[zi] || {comps: [], src: row[6] || ""}).comps.push({ri, q: mgrN(row[4])});
+  }
+  sal.bad = [...bad];
   $("salRefs").innerHTML = r.rows.map(x => '<option value="' + esc(incLabel(x)) + '">').join("");
-  $("salWarn").textContent = (C.length < 2 ? "Нужны хотя бы две " + (salKindSel === "m" ? "закрытые месячные" : "законченные ежедневные") + " ревизии. " : "") +
-    (sal.bad.length ? "В листе «Расход на блюдо» не нашлись позиции (поправьте название и раздел как в справочнике): " + sal.bad.join("; ") + "." : "");
-  if (!typing) salDraw();                                                // открыта форма расхода — набранное не стирать
+  $("salWarn").textContent = sal.bad.length ? "В листах «Расход на блюдо» и «Рецепты заготовок» не нашлись позиции (поправьте название и раздел как в справочнике): " + sal.bad.join("; ") + "." : "";
+  salDaysDraw();
+  if (!typing){ salDraw(); zagDraw(); }                                  // открыта форма — набранное не стирать
 }
-$("salKind").addEventListener("click", e => {
-  const b = e.target.closest("button[data-k]");
-  if (!b || b.dataset.k === salKindSel) return;
-  salKindSel = b.dataset.k; buzz(8); salLoad();
-});
-["salFrom", "salTo"].forEach(id => $(id).addEventListener("change", () => {
-  if (!sal) return;
-  const C = sal.use.cols, f = +$("salFrom").value, t = +$("salTo").value;
-  $("salSrc").textContent = C[f] && C[t] ? mgrRu(C[f].iso) + " — " + mgrRu(C[t].iso) : "";
-  salDraw();
-}));
+const salWd = iso => ["вс", "пн", "вт", "ср", "чт", "пт", "сб"][new Date(iso + "T00:00:00Z").getUTCDay()];
+function salDaysDraw(){
+  const D = (sal.days || []).slice(0, 14);
+  $("salSrc").textContent = D.length ? "загружено по " + salWd(D[0].iso) + " " + mgrRu(D[0].iso).slice(0, 5) : "";
+  $("salDays").innerHTML = D.length ? '<p class="label saldl">Загружено по дням</p><ul class="saldays">' + D.map(d => '<li><b>' + salWd(d.iso) + " " + mgrRu(d.iso).slice(0, 5) + '</b> · ' +
+    mgrNum(Math.round(d.qty)) + ' порц.' + (d.sum ? " · " + mgrNum(Math.round(d.sum)) + " ₸" : "") + '</li>').join("") + '</ul>' : '<p class="wnhint">Продаж ещё нет — загрузите отчёт R-Keeper.</p>';
+}
 $("salWarn").addEventListener("click", e => { if (e.target.id === "salRetry") salLoad(); });
 
+/* дата ячейки: ГГГГ-ММ-ДД (Excel) или ДД.ММ.ГГГГ (CSV); не дата — "" */
+const salDate = v => { const s = String(v == null ? "" : v).trim(); let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})(?!\d)/); return m ? incIso(m[1], m[2], m[3]) : ""; };
 $("salFile").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0];
   e.target.value = "";
   if (!f || !sal) return;
   $("salWarn").textContent = "Читаем файл…";
-  sal.sales = null; salDraw();                                          // прежний отчёт не остаётся на экране
   let t;
   try { t = await readTable(f); }
   catch (err) { $("salWarn").textContent = xErrText(err); return; }
-  /* все видимые листы (выгрузка «каждая страница — свой лист»); у каждого — своя шапка */
+  /* все видимые листы; у каждого — своя шапка. Дата строки — из столбца «Дата» / «Смена» или из строки-заголовка группы с датой */
   const by = {}, tops = [];
-  let found = 0, total = 0;
+  let found = 0, nodate = 0;
   for (const sh of t.sheets.filter(x => !x.hidden)){
     const rows = sh.rows, mp = salHead(rows);
     if (!mp) continue;
@@ -1489,22 +1611,53 @@ $("salFile").addEventListener("change", async e => {
     tops.push(rows.slice(0, mp.hr).map(r => r.filter(c => c !== "").join(" ")).join(" "));
     const data = rows.slice(mp.hr + 1);
     const coded = mp.c >= 0 && data.filter(r => typeof r[mp.q] === "number").filter(r => String(r[mp.c] || "").trim()).length >= 0.7 * data.filter(r => typeof r[mp.q] === "number").length;
+    let cur = "";
     for (const row of data){
       const name = String(row[mp.n] || "").trim(), qty = row[mp.q], code = mp.c >= 0 ? String(row[mp.c] || "").trim() : "";
+      const dCol = mp.d >= 0 ? salDate(row[mp.d]) : "";
+      if (dCol) cur = dCol;
+      else if (typeof qty !== "number"){ const g = row.map(salDate).find(Boolean); if (g){ cur = g; continue; } }   // «09.10.2026» над блюдами дня
       if (!name || typeof qty !== "number" || !qty || /^(итог|всего|total)/i.test(name)) continue;
       if (coded && !code) continue;                                      // строка группы с подытогом — без кода
-      const d = {name, code, qty, sum: mp.s >= 0 && typeof row[mp.s] === "number" ? row[mp.s] : 0}, k = salKey(d);
-      total += qty;
-      if (by[k]){ by[k].qty += qty; by[k].sum += d.sum; } else by[k] = d;   // возврат (−) вычитается
+      if (salDate(name)) continue;
+      if (!cur){ nodate++; continue; }
+      const k = cur + "|" + salKey({name, code}), sum = mp.s >= 0 && typeof row[mp.s] === "number" ? row[mp.s] : 0;
+      if (by[k]){ by[k].qty += qty; by[k].sum += sum; } else by[k] = {iso: cur, name, code, qty, sum};   // возврат (−) вычитается
     }
   }
   if (!found){ $("salWarn").textContent = "Не нашёл в файле столбцы «Наименование» (блюдо) и «Количество»."; return; }
-  const top = tops.join(" "), dates = [...top.matchAll(/(\d{1,2})\.(\d{1,2})\.(\d{4})|(\d{4})-(\d{2})-(\d{2})/g)].map(x => x[1] ? incIso(x[1], x[2], x[3]) : x[4] + "-" + x[5] + "-" + x[6]);
-  const per = dates.length >= 2 ? {from: dates[0], to: dates[dates.length - 1]} : null;
-  sal.sales = Object.values(by).filter(d => d.qty > 0);
-  sal.file = {name: f.name, per: per ? mgrRu(per.from) + " — " + mgrRu(per.to) : "", from: per ? per.from : "", to: per ? per.to : ""};
-  $("salWarn").textContent = sal.sales.length ? "" : "В файле нет строк с блюдами и количеством.";
-  salDraw();
+  let list = Object.values(by);
+  if (nodate){
+    /* дат по строкам нет: отчёт за один день — дата из шапки */
+    const top = tops.join(" "), dates = [...new Set([...top.matchAll(/(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)|(\d{4})-(\d{2})-(\d{2})/g)].map(x => x[1] ? incIso(x[1], x[2], x[3]) : x[4] + "-" + x[5] + "-" + x[6]))];
+    if (list.length || dates.length !== 1){
+      $("salWarn").textContent = "В отчёте нет дат по строкам — выгрузите «продажи по блюдам» с разбивкой по дням (или отчёт за один день).";
+      return;
+    }
+    $("salWarn").textContent = "Читаем…";
+    for (const sh of t.sheets.filter(x => !x.hidden)){
+      const rows = sh.rows, mp = salHead(rows);
+      if (!mp) continue;
+      for (const row of rows.slice(mp.hr + 1)){
+        const name = String(row[mp.n] || "").trim(), qty = row[mp.q], code = mp.c >= 0 ? String(row[mp.c] || "").trim() : "";
+        if (!name || typeof qty !== "number" || !qty || /^(итог|всего|total)/i.test(name)) continue;
+        const k = salKey({name, code}), sum = mp.s >= 0 && typeof row[mp.s] === "number" ? row[mp.s] : 0;
+        if (by[k]){ by[k].qty += qty; by[k].sum += sum; } else by[k] = {iso: dates[0], name, code, qty, sum};
+      }
+    }
+    list = Object.values(by);
+  }
+  list = list.filter(x => x.qty);
+  if (!list.length){ $("salWarn").textContent = "В файле нет строк с блюдами и количеством."; return; }
+  const days = [...new Set(list.map(x => x.iso))].sort();
+  $("salWarn").textContent = "Сохраняем продажи за " + days.length + " " + mgrPl(days.length, "день", "дня", "дней").replace(/^\d+ /, "") + "…";
+  const d = await pubPost({mgr: "salesput", file: f.name, days, rows: list.map(x => [x.iso, x.code, x.name, Math.round(x.qty * 1000) / 1000, Math.round(x.sum * 100) / 100])});
+  if (!d) return;
+  if (!d.ok){ $("salWarn").textContent = pubErr(d); return; }
+  buzz(14);
+  perData = null;                                                         // «Расход» пересчитается
+  await salLoad();
+  $("salWarn").textContent = "Сохранено: " + days.map(x => salWd(x) + " " + mgrRu(x).slice(0, 5)).join(", ") + " — " + mgrPl(list.length, "строка", "строки", "строк") + ". Расхождение — во вкладке «Расход».";
 });
 
 /* шапка отчёта: название блюда — по самому точному заголовку (не «Код блюда», не «Группа блюд»); среди равных — где больше разных значений */
@@ -1516,7 +1669,8 @@ function salHead(rows){
     if (q < 0 || !cand.length) continue;
     const rank = o => (/^(блюдо|наименование( блюда)?|название( блюда)?)$/.test(o.x) ? 2 : 0) + new Set(rows.slice(i + 1, i + 200).map(r => r[o.j])).size / 1e4;
     const n = cand.sort((a, b) => rank(b) - rank(a))[0].j;
-    return {hr: i, n, q, c: c.findIndex(x => /^код( блюда)?$|^код\s*r/.test(x)), s: c.findIndex(x => /сумм|выручк/.test(x) && !/ндс|скидк/.test(x))};
+    return {hr: i, n, q, c: c.findIndex(x => /^код( блюда)?$|^код\s*r/.test(x)), s: c.findIndex(x => /сумм|выручк/.test(x) && !/ндс|скидк/.test(x)),
+      d: c.findIndex(x => /^(дата|день)|смен/.test(x) && !/время|открыт|закрыт/.test(x))};
   }
   return null;
 }
@@ -1524,7 +1678,7 @@ const salMapOf = d => sal.map[salKey(d)] || sal.map["n:" + nmKey(d.name)] || nul
 const salCompTxt = comps => comps.map(c => { const r = sal.ref[c.ri]; return mgrNum(Math.round(c.q * 10000) / 10000) + " " + useU(r[2]) + " " + r[1]; }).join(" + ");
 function salDraw(){
   if (!sal) return;
-  if (!sal.sales){ $("salDish").innerHTML = ""; $("salRes").innerHTML = ""; return; }
+  if (!sal.sales.length){ $("salDish").innerHTML = ""; return; }
   const ds = sal.sales.map(d => Object.assign({}, d, {m: salMapOf(d)}));
   ds.forEach(d => { if (!d.m) d.sug = salSuggest(d); });
   const ok = ds.filter(d => d.m), sug = ds.filter(d => !d.m && d.sug), no = ds.filter(d => !d.m && !d.sug);
@@ -1533,71 +1687,26 @@ function salDraw(){
     return '<li class="' + (d.m ? "inc-code" : d.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(d.name) + (d.code ? ' <small>код ' + esc(d.code) + '</small>' : "") + '</span>' +
       '<small class="mgrwhy">продано ' + mgrNum(d.qty) + (st ? ' · <b>' + esc(st) + '</b>' : ' · <b>расход не задан</b>') +
         (d.sug && !d.m ? ' · ' + esc(d.sug.src) + (d.sug.miss.length ? " (без: " + esc(d.sug.miss.join(", ")) + ")" : "") : "") + '</small>' +
-      (open ? salForm(d) : '<div class="salbtns">' + (d.sug && !d.m ? '<button type="button" class="link" data-ok="' + esc(key) + '">Верно</button>' : "") +
+      (open ? salForm(d) : '<div class="salbtns">' + (d.sug && !d.m && !d.sug.miss.length ? '<button type="button" class="link" data-ok="' + esc(key) + '">Верно</button>' : "") +
         '<button type="button" class="link" data-ed="' + esc(key) + '">' + (d.m || d.sug ? "Изменить" : "Задать расход") + '</button>' +
         (!d.m || !d.m.none ? '<button type="button" class="link" data-no="' + esc(key) + '">Не учитывать</button>' : "") + '</div>') + '</div></li>';
   };
-  $("salDish").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + esc(sal.file.name) + (sal.file.per ? " · " + esc(sal.file.per) : "") + '</em><h3>Блюда из отчёта</h3></div>' +
-    '<p class="mgrsum salsum">Блюд: <b>' + ds.length + '</b> · продано порций ' + mgrNum(ds.reduce((a, d) => a + d.qty, 0)) + ' · расход задан у ' + ok.length +
+  const full = sug.filter(d => !d.sug.miss.length);
+  $("salDish").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>продажи с ' + mgrRu(sal.since).slice(0, 5) + '</em><h3>Расход на блюдо</h3></div>' +
+    '<p class="mgrsum salsum">Блюд: <b>' + ds.length + '</b> · продано порций ' + mgrNum(Math.round(ds.reduce((a, d) => a + d.qty, 0))) + ' · расход задан у ' + ok.length +
       (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · не задан у ' + no.length : "") + '</p>' +
-    (sug.length ? '<div class="refbtns salall"><button type="button" class="wogo" id="salOkAll">Подтвердить все предложенные (' + sug.length + ')</button></div>' : "") +
+    (full.length ? '<div class="refbtns salall"><button type="button" class="wogo" id="salOkAll">Подтвердить все предложенные (' + full.length + ')</button></div>' : "") +
     (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
     (ok.length ? '<details class="incmapd salok"' + (sal.okOpen || ok.some(d => salKey(d) === sal.open) ? " open" : "") + '><summary>Расход задан (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
     '<p class="warn" id="salMsg" role="status"></p></div>';
-  salResult(ds);
 }
-function salForm(d){
-  const cur = d.m && !d.m.none ? d.m.comps : d.sug ? d.sug.comps : [];
+function salForm(d, zag){
+  const cur = zag ? (d.m ? d.m.comps : d.sug ? d.sug.comps : []) : d.m && !d.m.none ? d.m.comps : d.sug ? d.sug.comps : [];
   const rows = (cur.length ? cur : [{ri: -1, q: 0}]).map(c => '<div class="salc"><input type="text" list="salRefs" data-f="p" value="' + (c.ri >= 0 ? esc(incLabel(sal.ref[c.ri])) : "") + '" placeholder="Позиция справочника" aria-label="Позиция">' +
-    '<input type="text" inputmode="decimal" data-f="q" value="' + (c.q ? mgrNum(Math.round(c.q * 100000) / 100000) : "") + '" placeholder="0,04" aria-label="Сколько на 1 блюдо"></div>').join("");
-  return '<form class="salf" data-k="' + esc(salKey(d)) + '"><p class="wnhint">Сколько каждой позиции уходит на одно блюдо — в единицах позиции (40 мл = 0,04 л; бутылка = 1).</p>' + rows +
+    '<input type="text" inputmode="decimal" data-f="q" value="' + (c.q ? mgrNum(Math.round(c.q * 100000) / 100000) : "") + '" placeholder="0,04" aria-label="Сколько"></div>').join("");
+  return '<form class="salf" data-k="' + esc(zag ? "z" + d.ri : salKey(d)) + '"><p class="wnhint">' + (zag ? "Сколько каждой позиции уходит на 1 " + esc(useU(sal.ref[d.ri][2])) + " заготовки — в единицах позиции (300 г сахара = 0,3 кг; 400 мл воды не нужно)."
+    : "Сколько каждой позиции уходит на одно блюдо — в единицах позиции (40 мл = 0,04 л; штука = 1).") + '</p>' + rows +
     '<button type="button" class="link" data-addc="1">+ позиция</button><div class="refbtns"><button type="submit" class="wogo">Сохранить</button><button type="button" class="link" data-cx="1">Отмена</button></div></form>';
-}
-/* сравнение: по каждой позиции — по продажам (только заданный расход) и по ревизии */
-function salResult(ds){
-  const C = sal.use.cols, f = +$("salFrom").value, t = +$("salTo").value;
-  if (!(t > f)){ $("salRes").innerHTML = '<p class="empty">Выберите ревизии: «по» позже, чем «с».</p>'; return; }
-  const exp = {};
-  ds.forEach(d => { if (d.m && !d.m.none) d.m.comps.forEach(c => { exp[c.ri] = (exp[c.ri] || 0) + c.q * d.qty; }); });
-  const refAt = {};
-  sal.ref.forEach((r, i) => { refAt[nmKey(r[0]) + "|" + nmKey(r[1])] = i; });
-  const act = {}, from = C[f].iso, to = C[t].iso;
-  sal.use.items.forEach(x => {
-    if (!x.key) return;
-    const ri = refAt[x.key];
-    if (ri == null || x.v[f] == null || x.v[t] == null) return;
-    const s = a => a.filter(y => y.iso > from && y.iso <= to).reduce((m, y) => m + y.q, 0);
-    act[ri] = {use: x.v[f] + s(x.inc) - x.v[t], wo: s(x.wo)};
-  });
-  const rows = [], nocount = [];
-  Object.keys(exp).forEach(k => {
-    const ri = +k, a = act[ri], r = sal.ref[ri], price = mgrN(r[7]);
-    if (!a){ nocount.push(r[1]); return; }
-    const diff = a.use - a.wo - exp[ri], tol = salU(r[2]) === "шт" ? 1 : 0.1;   // бутылки считаются дробно — допуск 0,1 бут.
-    rows.push({r, e: exp[ri], u: a.use, w: a.wo, diff, money: price ? diff * price : 0, ok: Math.abs(diff) < tol});
-  });
-  rows.sort((a, b) => Math.abs(b.money) - Math.abs(a.money) || Math.abs(b.diff) - Math.abs(a.diff));
-  const short = rows.filter(x => !x.ok && x.diff > 0).reduce((m, x) => m + x.money, 0), over = rows.filter(x => !x.ok && x.diff < 0).reduce((m, x) => m - x.money, 0);
-  const pending = ds.filter(d => !d.m).length;
-  sal.res = {rows, short, over, from, to};
-  /* период отчёта против выбранных ревизий (±1 день) */
-  const off = (a, b) => Math.abs(isoDays(a, b)) > 1;
-  const perWarn = !sal.file || !sal.file.from ? "Период в файле не найден — проверьте, что отчёт за те же даты, что и ревизии." :
-    off(sal.file.from, from) || off(sal.file.to, to) ? "Отчёт за " + sal.file.per + ", а ревизии — " + mgrRu(from) + " — " + mgrRu(to) + ": сравнение будет неверным." : "";
-  $("salRes").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + mgrRu(from).slice(0, 5) + " → " + mgrRu(to).slice(0, 5) + '</em><h3>Продажи против ревизии</h3></div>' +
-    (perWarn ? '<p class="warn salper">' + esc(perWarn) + '</p>' : "") +
-    '<p class="mgrsum salsum">Позиций: <b>' + rows.length + '</b> · недостача <b class="salshort">' + mgrNum(Math.round(short)) + ' ₸</b> · излишки <b>' + mgrNum(Math.round(over)) + ' ₸</b>' +
-      (pending ? ' · <span class="incg">' + mgrPl(pending, "блюдо", "блюда", "блюд") + ' без расхода — не учтены</span>' : "") + '</p>' +
-    (rows.length ? '<table class="saltab"><thead><tr><th>Позиция</th><th>Продажи</th><th>Ревизия</th><th>Разница</th></tr></thead><tbody>' + rows.map(x => {
-      const u = useU(x.r[2]);
-      return '<tr class="' + (x.ok ? "salok0" : x.diff > 0 ? "salneg" : "salpos") + '"><td class="n">' + esc(x.r[1]) + (x.w ? '<small class="mgrwhy">списано ' + mgrNum(r2(x.w)) + '</small>' : "") + '</td>' +
-        '<td class="v">' + mgrNum(r2(x.e)) + '</td><td class="v">' + mgrNum(r2(x.u - x.w)) + '</td>' +
-        '<td class="v"><b>' + (x.ok ? "сходится" : (x.diff > 0 ? "−" : "+") + mgrNum(r2(Math.abs(x.diff))) + " " + u) + '</b>' + (!x.ok && x.money ? '<small class="mgrwhy">' + mgrNum(Math.round(Math.abs(x.money))) + ' ₸</small>' : "") + '</td></tr>';
-    }).join("") + '</tbody></table>' : '<p class="empty">Задайте расход хотя бы у одного блюда — появится сравнение.</p>') +
-    (nocount.length ? '<details class="incmapd"><summary>Не посчитаны в этих ревизиях (' + nocount.length + ')</summary><p class="wnhint">' + nocount.map(esc).join(", ") +
-      (sal.kind === "d" ? " — в ежедневной ревизии их нет; сравните по месячной." : "") + '</p></details>' : "") +
-    '<p class="wnhint salnote">«−» — ушло больше, чем продано (недостача), «+» — меньше (излишек). Если за период заготовили премиксы про запас, их спирт — тоже «недостача».</p>' +
-    (rows.length ? '<p class="mgrfoot"><button type="button" class="link" id="salCopy">Скопировать итог</button></p>' : "") + '</div>';
 }
 async function salSave(list){
   const d = await pubPost({mgr: "dishset", dishes: list});
@@ -1609,17 +1718,35 @@ async function salSave(list){
     const other = sal.sales.some(d => nmKey(d.name) === nmKey(x.name) && d.code !== x.code);   // то же название с другим кодом — не смешивать
     if (!other) sal.map["n:" + nmKey(x.name)] = e;
   });
-  buzz(14);
+  buzz(14); perData = null;
   return true;
 }
 const salDishOf = key => sal.sales.find(d => salKey(d) === key);
 const salPack = (d, comps, src, none) => ({name: d.name, code: d.code, src, none: !!none,
-  comps: (comps || []).map(c => ({sec: sal.ref[c.ri][0], n: sal.ref[c.ri][1], q: c.q, u: sal.ref[c.ri][2]})), ri: comps || []});
+  comps: (comps || []).map(c => ({sec: sal.ref[c.ri][0], n: sal.ref[c.ri][1], q: c.q, u: sal.ref[c.ri][2] || "литр"})), ri: comps || []});
+/* строки формы → [{ri, q}] или текст ошибки */
+function salFormComps(f){
+  const comps = [];
+  for (const row of f.querySelectorAll(".salc")){
+    const p = row.querySelector('[data-f="p"]').value.trim(), q = mgrN(row.querySelector('[data-f="q"]').value);
+    if (!p && !q) continue;
+    const ri = sal.ref.findIndex(x => incLabel(x) === p);
+    if (ri < 0 || !(q > 0)) return "Выберите позицию из списка и укажите количество числом (0,04).";
+    const same = comps.find(c => c.ri === ri);
+    if (same) same.q += q; else comps.push({ri, q});
+  }
+  return comps;
+}
+function salAddRow(b){
+  const f = b.closest("form"), row = f.querySelector(".salc").cloneNode(true);
+  row.querySelectorAll("input").forEach(i => { i.value = ""; });
+  b.before(row); row.querySelector("input").focus();
+}
 $("salDish").addEventListener("click", async e => {
   const b = e.target.closest("button");
   if (!b || !sal) return;
   if (b.id === "salOkAll"){
-    const list = sal.sales.filter(d => !salMapOf(d)).map(d => ({d, s: salSuggest(d)})).filter(x => x.s).map(x => salPack(x.d, x.s.comps, x.s.src));
+    const list = sal.sales.filter(d => !salMapOf(d)).map(d => ({d, s: salSuggest(d)})).filter(x => x.s && !x.s.miss.length).map(x => salPack(x.d, x.s.comps, x.s.src));
     b.disabled = true;
     if (await salSave(list)) salDraw(); else b.disabled = false;
     return;
@@ -1628,11 +1755,7 @@ $("salDish").addEventListener("click", async e => {
   if (b.dataset.no){ const d = salDishOf(b.dataset.no); if (d && await salSave([salPack(d, [], "вручную", true)])) salDraw(); return; }
   if (b.dataset.ed){ sal.open = b.dataset.ed; return salDraw(); }
   if (b.dataset.cx){ sal.open = ""; return salDraw(); }
-  if (b.dataset.addc){
-    const f = b.closest("form"), row = f.querySelector(".salc").cloneNode(true);
-    row.querySelectorAll("input").forEach(i => { i.value = ""; });
-    b.before(row); row.querySelector("input").focus();
-  }
+  if (b.dataset.addc) salAddRow(b);
 });
 $("salDish").addEventListener("toggle", e => { if (sal && e.target.classList && e.target.classList.contains("salok")) sal.okOpen = e.target.open; }, true);
 $("salDish").addEventListener("submit", async e => {
@@ -1641,24 +1764,82 @@ $("salDish").addEventListener("submit", async e => {
   e.preventDefault();
   const d = salDishOf(f.dataset.k);
   if (!d) return;
-  const comps = [];
-  for (const row of f.querySelectorAll(".salc")){
-    const p = row.querySelector('[data-f="p"]').value.trim(), q = mgrN(row.querySelector('[data-f="q"]').value);
-    if (!p && !q) continue;
-    const ri = sal.ref.findIndex(x => incLabel(x) === p);
-    if (ri < 0 || !(q > 0)){ $("salMsg").textContent = "Выберите позицию из списка и укажите количество числом (0,04)."; return; }
-    comps.push({ri, q});
-  }
+  const comps = salFormComps(f);
+  if (typeof comps === "string"){ $("salMsg").textContent = comps; return; }
   if (!comps.length){ $("salMsg").textContent = "Добавьте хотя бы одну позицию или нажмите «Не учитывать»."; return; }
   if (await salSave([salPack(d, comps, "вручную")])){ sal.open = ""; salDraw(); }
 });
-$("salRes").addEventListener("click", async e => {
-  if (e.target.id !== "salCopy" || !sal || !sal.res) return;
-  const R = sal.res, t = ["Продажи против ревизии, " + mgrRu(R.from) + " — " + mgrRu(R.to),
-    "Недостача: " + mgrNum(Math.round(R.short)) + " ₸, излишки: " + mgrNum(Math.round(R.over)) + " ₸", ""]
-    .concat(R.rows.filter(x => !x.ok).map(x => "— " + x.r[1] + ": " + (x.diff > 0 ? "−" : "+") + mgrNum(r2(Math.abs(x.diff))) + " " + useU(x.r[2]) + (x.money ? " (" + mgrNum(Math.round(Math.abs(x.money))) + " ₸)" : ""))).join("\n");
-  let ok = false;
-  try { await navigator.clipboard.writeText(t); ok = true; } catch (err) {}
-  e.target.textContent = ok ? "Скопировано ✓" : "Не скопировалось";
-  setTimeout(() => { e.target.textContent = "Скопировать итог"; }, 1800);
+
+/* ── рецепты заготовок: на 1 единицу заготовки (1 л) — сколько сырья. Подсказка — техкарта «на замес» с выходом ── */
+const ZAG_SEC = /^(заготовки|премиксы на коктейли)$/i;
+function zagSuggest(zi){
+  const z = sal.ref[zi], zt = incTok(z[1]), zu = salU(z[2]);
+  let best = null, b1 = 0, b2 = 0;
+  for (const k of (typeof KALL !== "undefined" ? KALL : [])){
+    if (!k.out || !Array.isArray(k.i)) continue;
+    const kt = incTok(k.n), hit = kt.filter(x => zt.some(y => incSame(x, y))).length, sc = kt.length && zt.length ? (hit / kt.length + hit / zt.length) / 2 : 0;
+    if (sc > b1){ b2 = b1; b1 = sc; best = k; } else if (sc > b2) b2 = sc;
+  }
+  if (!best || b1 < 0.6 || !(b1 > b2)) return null;
+  /* выход замеса — в единицах заготовки: мл и л — литры; г и кг считаем как литры только у литровой заготовки нельзя — пропуск */
+  const oq = mgrN(best.out[0]), ou = String(best.out[1] || "").trim().toLowerCase();
+  const out = zu === "л" ? (ou === "мл" ? oq / 1000 : ou === "л" ? oq : 0) : zu === "кг" ? (/^(г|гр)$/.test(ou) ? oq / 1000 : ou === "кг" ? oq : 0) : 0;
+  if (!(out > 0)) return null;
+  const comps = [], miss = [];
+  for (const [ing, q, u] of best.i){
+    const ri = salFind(ing, 0.4), qq = ri >= 0 && ri !== zi ? salConv(mgrN(q), u, sal.ref[ri]) : null;
+    if (ri < 0 || !(qq > 0)){ if (!/^вода/i.test(ing)) miss.push(ing); continue; }   // воду не считаем
+    const same = comps.find(c => c.ri === ri);
+    if (same) same.q += qq / out; else comps.push({ri, q: qq / out});
+  }
+  return comps.length ? {comps, miss, src: "техкарта «" + best.n + "»"} : null;
+}
+function zagDraw(){
+  if (!sal) return;
+  const zs = sal.ref.map((r, i) => ({ri: i, r})).filter(x => ZAG_SEC.test(String(x.r[0]).trim()) && x.r[9] === 1);
+  if (!zs.length){ $("salZag").innerHTML = ""; return; }
+  zs.forEach(x => { x.m = sal.zag[x.ri] || null; if (!x.m) x.sug = zagSuggest(x.ri); });
+  const ok = zs.filter(x => x.m), sug = zs.filter(x => !x.m && x.sug), no = zs.filter(x => !x.m && !x.sug);
+  const line = x => {
+    const key = "z" + x.ri, open = sal.zopen === key, st = x.m ? salCompTxt(x.m.comps) : x.sug ? salCompTxt(x.sug.comps) : "";
+    return '<li class="' + (x.m ? "inc-code" : x.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(x.r[1]) + ' <small>' + esc(x.r[0]) + '</small></span>' +
+      '<small class="mgrwhy">на 1 ' + esc(useU(x.r[2])) + (st ? ': <b>' + esc(st) + '</b>' : ' · <b>рецепта нет</b>') +
+        (x.sug && !x.m ? ' · ' + esc(x.sug.src) + (x.sug.miss.length ? " (без: " + esc(x.sug.miss.join(", ")) + ")" : "") : "") + '</small>' +
+      (open ? salForm(x, true) : '<div class="salbtns">' + (x.sug && !x.m ? '<button type="button" class="link" data-zok="' + x.ri + '">Верно</button>' : "") +
+        '<button type="button" class="link" data-zed="' + key + '">' + (x.m || x.sug ? "Изменить" : "Задать рецепт") + '</button>' +
+        (x.m ? '<button type="button" class="link" data-zno="' + x.ri + '">Убрать рецепт</button>' : "") + '</div>') + '</div></li>';
+  };
+  $("salZag").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>сырьё на 1 л</em><h3>Рецепты заготовок</h3></div>' +
+    '<p class="mgrsum salsum">Заготовок: <b>' + zs.length + '</b> · рецепт есть у ' + ok.length + (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · нет у ' + no.length : "") + '</p>' +
+    '<p class="wnhint salnote">С рецептом остаток заготовки, её списания и продажи через неё во вкладке «Расход» раскладываются на сырьё — сироп, сделанный впрок, не покажется недостачей сахара.</p>' +
+    (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
+    (ok.length ? '<details class="incmapd salok zagok"' + (sal.zokOpen || ok.some(x => "z" + x.ri === sal.zopen) ? " open" : "") + '><summary>Рецепт есть (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
+    '<p class="warn" id="zagMsg" role="status"></p></div>';
+}
+async function zagSave(zi, comps, src){
+  const z = sal.ref[zi], d = await pubPost({mgr: "zagset", zags: [{sec: z[0], n: z[1], src, comps: comps.map(c => ({sec: sal.ref[c.ri][0], n: sal.ref[c.ri][1], q: c.q, u: sal.ref[c.ri][2] || "литр"}))}]});
+  if (!d) return false;
+  if (!d.ok){ $("zagMsg").textContent = pubErr(d); return false; }
+  if (comps.length) sal.zag[zi] = {comps, src}; else delete sal.zag[zi];
+  buzz(14); perData = null;
+  return true;
+}
+$("salZag").addEventListener("click", async e => {
+  const b = e.target.closest("button");
+  if (!b || !sal) return;
+  if (b.dataset.zok){ const zi = +b.dataset.zok, s = zagSuggest(zi); if (s && await zagSave(zi, s.comps, s.src)) zagDraw(); return; }
+  if (b.dataset.zno){ if (await zagSave(+b.dataset.zno, [], "")) zagDraw(); return; }
+  if (b.dataset.zed){ sal.zopen = b.dataset.zed; return zagDraw(); }
+  if (b.dataset.cx){ sal.zopen = ""; return zagDraw(); }
+  if (b.dataset.addc) salAddRow(b);
+});
+$("salZag").addEventListener("toggle", e => { if (sal && e.target.classList && e.target.classList.contains("zagok")) sal.zokOpen = e.target.open; }, true);
+$("salZag").addEventListener("submit", async e => {
+  const f = e.target.closest("form.salf");
+  if (!f) return;
+  e.preventDefault();
+  const zi = +String(f.dataset.k).slice(1), comps = salFormComps(f);
+  if (typeof comps === "string"){ $("zagMsg").textContent = comps; return; }
+  if (!comps.length){ $("zagMsg").textContent = "Добавьте хотя бы одну позицию."; return; }
+  if (await zagSave(zi, comps, "вручную")){ sal.zopen = ""; zagDraw(); }
 });
