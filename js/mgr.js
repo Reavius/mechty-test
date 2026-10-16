@@ -110,6 +110,7 @@ async function mgrLoad(){
   }
   mgrData = {from, to, gone: d.gone || 0, rows: [].concat((d.wo || []).map(r => ["wo"].concat(r)), (d.pr || []).map(r => ["pr"].concat(r)))};
   mgrDraw();
+  if (perData) perStepsDraw();                                            // шаг «Списания и проработки» в «Периоде»
 }
 
 /* строка: [вид, дата, №, наименование, ед., кол-во, причина, кто, файл, id] */
@@ -226,21 +227,21 @@ $("mgrCopy").addEventListener("click", async () => {
 /* ── разделы менеджера ──
    «Период» — расход по периоду ревизии, списания и проработки, письма (одна страница); «Закупка» — автозаявка и приход;
    «Продажи и рецепты»; «Справочник и меню» — справочник и «Гостям». Открытая вкладка раздела — mgrSubs. */
-const MGR_G = {per: ["use", "sum", "rep"], buy: ["ord", "inc"], sal: ["sal"], dir: ["ref", "pub"]};
+const MGR_G = {per: ["use", "sum", "inc", "rep"], buy: ["ord"], sal: ["sal"], dir: ["ref", "pub"]};
 const MGR_EL = {sum: "mgrSum", use: "mgrUse", sal: "mgrSal", ord: "mgrOrd", inc: "mgrInc", pub: "mgrPub", ref: "mgrRef"};
 const mgrGOf = t => Object.keys(MGR_G).find(g => MGR_G[g].includes(t)) || "per";
-let mgrSubs = Object.assign({buy: "ord", dir: "ref"}, mgrj("mechty-mgr-subs", {}));
+let mgrSubs = Object.assign({dir: "ref"}, mgrj("mechty-mgr-subs", {}), {buy: "ord"});
 let mgrGrp = (() => { const v = mgrj("mechty-mgr-tab", "per"); return MGR_G[v] ? v : mgrGOf(v); })();   // раньше хранилась вкладка
 const mgrOn = t => mgrGrp === "per" ? MGR_G.per.includes(t) : mgrGrp === "sal" ? t === "sal" : mgrSubs[mgrGrp] === t;
 function mgrTabDraw(){
   document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.g === mgrGrp)));
-  $("mgrSubBuy").hidden = mgrGrp !== "buy"; $("mgrSubDir").hidden = mgrGrp !== "dir";
+  $("mgrSubDir").hidden = mgrGrp !== "dir";
   document.querySelectorAll(".mgrsub button").forEach(b => b.setAttribute("aria-pressed", String(mgrSubs[mgrGOf(b.dataset.t)] === b.dataset.t)));
   Object.keys(MGR_EL).forEach(t => { $(MGR_EL[t]).hidden = !mgrOn(t); });
   $("mgrRepD").hidden = mgrGrp !== "per";
 }
 function mgrTabLoad(){
-  if (mgrGrp === "per"){ useLoad(); mgrLoad(); if ($("mgrRepD").open) repLoad(); return; }
+  if (mgrGrp === "per"){ useLoad(); mgrLoad(); if ($("stepInc").open) incLoad(); if ($("mgrRepD").open) repLoad(); return; }
   if (mgrGrp === "sal") return salLoad();
   const t = mgrSubs[mgrGrp];
   return t === "ref" ? refLoad() : t === "pub" ? pubLoad() : t === "ord" ? ordLoad() : incLoad();
@@ -251,6 +252,8 @@ function mgrGo(t){
   mgrGrp = g;
   if (MGR_G[g].length > 1 && g !== "per") mgrSubs[g] = t;
   mgrs("mechty-mgr-tab", mgrGrp); mgrs("mechty-mgr-subs", mgrSubs);
+  const step = {inc: "stepInc", sum: "stepWo"}[t];                       // приход и списания — шаги «Периода»: раскрыть
+  if (step) $(step).open = true;
   mgrTabDraw(); mgrTabLoad();
   /* прокрутили вниз — новый раздел начинается сразу под панелью разделов */
   const nav = $("mgrNav"), top = nav.parentElement.getBoundingClientRect().top + scrollY + nav.offsetTop;
@@ -267,6 +270,8 @@ document.querySelectorAll(".mgrsub").forEach(x => x.addEventListener("click", e 
   buzz(8); mgrGo(b.dataset.t);
 }));
 $("mgrRepD").addEventListener("toggle", () => { if ($("mgrRepD").open && mgrKey()) repLoad(); });
+$("stepInc").addEventListener("toggle", () => { if ($("stepInc").open && mgrKey()) incLoad(); });
+$("stepRec").addEventListener("click", e => { if (e.target.closest("button[data-go]")) { buzz(8); mgrGo("sal"); } });
 
 /* ── справочник позиций ──
    строка: [раздел, позиция, ед., код R-Keeper, тара, норма, поставщик, цена, заметка, есть в бланке] */
@@ -591,7 +596,7 @@ function incMetaOf(text){
   const no = t.match(/№\s*([^\s,;]+)/), sup = t.match(/(?:поставщик|контрагент)[:\s]+([^\n,;]+)/i);
   return {no: no ? no[1] : "", date, sup: sup ? sup[1].trim().slice(0, 120) : ""};
 }
-let inc = null, incData = null, incRange = "d30";
+let inc = null, incData = null, incRange = "rev";
 const incU = u => { const s = String(u || "").trim().toLowerCase().replace(/\.$/, "");
   return /^(л|литр|литра|литров|l)$/.test(s) ? "л" : /^(мл|ml)$/.test(s) ? "мл" : /^(кг|kg)$/.test(s) ? "кг" : /^(г|гр|грамм)$/.test(s) ? "г" :
     /^(шт|штук|штука|pcs)$/.test(s) ? "шт" : /^(бут|бутылка|бутылок|btl)$/.test(s) ? "бут" : s; };
@@ -876,7 +881,8 @@ $("incImp").addEventListener("click", async e => {
     return;
   }
   buzz(14);
-  inc = null; refRows = null; ordData = null;
+  inc = null; refRows = null; ordData = null; perData = null;
+  if (mgrGrp === "per") perLoad();
   $("incImp").hidden = true; $("incImp").innerHTML = "";
   $("incWarn").textContent = "Записано строк: " + d.added + (d.dup ? ", уже были в журнале: " + d.dup : "") + (d.miss && d.miss.length ? ", позиции не найдены: " + d.miss.join(", ") : "") + ".";
   incLoad();
@@ -933,6 +939,7 @@ async function useLoad(){
   document.querySelectorAll("#useKind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === useKind)));
   $("useHintD").hidden = useKind !== "d"; $("useHintM").hidden = useKind === "d";
   $("useSens").hidden = useKind === "d"; $("usePerBox").hidden = useKind !== "d";
+  $("perSteps").hidden = useKind !== "d" || !perData;
   if (useKind === "d") return perLoad();
   document.querySelectorAll("#useSens button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === useSens)));
   $("useWarn").textContent = "";
@@ -1040,6 +1047,7 @@ function perDraw(){
   $("usePer").innerHTML = R.slice(1).map((b, j) => '<option value="' + (j + 1) + '"' + (j + 1 === d.i ? " selected" : "") + '>' + perLab(R[j], b) + (j + 1 === R.length - 1 ? " · последний" : "") + '</option>').reverse().join("");
   $("usePerBox").hidden = R.length < 2;
   if (R.length < 2 || !d.from){
+    perStepsDraw();
     $("useSum").textContent = "";
     $("useList").innerHTML = '<p class="empty">Нужны хотя бы две ревизии — дни, когда посчитаны все зоны и все нажали «Завершить». Расход считается между ними.</p>';
     return;
@@ -1051,10 +1059,10 @@ function perDraw(){
   const wm = d.womiss || [];
   const W = [
     !S.want.length ? "В этом периоде смен не было — продаж не ждём: любое расхождение — потери или ошибка пересчёта." :
-      S.miss.length ? "Нет продаж R-Keeper за " + S.miss.map(dd).join(", ") + " — загрузите во вкладке «Продажи», иначе всё проданное в эти дни покажется недостачей." : "",
+      S.miss.length ? "Нет продаж R-Keeper за " + S.miss.map(dd).join(", ") + " — загрузите в шаге «Продажи R-Keeper» выше, иначе всё проданное в эти дни покажется недостачей." : "",
     S.nodish.length ? mgrPl(S.nodish.length, "блюдо", "блюда", "блюд") + " без расхода на блюдо (" + S.nodish.slice(0, 8).map(x => x.name + " ×" + mgrNum(x.qty)).join(", ") + (S.nodish.length > 8 ? "…" : "") +
-      ") — задайте во вкладке «Продажи», иначе их ингредиенты покажутся недостачей." : "",
-    (d.zagno || []).length ? "Заготовки без рецепта (их сырьё не сойдётся — задайте рецепт во вкладке «Продажи»): " + d.zagno.join(", ") + "." : "",
+      ") — задайте в разделе «Рецепты», иначе их ингредиенты покажутся недостачей." : "",
+    (d.zagno || []).length ? "Заготовки без рецепта (их сырьё не сойдётся — задайте рецепт в разделе «Рецепты»): " + d.zagno.join(", ") + "." : "",
     (d.skipped || []).length ? "Пересчёты не всех зон — не ревизия, период через них не режется: " + d.skipped.map(x => x.d.slice(0, 5) + (x.z ? " (" + x.z + ")" : "")).join(", ") + "." : "",
     (d.nokey || []).length ? "Не найдены в справочнике — приход, продажи и списания для них не учитываются: " + d.nokey.join(", ") + "." : "",
     wm.filter(x => x.why === "name").length ? "Списания не учтены — названия нет в бланке ревизии (назовите в акте как в бланке): " + wm.filter(x => x.why === "name").map(x => x.n).join(", ") + "." : "",
@@ -1087,10 +1095,56 @@ function perDraw(){
     miss.map(r => esc(r.n) + (r.miss === "from" ? " — нет в " + d.from.wd : " — нет в " + d.to.wd)).join(", ") + '</p></details>';
   html += '<p class="mgrfoot"><button type="button" class="link" id="perCopy">Скопировать итог</button></p></div>';
   $("useList").innerHTML = html;
+  perStepsDraw();
+  if ($("stepInc").open && incRange === "rev") incLoad();
   /* сводка списаний ниже — за тот же период (если выбран «Период ревизии») */
   if (mgrRsel === "rev" && ($("mgrFrom").value !== d.from.iso || $("mgrTo").value !== d.to.iso || !mgrData)){
     $("mgrFrom").value = d.from.iso; $("mgrTo").value = d.to.iso; mgrLoad();
   }
+}
+/* шаги расчёта периода: что загружено, чего не хватает (зелёным — готово, красным — сделать) */
+let perInc = {key: "", text: "…"};
+function perStepsDraw(){
+  const d = perData;
+  $("perSteps").hidden = useKind !== "d";
+  if (useKind !== "d") return;
+  const st = (id, cls, html) => { $(id).innerHTML = html; $(id).closest(".perstep").dataset.st = cls; };
+  /* двух ревизий ещё нет — загружать продажи и накладные уже можно, считать пока не с чем */
+  if (!d || !d.from){
+    st("stepRevS", "warn", d ? "нужны две ревизии — дни, где посчитаны все зоны и все нажали «Завершить»" : "…");
+    st("stepSalS", "", "загрузите — разложатся по периодам сами");
+    st("stepIncS", "", "загрузите накладные — войдут в свой период");
+    st("stepWoS", "", mgrData ? mgrPl(new Set(mgrData.rows.map(r => r[9])).size, "акт", "акта", "актов") + " за " + mgrRu(mgrData.from).slice(0, 5) + " — " + mgrRu(mgrData.to).slice(0, 5) : "…");
+    st("stepRecS", "", "расход на блюдо и рецепты заготовок");
+    return;
+  }
+  const dd = iso => salWd(iso) + " " + mgrRu(iso).slice(0, 5), S = d.sales || {want: [], miss: [], have: [], nodish: [], qty: 0};
+  st("stepRevS", "ok", dd(d.from.iso) + (d.from.who ? " (" + esc(d.from.who) + ")" : "") + " → " + dd(d.to.iso) + (d.to.who ? " (" + esc(d.to.who) + ")" : "") +
+    ((d.skipped || []).length ? " · пересчёт не всех зон — не в счёт" : ""));
+  st("stepSalS", S.want.length && S.miss.length ? "warn" : "ok", !S.want.length ? "смен в периоде не было — продажи не нужны" :
+    S.miss.length ? "нет за " + S.miss.map(dd).join(", ") + " — загрузите" : "загружены за " + S.have.map(dd).join(", ") + " · " + mgrNum(Math.round(S.qty)) + " порц.");
+  $("salDays").innerHTML = S.have.length ? '<p class="label saldl">Загружено за период</p><ul class="saldays">' + S.have.map(x => '<li><b>' + dd(x) + '</b></li>').join("") + '</ul>' : "";
+  if (S.want.length && S.miss.length && !perInc.opened){ $("stepSal").open = true; perInc.opened = true; }
+  const wo = mgrData && mgrData.from === d.from.iso && mgrData.to === d.to.iso ? mgrData : null;
+  if (wo){
+    const n = k => new Set(wo.rows.filter(r => r[0] === k).map(r => r[9])).size, a = n("wo"), b = n("pr");
+    st("stepWoS", "ok", a || b ? "списаний " + a + ", проработок " + b + " · по датам актов" : "актов нет");
+  } else st("stepWoS", "", "…");
+  const nd = (S.nodish || []).length, nz = (d.zagno || []).length;
+  st("stepRecS", nd || nz ? "warn" : "ok", nd || nz ? [nd ? "без расхода на блюдо: " + mgrPl(nd, "блюдо", "блюда", "блюд") : "", nz ? "заготовок без рецепта: " + nz : ""].filter(Boolean).join(", ")
+    : S.qty ? "у всех проданных блюд задан расход" : "проданных блюд нет");
+  /* приход за период — накладные и сумма (одним запросом на период) */
+  const key = d.from.iso + "|" + d.to.iso;
+  if (perInc.key !== key){
+    perInc = {key, text: "…", opened: perInc.opened};
+    api({mgr: "inlist", mk: mgrKey(), from: d.from.iso, to: d.to.iso}).then(x => {
+      if (!x.ok || perInc.key !== key) return;
+      const inv = new Set(x.rows.map(r => r[0] + "|" + r[1] + "|" + r[2])), sum = x.rows.reduce((m, r) => m + (typeof r[8] === "number" ? r[8] : 0), 0);
+      perInc.text = inv.size ? mgrPl(inv.size, "накладная", "накладные", "накладных") + (sum ? " · " + mgrNum(Math.round(sum)) + " ₽" : "") + " · по датам накладных" : "накладных нет";
+      st("stepIncS", "ok", perInc.text);
+    });
+  }
+  st("stepIncS", "ok", perInc.text);
 }
 async function perClick(e){
   if (e.target.id !== "perCopy" || !perData) return;
@@ -1648,7 +1702,7 @@ const salDate = v => { const s = String(v == null ? "" : v).trim(); let m = s.ma
 $("salFile").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0];
   e.target.value = "";
-  if (!f || !sal) return;
+  if (!f) return;
   salPick = null; $("salPick").hidden = true; $("salPick").innerHTML = "";
   $("salWarn").textContent = "Читаем файл…";
   let t;
@@ -1715,11 +1769,13 @@ $("salFile").addEventListener("change", async e => {
   if (!list.length){ $("salWarn").textContent = "В файле нет строк с блюдами и количеством."; return; }
   await salPut(f.name, list);
 });
-/* сводка за один день: выбор даты в календаре */
-let salPick = null;
+/* сводка за один день: выбор даты в календаре; какие дни уже загружены — спрашиваем, когда открыли шаг «Продажи» */
+let salPick = null, salKnown = null;
+const salKnownLoad = () => mgrKey() && api({mgr: "sales", mk: mgrKey(), per: "rev"}).then(x => { if (x && x.ok){ salKnown = x.days; if ($("salDay")) salDayHint(); } });
+$("stepSal").addEventListener("toggle", () => { if ($("stepSal").open) salKnownLoad(); });
 function salDayHint(){
-  const d = $("salDay").value, had = (sal && sal.days || []).find(x => x.iso === d);
-  $("salDayHint").textContent = !d ? "Выберите день." : salWd(d) + " " + mgrRu(d) + (had ? " — за этот день уже загружено " + mgrNum(Math.round(had.qty)) + " порц., они заменятся." : "");
+  const d = $("salDay").value, had = (salKnown || (sal && sal.days) || []).find(x => x.iso === d) || (perData && perData.sales && perData.sales.have.indexOf(d) >= 0 ? {qty: NaN} : null);
+  $("salDayHint").textContent = !d ? "Выберите день." : salWd(d) + " " + mgrRu(d) + (had ? " — за этот день продажи уже загружены" + (had.qty === had.qty ? " (" + mgrNum(Math.round(had.qty)) + " порц.)" : "") + ", они заменятся." : "");
 }
 $("salPick").addEventListener("input", e => { if (e.target.id === "salDay") salDayHint(); });
 $("salPick").addEventListener("click", async e => {
@@ -1740,8 +1796,9 @@ async function salPut(file, list){
   if (!d.ok){ $("salWarn").textContent = pubErr(d); return false; }
   buzz(14);
   perData = null;                                                         // «Расход» пересчитается
-  $("salWarn").textContent = "Сохранено: " + days.map(x => salWd(x) + " " + mgrRu(x).slice(0, 5)).join(", ") + " — " + mgrPl(list.length, "строка", "строки", "строк") + ". Расхождение — во вкладке «Расход».";
-  await salLoad();
+  $("salWarn").textContent = "Сохранено: " + days.map(x => salWd(x) + " " + mgrRu(x).slice(0, 5)).join(", ") + " — " + mgrPl(list.length, "строка", "строки", "строк") + ". Расчёт периода обновлён.";
+  salKnown = null; salKnownLoad();
+  if (mgrGrp === "per") perLoad(); else await salLoad();
   return true;
 }
 
