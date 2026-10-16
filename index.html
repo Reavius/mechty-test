@@ -448,7 +448,6 @@
           <button type="button" data-k="d" aria-pressed="true">Период ревизии</button>
           <button type="button" data-k="m" aria-pressed="false">Месячная</button>
         </div>
-        <div class="wo2 mgrd" id="usePerBox"><div><label class="label" for="usePer">Период</label><select id="usePer"></select></div></div>
         <div class="quick" id="useSens" aria-label="Чувствительность" hidden>
           <button type="button" data-s="0.3" aria-pressed="false">±30%</button>
           <button type="button" data-s="0.5" aria-pressed="true">±50%</button>
@@ -456,16 +455,26 @@
         </div>
         <div class="persteps" id="perSteps">
           <p class="label">Что входит в расчёт периода</p>
-          <div class="perstep" id="stepRev"><span class="psn">1</span><span class="pst"><b>Ревизии</b><small id="stepRevS">…</small></span></div>
-          <details class="perstep" id="stepSal"><summary><span class="psn">2</span><span class="pst"><b>Продажи R-Keeper</b><small id="stepSalS">…</small></span></summary>
+          <details class="perstep" id="stepRev"><summary><span class="psn"></span><span class="pst"><b>Ревизии · период</b><small id="stepRevS">…</small></span></summary>
+            <div class="perbody">
+              <div class="wo2 mgrd" id="usePerBox"><div><label class="label" for="usePer">Между ревизиями</label><select id="usePer"></select></div></div>
+              <p class="label perl">Или свои даты — остатки берутся из ближайших ревизий</p>
+              <div class="wo2 mgrd"><div><label class="label" for="perFrom">С</label><input id="perFrom" type="date"></div><div><label class="label" for="perTo">По</label><input id="perTo" type="date"></div></div>
+              <p class="wnhint" id="perRangeHint"></p>
+            </div>
+          </details>
+          <details class="perstep" id="stepSal"><summary><span class="psn"></span><span class="pst"><b>Продажи R-Keeper</b><small id="stepSalS">…</small></span></summary>
         <div class="perbody"><p class="label" id="salSrc"></p>
-          <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" multiple accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <p class="wnhint perl">Можно выбрать сразу до 15 файлов — дата найдётся в строках, в шапке или в названии файла; где не нашлась, сайт спросит день.</p>
           <div id="salPick" hidden></div>
           <p class="warn" id="salWarn" role="status"></p>
           <div id="salDays"></div>
+          <div id="salCal"></div>
         </div>
           </details>
-          <details class="perstep" id="stepInc"><summary><span class="psn">3</span><span class="pst"><b>Приход</b><small id="stepIncS">…</small></span></summary>
+          <div class="perstep" id="stepRec" hidden><span class="psn"></span><span class="pst"><b>Рецепты</b><small id="stepRecS">…</small></span><button type="button" class="link" data-go="sal">Открыть</button></div>
+          <details class="perstep" id="stepInc"><summary><span class="psn"></span><span class="pst"><b>Приход</b><small id="stepIncS">…</small></span></summary>
       <div id="mgrInc" class="perbody">
         <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
           и сопоставит товары со справочником: по коду R-Keeper, по названию, которое уже встречалось, или подскажет похожее — проверьте.
@@ -485,7 +494,7 @@
       </div>
 
           </details>
-          <details class="perstep" id="stepWo"><summary><span class="psn">4</span><span class="pst"><b>Списания и проработки</b><small id="stepWoS">…</small></span></summary>
+          <details class="perstep" id="stepWo"><summary><span class="psn"></span><span class="pst"><b>Списания и проработки</b><small id="stepWoS">…</small></span></summary>
       <div id="mgrSum" class="perbody">
       <div class="result tcard wo">
         <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
@@ -514,15 +523,8 @@
       </div>
 
           </details>
-          <div class="perstep" id="stepRec"><span class="psn">5</span><span class="pst"><b>Рецепты</b><small id="stepRecS">…</small></span><button type="button" class="link" data-go="sal">Открыть</button></div>
-        </div>
-        <p class="mgrsum" id="useSum"></p>
-        <p class="warn" id="useWarn" role="status"></p>
-        <div id="useList"></div>
-      </div>
-
-      <details class="incmapd mgrrepd" id="mgrRepD"><summary>Письма: после ревизии и недельный отчёт</summary>
-      <div id="mgrRep">
+          <details class="perstep" id="mgrRepD"><summary><span class="psn"></span><span class="pst"><b>Письма с отчётом</b><small id="stepMailS">…</small></span></summary>
+            <div id="mgrRep" class="perbody">
         <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₽ (если продажи
           ещё не загружены — второе письмо, когда их загрузят). Каждый понедельник в 9:00 — письмо за прошлую неделю: последняя ревизия против продаж,
           списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p></details>
@@ -539,7 +541,13 @@
         <div class="repview" id="repView"></div>
         <p class="mgrfoot"><button type="button" class="link" id="repSend" disabled>Отправить это письмо сейчас</button></p>
       </div>
-      </details>
+          </details>
+        </div>
+        <p class="mgrsum" id="useSum"></p>
+        <p class="warn" id="useWarn" role="status"></p>
+        <div id="useList"></div>
+      </div>
+
 
       <div id="mgrSal" hidden>
         <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Продажи R-Keeper загружаются в разделе «Период» (шаг «Продажи»).

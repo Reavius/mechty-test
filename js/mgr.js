@@ -78,7 +78,7 @@ $("mgrIn").addEventListener("submit", async e => {
 function mgrLeave(){
   const k = mgrj(MGR, null);
   mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null; sal = null;
-  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = ""; $("salDish").innerHTML = ""; $("salZag").innerHTML = ""; $("salDays").innerHTML = ""; perData = null; perI = null;
+  $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = ""; $("salDish").innerHTML = ""; $("salZag").innerHTML = ""; $("salDays").innerHTML = ""; $("salCal").innerHTML = ""; perData = null; perI = null; perRange = null; perMail = null; salKnown = null;
   $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
   if (k && k.mk && TOKEN)
@@ -939,8 +939,8 @@ async function useLoad(){
   document.querySelectorAll("#useKind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === useKind)));
   $("useHintD").hidden = useKind !== "d"; $("useHintM").hidden = useKind === "d";
   $("useSens").hidden = useKind === "d"; $("usePerBox").hidden = useKind !== "d";
-  $("perSteps").hidden = useKind !== "d" || !perData;
   if (useKind === "d") return perLoad();
+  perStepsDraw();
   document.querySelectorAll("#useSens button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === useSens)));
   $("useWarn").textContent = "";
   if (!useData || useData.kind !== useKind) $("useList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
@@ -1023,7 +1023,7 @@ $("useWarn").addEventListener("click", e => { if (e.target.id === "useRetry") us
 /* ── период ревизии: ревизия против продаж ──
    всё считает сервер (mgr: "period"): строка {n, u, was, inc, sold, wo, pr, exp, now, diff, price, money, zag/raw/info/miss}.
    Ожидалось = было + приход − продано − списания − проработки; расхождение = стало − ожидалось (минус — недостача). */
-let perData = null, perI = null, perOpen = "";
+let perData = null, perI = null, perOpen = "", perRange = null;      // perRange — свои даты {from, to}
 const perLab = (a, b) => a.wd + " " + mgrRu(a.iso).slice(0, 5) + " → " + b.wd + " " + mgrRu(b.iso).slice(0, 5);
 const perMoney = x => mgrNum(Math.round(Math.abs(x || 0)));
 async function perLoad(){
@@ -1031,7 +1031,7 @@ async function perLoad(){
   if (!mk) return mgrInit();
   $("useWarn").textContent = "";
   if (!perData) $("useList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
-  const d = await api(Object.assign({mgr: "period", mk}, perI != null ? {i: perI} : {}));
+  const d = await api(Object.assign({mgr: "period", mk}, perRange ? perRange : perI != null ? {i: perI} : {}));
   if (d.error === "mgr") return mgrExpired();
   if (!d.ok){
     $("useList").innerHTML = "";
@@ -1044,7 +1044,12 @@ async function perLoad(){
 }
 function perDraw(){
   const d = perData, R = d.revs || [];
-  $("usePer").innerHTML = R.slice(1).map((b, j) => '<option value="' + (j + 1) + '"' + (j + 1 === d.i ? " selected" : "") + '>' + perLab(R[j], b) + (j + 1 === R.length - 1 ? " · последний" : "") + '</option>').reverse().join("");
+  const pair = !d.req && d.a === d.i - 1;
+  $("usePer").innerHTML = (pair ? "" : '<option value="" selected>' + (d.from ? perLab(d.from, d.to) + " · свои даты" : "свои даты") + '</option>') +
+    R.slice(1).map((b, j) => '<option value="' + (j + 1) + '"' + (pair && j + 1 === d.i ? " selected" : "") + '>' + perLab(R[j], b) + (j + 1 === R.length - 1 ? " · последний" : "") + '</option>').reverse().join("");
+  if (d.from){ $("perFrom").value = d.req ? d.req.from : d.from.iso; $("perTo").value = d.req ? d.req.to : d.to.iso; }
+  $("perRangeHint").textContent = d.req && d.from && (d.req.from !== d.from.iso || d.req.to !== d.to.iso) ?
+    "Остатки есть только на ревизиях: период расширен до " + perLab(d.from, d.to) + "." : "";
   $("usePerBox").hidden = R.length < 2;
   if (R.length < 2 || !d.from){
     perStepsDraw();
@@ -1102,28 +1107,44 @@ function perDraw(){
     $("mgrFrom").value = d.from.iso; $("mgrTo").value = d.to.iso; mgrLoad();
   }
 }
+/* письма: на какие адреса и включены ли (один запрос, обновляется после сохранения адресов) */
+let perMail = null;
+function perMailDraw(){
+  const st = x => { $("stepMailS").innerHTML = x.t; $("mgrRepD").dataset.st = x.c; };
+  if (!perMail){ perMail = {t: "…", c: ""}; api({mgr: "reportto", mk: mgrKey()}).then(x => { if (!x || !x.ok) return;
+    perMail = {t: (x.emails.length ? "на " + esc(x.emails.join(", ")) : "почта не указана — укажите") + (x.auto === true ? " · после ревизии и по понедельникам" : x.auto === false ? " · <b>выключены</b>" : ""),
+      c: x.emails.length && x.auto !== false ? "ok" : "warn", got: 1}; st(perMail); }); }
+  st(perMail);
+}
 /* шаги расчёта периода: что загружено, чего не хватает (зелёным — готово, красным — сделать) */
 let perInc = {key: "", text: "…"};
 function perStepsDraw(){
   const d = perData;
-  $("perSteps").hidden = useKind !== "d";
-  if (useKind !== "d") return;
+  $("perSteps").hidden = false;
+  $("stepRev").hidden = useKind !== "d";
   const st = (id, cls, html) => { $(id).innerHTML = html; $(id).closest(".perstep").dataset.st = cls; };
+  perMailDraw();
+  if (useKind !== "d"){
+    $("stepRec").hidden = true;
+    st("stepSalS", "", "загрузка продаж R-Keeper — разложатся по периодам сами");
+    st("stepIncS", "", "загрузка накладных и список");
+    st("stepWoS", "", mgrData ? mgrPl(new Set(mgrData.rows.map(r => r[9])).size, "акт", "акта", "актов") + " за " + mgrRu(mgrData.from).slice(0, 5) + " — " + mgrRu(mgrData.to).slice(0, 5) : "…");
+    return;
+  }
   /* двух ревизий ещё нет — загружать продажи и накладные уже можно, считать пока не с чем */
   if (!d || !d.from){
     st("stepRevS", "warn", d ? "нужны две ревизии — дни, где посчитаны все зоны и все нажали «Завершить»" : "…");
     st("stepSalS", "", "загрузите — разложатся по периодам сами");
     st("stepIncS", "", "загрузите накладные — войдут в свой период");
     st("stepWoS", "", mgrData ? mgrPl(new Set(mgrData.rows.map(r => r[9])).size, "акт", "акта", "актов") + " за " + mgrRu(mgrData.from).slice(0, 5) + " — " + mgrRu(mgrData.to).slice(0, 5) : "…");
-    st("stepRecS", "", "расход на блюдо и рецепты заготовок");
+    $("stepRec").hidden = true;
     return;
   }
   const dd = iso => salWd(iso) + " " + mgrRu(iso).slice(0, 5), S = d.sales || {want: [], miss: [], have: [], nodish: [], qty: 0};
   st("stepRevS", "ok", dd(d.from.iso) + (d.from.who ? " (" + esc(d.from.who) + ")" : "") + " → " + dd(d.to.iso) + (d.to.who ? " (" + esc(d.to.who) + ")" : "") +
-    ((d.skipped || []).length ? " · пересчёт не всех зон — не в счёт" : ""));
+    (d.req ? " · свои даты" : "") + ((d.skipped || []).length ? " · пересчёт не всех зон — не в счёт" : "") + " · <u>изменить</u>");
   st("stepSalS", S.want.length && S.miss.length ? "warn" : "ok", !S.want.length ? "смен в периоде не было — продажи не нужны" :
     S.miss.length ? "нет за " + S.miss.map(dd).join(", ") + " — загрузите" : "загружены за " + S.have.map(dd).join(", ") + " · " + mgrNum(Math.round(S.qty)) + " порц.");
-  $("salDays").innerHTML = S.have.length ? '<p class="label saldl">Загружено за период</p><ul class="saldays">' + S.have.map(x => '<li><b>' + dd(x) + '</b></li>').join("") + '</ul>' : "";
   if (S.want.length && S.miss.length && !perInc.opened){ $("stepSal").open = true; perInc.opened = true; }
   const wo = mgrData && mgrData.from === d.from.iso && mgrData.to === d.to.iso ? mgrData : null;
   if (wo){
@@ -1131,6 +1152,7 @@ function perStepsDraw(){
     st("stepWoS", "ok", a || b ? "списаний " + a + ", проработок " + b + " · по датам актов" : "актов нет");
   } else st("stepWoS", "", "…");
   const nd = (S.nodish || []).length, nz = (d.zagno || []).length;
+  $("stepRec").hidden = !(nd || nz);                                       // рецепты — только когда есть что задать
   st("stepRecS", nd || nz ? "warn" : "ok", nd || nz ? [nd ? "без расхода на блюдо: " + mgrPl(nd, "блюдо", "блюда", "блюд") : "", nz ? "заготовок без рецепта: " + nz : ""].filter(Boolean).join(", ")
     : S.qty ? "у всех проданных блюд задан расход" : "проданных блюд нет");
   /* приход за период — накладные и сумма (одним запросом на период) */
@@ -1155,7 +1177,12 @@ async function perClick(e){
   e.target.textContent = ok ? "Скопировано ✓" : "Не скопировалось";
   setTimeout(() => { e.target.textContent = "Скопировать итог"; }, 1800);
 }
-$("usePer").addEventListener("change", () => { perI = +$("usePer").value; buzz(8); perLoad(); });
+$("usePer").addEventListener("change", () => { if (!$("usePer").value) return; perI = +$("usePer").value; perRange = null; buzz(8); perLoad(); });
+["perFrom", "perTo"].forEach(id => $(id).addEventListener("change", () => {
+  const f = $("perFrom").value, t = $("perTo").value;
+  if (!f || !t || f > t) return;
+  perRange = {from: f, to: t}; perI = null; buzz(8); perLoad();
+}));
 
 /* ── гостям: меню и «Состав и аллергены» из таблицы ──
    строка меню: [глава, глава EN, раздел, раздел EN, плитки, название, EN, описание, EN, объём, ед., цена, id в карте, код R-Keeper, скрыть, uid]
@@ -1520,11 +1547,13 @@ async function repPost(body, btn){
 }
 $("repSave").addEventListener("click", async () => {
   const d = await repPost({mgr: "reportset", emails: $("repTo").value}, $("repSave"));
+  if (d){ perMail = null; perMailDraw(); }
   if (d){ $("repTo").value = d.emails.join(", "); $("repMsg").textContent = d.emails.length ? "Адреса сохранены." : "Адресов нет — письмо будет уходить владельцу таблицы."; buzz(14); }
 });
 $("repToggle").addEventListener("click", async () => {
   const on = !(repData && repData.auto === true);
   const d = await repPost({mgr: "reportauto", on: on ? "1" : "0"}, $("repToggle"));
+  if (d){ perMail = null; perMailDraw(); }
   if (d){ repData.auto = d.auto; repAutoDraw(); $("repMsg").textContent = d.auto ? "Включено: письмо после каждой ревизии и каждый понедельник в 9:00." : "Выключено."; buzz(14); }
 });
 $("repSend").addEventListener("click", async () => {
@@ -1691,26 +1720,24 @@ $("salQuick").addEventListener("click", e => {
 function salDaysDraw(){
   const D = (sal.days || []).slice(0, 14);
   $("salSrc").textContent = D.length ? "загружено по " + salWd(D[0].iso) + " " + mgrRu(D[0].iso).slice(0, 5) : "";
-  $("salDays").innerHTML = D.length ? '<p class="label saldl">Загружено по дням</p><ul class="saldays">' + D.map(d => '<li><b>' + salWd(d.iso) + " " + mgrRu(d.iso).slice(0, 5) + '</b> · ' +
-    mgrNum(Math.round(d.qty)) + ' порц.' + (d.sum ? " · " + mgrNum(Math.round(d.sum)) + " ₽" : "") + '</li>').join("") + '</ul>' : '<p class="wnhint">Продаж ещё нет — загрузите отчёт R-Keeper.</p>';
+  $("salDays").innerHTML = D.length ? "" : '<p class="wnhint">Продаж ещё нет — загрузите отчёт R-Keeper.</p>';
 }
 $("salWarn").addEventListener("click", e => { if (e.target.id === "salRetry") salLoad(); });
 
 /* дата ячейки: ГГГГ-ММ-ДД (Excel) или ДД.ММ.ГГГГ (CSV); не дата — "" */
 const salDate = v => { const s = String(v == null ? "" : v).trim(); let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3];
   m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})(?!\d)/); return m ? incIso(m[1], m[2], m[3]) : ""; };
-$("salFile").addEventListener("change", async e => {
-  const f = e.target.files && e.target.files[0];
-  e.target.value = "";
-  if (!f) return;
-  salPick = null; $("salPick").hidden = true; $("salPick").innerHTML = "";
-  $("salWarn").textContent = "Читаем файл…";
+/* дата из названия файла: «Продажи 15.10.2026.xlsx», «15-10-26», «2026-10-15» */
+const salFileDate = n => { let m = String(n).match(/(\d{4})[-_.](\d{2})[-_.](\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = String(n).match(/(?:^|[^\d])(\d{1,2})[-_.](\d{1,2})[-_.](\d{4}|\d{2})(?!\d)/); return m ? incIso(m[1], m[2], m[3]) : ""; };
+const SAL_DRE = /(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)|(\d{4})-(\d{2})-(\d{2})/g;
+/* один файл отчёта → {name, dated: [{iso, name, code, qty, sum}], undated: [{name, code, qty, sum}], hdr: [даты в шапке], fn: дата из названия, err}.
+   Дата строки — из столбца «Дата» / «Смена» или из строки-заголовка группы с датой; все видимые листы, у каждого своя шапка */
+async function salParse(f){
   let t;
-  try { t = await readTable(f); }
-  catch (err) { $("salWarn").textContent = xErrText(err); return; }
-  /* все видимые листы; у каждого — своя шапка. Дата строки — из столбца «Дата» / «Смена» или из строки-заголовка группы с датой */
-  const by = {}, tops = [];
-  let found = 0, nodate = 0;
+  try { t = await readTable(f); } catch (err) { return {name: f.name, err: xErrText(err)}; }
+  const by = {}, one = {}, tops = [];
+  let found = 0;
   for (const sh of t.sheets.filter(x => !x.hidden)){
     const rows = sh.rows, mp = salHead(rows);
     if (!mp) continue;
@@ -1727,65 +1754,102 @@ $("salFile").addEventListener("change", async e => {
       if (!name || typeof qty !== "number" || !qty || /^(итог|всего|total)/i.test(name)) continue;
       if (coded && !code) continue;                                      // строка группы с подытогом — без кода
       if (salDate(name)) continue;
-      if (!cur){ nodate++; continue; }
-      const k = cur + "|" + salKey({name, code}), sum = mp.s >= 0 && typeof row[mp.s] === "number" ? row[mp.s] : 0;
-      if (by[k]){ by[k].qty += qty; by[k].sum += sum; } else by[k] = {iso: cur, name, code, qty, sum};   // возврат (−) вычитается
+      const k = salKey({name, code}), sum = mp.s >= 0 && typeof row[mp.s] === "number" ? row[mp.s] : 0, box = cur ? by : one, kk = cur ? cur + "|" + k : k;
+      if (box[kk]){ box[kk].qty += qty; box[kk].sum += sum; } else box[kk] = Object.assign(cur ? {iso: cur} : {}, {name, code, qty, sum});   // возврат (−) вычитается
     }
   }
-  if (!found){ $("salWarn").textContent = "Не нашёл в файле столбцы «Наименование» (блюдо) и «Количество»."; return; }
-  let list = Object.values(by);
-  if (nodate){
-    /* дат по строкам нет — сводка за один день (так R-Keeper присылает смену): день выбирают в календаре,
-       по умолчанию — дата из шапки, иначе вчерашняя смена (до полудня) или сегодняшняя */
-    const top = tops.join(" "), dates = [...new Set([...top.matchAll(/(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)|(\d{4})-(\d{2})-(\d{2})/g)].map(x => x[1] ? incIso(x[1], x[2], x[3]) : x[4] + "-" + x[5] + "-" + x[6]))];
-    if (list.length || dates.length > 1){
-      $("salWarn").textContent = "В отчёте несколько дней без дат по строкам — выгрузите «продажи по блюдам» с разбивкой по дням или каждый день отдельно.";
-      return;
-    }
-    const one = {};
-    for (const sh of t.sheets.filter(x => !x.hidden)){
-      const rows = sh.rows, mp = salHead(rows);
-      if (!mp) continue;
-      for (const row of rows.slice(mp.hr + 1)){
-        const name = String(row[mp.n] || "").trim(), qty = row[mp.q], code = mp.c >= 0 ? String(row[mp.c] || "").trim() : "";
-        if (!name || typeof qty !== "number" || !qty || /^(итог|всего|total)/i.test(name)) continue;
-        const k = salKey({name, code}), sum = mp.s >= 0 && typeof row[mp.s] === "number" ? row[mp.s] : 0;
-        if (one[k]){ one[k].qty += qty; one[k].sum += sum; } else one[k] = {name, code, qty, sum};
-      }
-    }
-    const items = Object.values(one).filter(x => x.qty);
-    if (!items.length){ $("salWarn").textContent = "В файле нет строк с блюдами и количеством."; return; }
-    const now = new Date(Date.now() + 5 * 3600e3), def = dates[0] || mgrShift(mgrToday(), now.getUTCHours() < 12 ? -1 : 0);
-    salPick = {file: f.name, items};
-    $("salWarn").textContent = "";
-    $("salPick").hidden = false;
-    $("salPick").innerHTML = '<p class="label saldl">«' + esc(f.name) + '» — ' + mgrPl(items.length, "блюдо", "блюда", "блюд") + ', ' + mgrNum(Math.round(items.reduce((a, x) => a + x.qty, 0))) + ' порц. За какой день?</p>' +
-      '<div class="wo2 mgrd"><div><label class="label" for="salDay">День смены</label><input id="salDay" type="date" value="' + def + '" max="' + mgrToday() + '"></div></div>' +
-      '<p class="wnhint" id="salDayHint"></p><div class="refbtns"><button type="button" class="wogo" id="salDayGo">Сохранить продажи за этот день</button><button type="button" class="link" id="salDayX">Отмена</button></div>';
-    salDayHint();
-    return;
-  }
-  list = list.filter(x => x.qty);
-  if (!list.length){ $("salWarn").textContent = "В файле нет строк с блюдами и количеством."; return; }
-  await salPut(f.name, list);
-});
-/* сводка за один день: выбор даты в календаре; какие дни уже загружены — спрашиваем, когда открыли шаг «Продажи» */
-let salPick = null, salKnown = null;
-const salKnownLoad = () => mgrKey() && api({mgr: "sales", mk: mgrKey(), per: "rev"}).then(x => { if (x && x.ok){ salKnown = x.days; if ($("salDay")) salDayHint(); } });
-$("stepSal").addEventListener("toggle", () => { if ($("stepSal").open) salKnownLoad(); });
-function salDayHint(){
-  const d = $("salDay").value, had = (salKnown || (sal && sal.days) || []).find(x => x.iso === d) || (perData && perData.sales && perData.sales.have.indexOf(d) >= 0 ? {qty: NaN} : null);
-  $("salDayHint").textContent = !d ? "Выберите день." : salWd(d) + " " + mgrRu(d) + (had ? " — за этот день продажи уже загружены" + (had.qty === had.qty ? " (" + mgrNum(Math.round(had.qty)) + " порц.)" : "") + ", они заменятся." : "");
+  if (!found) return {name: f.name, err: "не нашёл столбцы «Наименование» (блюдо) и «Количество»"};
+  const hdr = [...new Set([...tops.join(" ").matchAll(SAL_DRE)].map(x => x[1] ? incIso(x[1], x[2], x[3]) : x[4] + "-" + x[5] + "-" + x[6]))];
+  const r = {name: f.name, dated: Object.values(by).filter(x => x.qty), undated: Object.values(one).filter(x => x.qty), hdr, fn: salFileDate(f.name)};
+  if (!r.dated.length && !r.undated.length) r.err = "нет строк с блюдами и количеством";
+  else if (r.dated.length && r.undated.length) r.err = "у части строк нет даты — выгрузите с датой у каждой строки или по дню на файл";
+  else if (!r.dated.length && r.hdr.length > 1) r.err = "за несколько дней без разбивки по дням — выгрузите по дням или каждый день отдельно";
+  return r;
 }
-$("salPick").addEventListener("input", e => { if (e.target.id === "salDay") salDayHint(); });
+/* несколько файлов сразу (до 15): у каждого — день(дни); где дата не нашлась — выбрать. Нажали день в календаре — он для файлов без даты */
+let salPick = null, salKnown = null, salWork = [4, 5, 6, 0], salForce = "", salCalM = "";
+$("salFile").addEventListener("change", async e => {
+  const fs = [...(e.target.files || [])];
+  e.target.value = "";
+  if (!fs.length) return;
+  const force = salForce; salForce = "";
+  if (fs.length > 15){ $("salWarn").textContent = "Не больше 15 файлов за раз."; return; }
+  salPick = null; $("salPick").hidden = true; $("salPick").innerHTML = "";
+  $("salWarn").textContent = "Читаем " + mgrPl(fs.length, "файл", "файла", "файлов") + "…";
+  const files = [];
+  for (const f of fs) files.push(await salParse(f));
+  files.forEach(x => {
+    if (x.err || x.dated.length) return;
+    x.day = force || (x.hdr.length === 1 ? x.hdr[0] : "") || x.fn || "";
+    x.src = force ? "день из календаря" : x.hdr.length === 1 ? "дата из отчёта" : x.fn ? "дата из названия" : "";
+  });
+  $("salWarn").textContent = "";
+  salPick = {files};
+  salPickDraw();
+});
+const salKnownDay = d => (salKnown || (sal && sal.days) || []).find(x => x.iso === d) || (perData && perData.sales && perData.sales.have.indexOf(d) >= 0 ? {qty: NaN} : null);
+function salPickDraw(){
+  const P = salPick, ok = P.files.filter(x => !x.err), dd = iso => salWd(iso) + " " + mgrRu(iso).slice(0, 5);
+  const days = {};
+  ok.forEach(x => (x.dated.length ? [...new Set(x.dated.map(r => r.iso))] : x.day ? [x.day] : []).forEach(d => { days[d] = (days[d] || 0) + 1; }));
+  const q = x => mgrNum(Math.round((x.dated.length ? x.dated : x.undated).reduce((a, r) => a + r.qty, 0)));
+  $("salPick").hidden = false;
+  $("salPick").innerHTML = '<p class="label saldl">' + (P.files.length > 1 ? "Файлы — проверьте дни и сохраните" : "Проверьте день и сохраните") + '</p><ul class="salfiles">' + P.files.map((x, i) => '<li' + (x.err ? ' class="salferr"' : "") + '><span class="salfn">' + esc(x.name) + '</span>' +
+    (x.err ? '<small class="warn">' + esc(x.err) + '</small>' :
+      '<small class="mgrwhy">' + q(x) + ' порц.' + (x.dated.length ? ' · по дням: ' + [...new Set(x.dated.map(r => r.iso))].sort().map(dd).join(", ") : "") + '</small>' +
+      (x.dated.length ? "" : '<label class="salfd">День смены <input type="date" data-i="' + i + '" value="' + (x.day || "") + '" max="' + mgrToday() + '"></label>' +
+        '<small class="mgrwhy">' + (x.day ? (x.src ? x.src : "") + (salKnownDay(x.day) ? (x.src ? " · " : "") + "за этот день уже загружено — заменится" : "") + (days[x.day] > 1 ? " · ещё файл за этот день — сложатся" : "") : '<b class="salneed">выберите день</b>') + '</small>')) + '</li>').join("") + '</ul>' +
+    '<p class="warn" id="salPickMsg" role="status"></p><div class="refbtns"><button type="button" class="wogo" id="salDayGo"' + (ok.length ? "" : " disabled") + '>Сохранить' + (ok.length > 1 ? " (" + mgrPl(ok.length, "файл", "файла", "файлов") + ")" : " продажи") + '</button><button type="button" class="link" id="salDayX">Отмена</button></div>';
+}
+$("salPick").addEventListener("change", e => {
+  const i = e.target.dataset.i;
+  if (i == null || !salPick) return;
+  salPick.files[+i].day = e.target.value; salPick.files[+i].src = "";
+  salPickDraw();
+});
 $("salPick").addEventListener("click", async e => {
   if (e.target.id === "salDayX"){ salPick = null; $("salPick").hidden = true; $("salPick").innerHTML = ""; return; }
   if (e.target.id !== "salDayGo" || !salPick) return;
-  const d = $("salDay").value;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > mgrToday()){ $("salDayHint").textContent = "Выберите день смены (не позже сегодня)."; return; }
+  const ok = salPick.files.filter(x => !x.err), need = ok.filter(x => !x.dated.length && !(/^\d{4}-\d{2}-\d{2}$/.test(x.day) && x.day <= mgrToday()));
+  if (need.length){ $("salPickMsg").textContent = "Выберите день смены (не позже сегодня): " + need.map(x => x.name).join(", "); return; }
+  const rows = [];
+  ok.forEach(x => { if (x.dated.length) rows.push(...x.dated); else x.undated.forEach(r => rows.push(Object.assign({iso: x.day}, r))); });
   e.target.disabled = true;
-  const ok = await salPut(salPick.file, salPick.items.map(x => Object.assign({iso: d}, x)));
-  if (ok){ salPick = null; $("salPick").hidden = true; $("salPick").innerHTML = ""; } else e.target.disabled = false;
+  if (await salPut(ok.map(x => x.name).join(", ").slice(0, 120), rows)){ salPick = null; $("salPick").hidden = true; $("salPick").innerHTML = ""; }
+  else e.target.disabled = false;
+});
+const salKnownLoad = () => mgrKey() && api({mgr: "sales", mk: mgrKey(), per: "rev"}).then(x => { if (x && x.ok){ salKnown = x.days; salWork = x.work || salWork; salCalDraw(); if (salPick) salPickDraw(); } });
+$("stepSal").addEventListener("toggle", () => { if ($("stepSal").open) salKnownLoad(); });
+/* календарь месяца: загружено — выручка (порции), рабочий день без продаж — красным; нажать на день — загрузить за него */
+const salShort = x => x >= 1e6 ? mgrNum(Math.round(x / 1e5) / 10) + "м" : x >= 1000 ? Math.round(x / 1000) + "к" : String(Math.round(x));
+const SAL_MON = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+function salCalDraw(){
+  const by = {}, list = salKnown || [];
+  list.forEach(x => { by[x.iso] = x; });
+  const today = mgrToday(), m = salCalM || today.slice(0, 7), [y, mo] = m.split("-").map(Number);
+  const n = new Date(Date.UTC(y, mo, 0)).getUTCDate(), lead = (new Date(Date.UTC(y, mo - 1, 1)).getUTCDay() + 6) % 7;
+  const first = list.length ? list[list.length - 1].iso : today;           // раньше первой загрузки — не «пропуск»
+  let cells = "", sum = 0, qty = 0, nd = 0, miss = 0;
+  for (let i = 0; i < lead; i++) cells += '<span class="scal0"></span>';
+  for (let d = 1; d <= n; d++){
+    const iso = m + "-" + String(d).padStart(2, "0"), x = by[iso], wd = new Date(iso + "T00:00:00Z").getUTCDay();
+    const cls = x ? "has" : iso > today ? "fut" : salWork.indexOf(wd) >= 0 && iso >= first ? "miss" : "";
+    if (x){ sum += x.sum; qty += x.qty; nd++; }
+    if (cls === "miss") miss++;
+    cells += '<button type="button" class="scal ' + cls + '" data-day="' + iso + '"' + (iso > today ? " disabled" : "") + ' aria-label="' + d + " " + SAL_MON[mo - 1] + (x ? ", " + Math.round(x.qty) + " порций" : "") + '"><b>' + d + '</b>' +
+      (x ? '<small>' + (x.sum ? salShort(x.sum) : Math.round(x.qty) + "п") + '</small>' : cls === "miss" ? '<small>нет</small>' : "") + '</button>';
+  }
+  $("salCal").innerHTML = '<div class="scalh"><button type="button" class="link" data-m="-1" aria-label="Прошлый месяц">‹</button><b>' + SAL_MON[mo - 1] + " " + y + '</b>' +
+    '<button type="button" class="link" data-m="1" aria-label="Следующий месяц"' + (m >= today.slice(0, 7) ? " disabled" : "") + '>›</button></div>' +
+    '<p class="wnhint scals">' + (nd ? "Загружено дней: " + nd + " · " + mgrNum(Math.round(qty)) + " порц." + (sum ? " · " + mgrNum(Math.round(sum)) + " ₽" : "") : "За этот месяц продаж нет") +
+      (miss ? ' · <b class="salneed">рабочих дней без продаж: ' + miss + '</b>' : "") + '. Нажмите на день — загрузить за него.</p>' +
+    '<div class="scalw">' + ["пн", "вт", "ср", "чт", "пт", "сб", "вс"].map(x => '<span>' + x + '</span>').join("") + '</div><div class="scalg">' + cells + '</div>';
+}
+$("salCal").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || b.disabled) return;
+  if (b.dataset.m){ const [y, mo] = (salCalM || mgrToday().slice(0, 7)).split("-").map(Number), t = new Date(Date.UTC(y, mo - 1 + +b.dataset.m, 1)); salCalM = t.toISOString().slice(0, 7); return salCalDraw(); }
+  if (b.dataset.day){ salForce = b.dataset.day; buzz(8); $("salFile").click(); }
 });
 /* сохранить строки {iso, name, code, qty, sum} — дни целиком заменяются */
 async function salPut(file, list){
