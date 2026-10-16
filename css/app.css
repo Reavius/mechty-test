@@ -804,3 +804,40 @@ div.userow{cursor:default}
 .mgrrepd{margin:18px 0 6px}
 .mgrrepd > summary{font-size:14px}
 #mgrSum{margin-top:18px}
+/* ── бар-менеджер: панель разделов закреплена сверху; раздел — плиткой, вкладки раздела — подчёркиванием ── */
+.mgrnav{position:sticky;top:env(safe-area-inset-top,0px);z-index:15;background:var(--bg);padding:10px 0 8px;margin:0 0 12px;
+  box-shadow:0 0 0 100vmax var(--bg);clip-path:inset(0 -100vmax);border-bottom:1px solid var(--line)}
+.mgrnav .mgrtabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0}
+.mgrtabs button{font-family:var(--sans);border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:12px;
+  padding:9px 4px 8px;cursor:pointer;text-align:center;min-width:0;transition:background .15s,border-color .15s,color .15s}
+.mgrtabs button b{display:block;font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mgrtabs button small{display:block;font-size:10.5px;font-weight:500;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mgrtabs button:hover{border-color:var(--accent)}
+.mgrtabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mgrtabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#17130B}
+.mgrtabs button[aria-pressed="true"] small{color:rgba(23,19,11,.72)}
+.mgrnav .mgrsub{display:flex;gap:4px;margin:10px 0 -9px;grid-template-columns:none}
+.mgrsub button{flex:1;font-family:var(--sans);font-size:14px;font-weight:600;background:none;border:0;border-bottom:2px solid transparent;
+  color:var(--muted);padding:8px 6px 9px;cursor:pointer}
+.mgrsub button:hover{color:var(--fg)}
+.mgrsub button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.mgrsub button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.mgrsub[hidden]{display:none}
+/* пояснения — свёрнуты */
+.mgrhelp{margin:0 0 12px}
+.mgrhelp > summary{display:inline-block;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted);list-style:none;padding:4px 0}
+.mgrhelp > summary::-webkit-details-marker{display:none}
+.mgrhelp > summary::before{content:"?";display:inline-grid;place-items:center;width:17px;height:17px;margin-right:7px;border:1px solid var(--line);border-radius:50%;font-size:11px;color:var(--accent)}
+.mgrhelp[open] > summary{color:var(--fg)}
+.mgrhelp > p{margin:6px 0 0}
+/* маленький переключатель (период ревизии / месячная) */
+.mgrseg{display:inline-flex;gap:0;margin:2px 0 12px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mgrseg button{font-family:var(--sans);font-size:12.5px;font-weight:600;background:none;border:0;color:var(--muted);padding:7px 14px;cursor:pointer}
+.mgrseg button + button{border-left:1px solid var(--line)}
+.mgrseg button[aria-pressed="true"]{background:var(--surface-2);color:var(--accent)}
+#mgrOcopy{display:block;width:100%}
+@media (max-width:479px){
+  .mgrtabs button{padding:11px 2px}
+  .mgrtabs button b{font-size:12.5px}
+  .mgrtabs button small{display:none}
+}

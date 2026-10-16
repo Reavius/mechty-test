@@ -252,6 +252,9 @@ function mgrGo(t){
   if (MGR_G[g].length > 1 && g !== "per") mgrSubs[g] = t;
   mgrs("mechty-mgr-tab", mgrGrp); mgrs("mechty-mgr-subs", mgrSubs);
   mgrTabDraw(); mgrTabLoad();
+  /* прокрутили вниз — новый раздел начинается сразу под панелью разделов */
+  const nav = $("mgrNav"), top = nav.parentElement.getBoundingClientRect().top + scrollY + nav.offsetTop;
+  if (scrollY > top) scrollTo({top, behavior: "instant"});
 }
 $("mgrTabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-g]");
