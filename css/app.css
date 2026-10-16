@@ -793,3 +793,5 @@ div.userow{cursor:default}
 .oreq .link{font-size:13px}
 #usePerBox{grid-template-columns:1fr}
 #usePer{width:100%}
+#salPick{margin-top:12px}
+#salPick .wo2{grid-template-columns:1fr}

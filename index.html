@@ -484,13 +484,26 @@
       </div>
 
       <div id="mgrSal" hidden>
-        <p class="wnhint mgrrhint">Выгрузите из R-Keeper «продажи по блюдам» <b>с разбивкой по дням</b> — можно сразу за неделю: продажи сохранятся по дням
+        <p class="wnhint mgrrhint">Загрузите отчёт R-Keeper «продажи по блюдам» — за один день (дату выберете в календаре) или <b>с разбивкой по дням</b> за неделю: продажи сохранятся по дням
           и сами разложатся по периодам ревизий во вкладке «Расход». Повторная загрузка тех же дней заменяет их.
           Здесь же — расход на блюдо и рецепты заготовок: сайт предложит их сам по техкартам и меню, подтвердите один раз.</p>
         <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Продажи R-Keeper</h3></div><div class="wobody">
           <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <div id="salPick" hidden></div>
           <p class="warn" id="salWarn" role="status"></p>
           <div id="salDays"></div>
+        </div></div>
+        <div class="result tcard wo"><div class="tname"><em id="salPerLab"></em><h3>Период продаж</h3></div><div class="wobody">
+          <div class="wo2 mgrd">
+            <div><label class="label" for="salPF">С</label><input id="salPF" type="date"></div>
+            <div><label class="label" for="salPT">По</label><input id="salPT" type="date"></div>
+          </div>
+          <div class="quick" id="salQuick">
+            <button type="button" data-r="rev" aria-pressed="true">Период ревизии</button>
+            <button type="button" data-r="w" aria-pressed="false">7 дней</button>
+            <button type="button" data-r="m" aria-pressed="false">Этот месяц</button>
+            <button type="button" data-r="d30" aria-pressed="false">30 дней</button>
+          </div>
         </div></div>
         <div id="salDish"></div>
         <div id="salZag"></div>

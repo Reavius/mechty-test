@@ -2283,19 +2283,32 @@ function mgrSalesPut(p) {
     return { ok: true, n: add.length, days: days.length };
   } finally { lock.releaseLock(); }
 }
-/* для сайта: какие дни загружены и блюда за последние 35 дней (у каких задан расход — сайт смотрит сам) */
+/* для сайта: какие дни загружены и продажи по блюдам за период: p.from / p.to (ГГГГ-ММ-ДД) или p.per = "rev" —
+   последний период ревизии (продажи тех же смен, что во «Расходе»); по умолчанию — последние 35 дней */
 function mgrSales(p) {
-  const rows = salesRows(), byDay = {}, by = {};
-  const since = /^\d{4}-\d{2}-\d{2}$/.test(p.from || "") ? p.from : new Date(Date.now() + AST - 35 * 864e5).toISOString().slice(0, 10);
+  const rows = salesRows(), byDay = {}, by = {}, isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(x || "");
+  let from = isoOk(p.from) ? p.from : new Date(Date.now() + AST - 34 * 864e5).toISOString().slice(0, 10), to = isoOk(p.to) ? p.to : "9999-12-31", label = "";
+  let inR = r => r.iso >= from && r.iso <= to;
+  if (p.per === "rev") {
+    const R = revTimeline().revs;
+    if (R.length >= 2) {
+      const A = R[R.length - 2], B = R[R.length - 1];
+      inR = r => saleAt(r.iso) > A.at && saleAt(r.iso) <= B.at;
+      from = A.iso; to = B.iso; label = WD_RU[isoWd(A.iso)] + " " + A.d.slice(0, 5) + " → " + WD_RU[isoWd(B.iso)] + " " + B.d.slice(0, 5);
+    }
+  }
+  let qty = 0, sum = 0;
   rows.forEach(r => {
     const d = byDay[r.iso] || (byDay[r.iso] = { iso: r.iso, n: 0, qty: 0, sum: 0, file: r.file, at: r.at });
     d.n++; d.qty += r.qty; d.sum += r.sum;
-    if (r.iso < since) return;
-    const k = dishKey(r.name, r.code), x = by[k] || (by[k] = { name: r.name, code: r.code, qty: 0 });
-    x.qty += r.qty;
+    if (!inR(r)) return;
+    qty += r.qty; sum += r.sum;
+    const k = dishKey(r.name, r.code), x = by[k] || (by[k] = { name: r.name, code: r.code, qty: 0, sum: 0 });
+    x.qty += r.qty; x.sum += r.sum;
   });
   return { ok: true, days: Object.values(byDay).sort((a, b) => b.iso.localeCompare(a.iso)).slice(0, 60),
-    dishes: Object.values(by).filter(x => x.qty > 0).sort((a, b) => b.qty - a.qty), since: since, work: workDays() };
+    dishes: Object.values(by).filter(x => x.qty > 0).sort((a, b) => b.qty - a.qty), since: from, from: from, to: to === "9999-12-31" ? "" : to,
+    label: label, qty: round3(qty), sum: Math.round(sum), work: workDays() };
 }
 
 /* рецепты заготовок: лист «Рецепты заготовок» — сколько сырья на 1 единицу заготовки (1 л сиропа — столько-то сахара) */
