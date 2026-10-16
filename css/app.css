@@ -803,7 +803,6 @@ div.userow{cursor:default}
 .mgrsub button{font-size:13px;padding:9px 10px}
 .mgrrepd{margin:18px 0 6px}
 .mgrrepd > summary{font-size:14px}
-#mgrSum{margin-top:18px}
 /* ── бар-менеджер: панель разделов закреплена сверху; раздел — плиткой, вкладки раздела — подчёркиванием ── */
 .mgrnav{position:sticky;top:env(safe-area-inset-top,0px);z-index:15;background:var(--bg);padding:10px 0 8px;margin:0 0 12px;
   box-shadow:0 0 0 100vmax var(--bg);clip-path:inset(0 -100vmax);border-bottom:1px solid var(--line)}
@@ -841,3 +840,26 @@ div.userow{cursor:default}
   .mgrtabs button b{font-size:12.5px}
   .mgrtabs button small{display:none}
 }
+/* «Период»: шаги расчёта — что загружено, чего не хватает */
+.persteps{margin:4px 0 16px}
+.persteps > .label{margin:0 0 2px}
+.perstep{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:11px 14px;margin-top:8px}
+details.perstep{display:block;padding:0}
+details.perstep > summary{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;list-style:none}
+details.perstep > summary::-webkit-details-marker{display:none}
+details.perstep > summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:0 4px 4px 0;flex:none;transition:transform .15s}
+details.perstep[open] > summary::after{transform:rotate(-135deg);margin:4px 4px 0 0}
+details.perstep[open]{border-color:var(--accent)}
+.psn{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:700;background:var(--surface-2);color:var(--muted);flex:none}
+.perstep[data-st="ok"] .psn{background:var(--accent);color:#17130B}
+.perstep[data-st="warn"] .psn{background:var(--red);color:#fff}
+.pst{flex:1;min-width:0}
+.pst b{display:block;font-size:14.5px}
+.pst small{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.35}
+.perstep[data-st="warn"] .pst small{color:var(--red)}
+.perstep > .link{flex:none;font-size:13.5px;font-weight:600}
+.perbody{padding:2px 14px 14px;border-top:1px solid var(--line)}
+.perbody > .incfile{margin-top:12px}
+#mgrSum.perbody .result{margin-top:12px}
+#mgrSum.perbody,#mgrInc.perbody{margin-top:0}
+#salSrc{margin:12px 0 0}

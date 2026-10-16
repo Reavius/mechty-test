@@ -427,14 +427,10 @@
     <div id="mgrBox" hidden>
       <nav class="mgrnav" id="mgrNav" aria-label="Разделы бар-менеджера">
         <div class="mgrtabs" id="mgrTabs" role="group" aria-label="Раздел">
-          <button type="button" data-g="per" aria-pressed="true"><b>Период</b><small>расход · списания</small></button>
-          <button type="button" data-g="buy" aria-pressed="false"><b>Закупка</b><small>заявка · приход</small></button>
-          <button type="button" data-g="sal" aria-pressed="false"><b>Продажи</b><small>и рецепты</small></button>
+          <button type="button" data-g="per" aria-pressed="true"><b>Период</b><small>всё в одном месте</small></button>
+          <button type="button" data-g="buy" aria-pressed="false"><b>Закупка</b><small>автозаявка</small></button>
+          <button type="button" data-g="sal" aria-pressed="false"><b>Рецепты</b><small>блюда · заготовки</small></button>
           <button type="button" data-g="dir" aria-pressed="false"><b>Справочник</b><small>и меню</small></button>
-        </div>
-        <div class="mgrsub" id="mgrSubBuy" role="group" aria-label="Закупка" hidden>
-          <button type="button" data-t="ord" aria-pressed="true">Автозаявка</button>
-          <button type="button" data-t="inc" aria-pressed="false">Приход</button>
         </div>
         <div class="mgrsub" id="mgrSubDir" role="group" aria-label="Справочник и меню" hidden>
           <button type="button" data-t="ref" aria-pressed="true">Справочник</button>
@@ -444,7 +440,7 @@
       <div id="mgrUse" hidden>
         <details class="mgrhelp" id="useHintD"><summary>Как это работает</summary><p class="wnhint">Период — от прошлой ревизии до последней (ревизия — день, когда посчитаны все зоны: чт перед открытием, вс после закрытия;
           готова, как только все нажали «Завершить»). <b>Ожидалось = было + приход − продано − списания − проработки</b>; продано — по продажам R-Keeper
-          и расходу на блюдо (вкладка «Продажи»), заготовки разложены на сырьё по рецептам. Расхождение = стало − ожидалось: минус — недостача, плюс — излишек,
+          и расходу на блюдо (раздел «Рецепты»), заготовки разложены на сырьё по рецептам. Расхождение = стало − ожидалось: минус — недостача, плюс — излишек,
           в рублях — по цене закупки. Показаны все позиции, самые дорогие расхождения — первыми.</p></details>
         <details class="mgrhelp" id="useHintM" hidden><summary>Как это работает</summary><p class="wnhint">Месячная: расход между двумя месячными ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него
           объяснено актами. Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов).</p></details>
@@ -458,12 +454,39 @@
           <button type="button" data-s="0.5" aria-pressed="true">±50%</button>
           <button type="button" data-s="1" aria-pressed="false">±100%</button>
         </div>
-        <p class="mgrsum" id="useSum"></p>
-        <p class="warn" id="useWarn" role="status"></p>
-        <div id="useList"></div>
+        <div class="persteps" id="perSteps">
+          <p class="label">Что входит в расчёт периода</p>
+          <div class="perstep" id="stepRev"><span class="psn">1</span><span class="pst"><b>Ревизии</b><small id="stepRevS">…</small></span></div>
+          <details class="perstep" id="stepSal"><summary><span class="psn">2</span><span class="pst"><b>Продажи R-Keeper</b><small id="stepSalS">…</small></span></summary>
+        <div class="perbody"><p class="label" id="salSrc"></p>
+          <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+          <div id="salPick" hidden></div>
+          <p class="warn" id="salWarn" role="status"></p>
+          <div id="salDays"></div>
+        </div>
+          </details>
+          <details class="perstep" id="stepInc"><summary><span class="psn">3</span><span class="pst"><b>Приход</b><small id="stepIncS">…</small></span></summary>
+      <div id="mgrInc" class="perbody">
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
+          и сопоставит товары со справочником: по коду R-Keeper, по названию, которое уже встречалось, или подскажет похожее — проверьте.
+          Второй раз то же сопоставление подтверждать не нужно. Старый .xls откройте в Excel и сохраните как «Книга Excel (.xlsx)».</p></details>
+        <label class="wogo incfile">Загрузить накладные (Excel / CSV)<input type="file" id="incFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
+        <p class="warn" id="incWarn" role="status"></p>
+        <div id="incImp" hidden></div>
+        <datalist id="incRefs"></datalist>
+        <div class="quick" id="incQuick">
+          <button type="button" data-r="rev" aria-pressed="true">Период ревизии</button>
+          <button type="button" data-r="d30" aria-pressed="false">30 дней</button>
+          <button type="button" data-r="m" aria-pressed="false">Этот месяц</button>
+          <button type="button" data-r="pm" aria-pressed="false">Прошлый месяц</button>
+        </div>
+        <p class="mgrsum" id="incSum"></p>
+        <div id="incList"></div>
       </div>
 
-      <div id="mgrSum">
+          </details>
+          <details class="perstep" id="stepWo"><summary><span class="psn">4</span><span class="pst"><b>Списания и проработки</b><small id="stepWoS">…</small></span></summary>
+      <div id="mgrSum" class="perbody">
       <div class="result tcard wo">
         <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
         <div class="wobody">
@@ -490,6 +513,14 @@
       <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
       </div>
 
+          </details>
+          <div class="perstep" id="stepRec"><span class="psn">5</span><span class="pst"><b>Рецепты</b><small id="stepRecS">…</small></span><button type="button" class="link" data-go="sal">Открыть</button></div>
+        </div>
+        <p class="mgrsum" id="useSum"></p>
+        <p class="warn" id="useWarn" role="status"></p>
+        <div id="useList"></div>
+      </div>
+
       <details class="incmapd mgrrepd" id="mgrRepD"><summary>Письма: после ревизии и недельный отчёт</summary>
       <div id="mgrRep">
         <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₽ (если продажи
@@ -511,15 +542,9 @@
       </details>
 
       <div id="mgrSal" hidden>
-        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Загрузите отчёт R-Keeper «продажи по блюдам» — за один день (дату выберете в календаре) или <b>с разбивкой по дням</b> за неделю: продажи сохранятся по дням
-          и сами разложатся по периодам ревизий во вкладке «Расход». Повторная загрузка тех же дней заменяет их.
-          Здесь же — расход на блюдо и рецепты заготовок: сайт предложит их сам по техкартам и меню, подтвердите один раз.</p></details>
-        <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Продажи R-Keeper</h3></div><div class="wobody">
-          <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
-          <div id="salPick" hidden></div>
-          <p class="warn" id="salWarn" role="status"></p>
-          <div id="salDays"></div>
-        </div></div>
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Продажи R-Keeper загружаются в разделе «Период» (шаг «Продажи»).
+          Здесь — <b>расход на блюдо</b> (сколько каждой позиции уходит на одно блюдо) и <b>рецепты заготовок</b> (сырьё на 1 л): сайт предлагает их сам
+          по техкартам и меню — подтвердите один раз. Период — какие продажи показать в списке блюд.</p></details>
         <div class="result tcard wo"><div class="tname"><em id="salPerLab"></em><h3>Период продаж</h3></div><div class="wobody">
           <div class="wo2 mgrd">
             <div><label class="label" for="salPF">С</label><input id="salPF" type="date"></div>
@@ -545,23 +570,6 @@
         <p class="warn" id="mgrOwarn" role="status"></p>
         <div id="mgrOlist"></div>
         <p class="mgrfoot"><button type="button" class="wogo" id="mgrOcopy" disabled>Скопировать всю заявку</button></p>
-      </div>
-
-      <div id="mgrInc" hidden>
-        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
-          и сопоставит товары со справочником: по коду R-Keeper, по названию, которое уже встречалось, или подскажет похожее — проверьте.
-          Второй раз то же сопоставление подтверждать не нужно. Старый .xls откройте в Excel и сохраните как «Книга Excel (.xlsx)».</p></details>
-        <label class="wogo incfile">Загрузить накладные (Excel / CSV)<input type="file" id="incFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
-        <p class="warn" id="incWarn" role="status"></p>
-        <div id="incImp" hidden></div>
-        <datalist id="incRefs"></datalist>
-        <div class="quick" id="incQuick">
-          <button type="button" data-r="d30" aria-pressed="true">30 дней</button>
-          <button type="button" data-r="m" aria-pressed="false">Этот месяц</button>
-          <button type="button" data-r="pm" aria-pressed="false">Прошлый месяц</button>
-        </div>
-        <p class="mgrsum" id="incSum"></p>
-        <div id="incList"></div>
       </div>
 
       <div id="mgrPub" hidden>
