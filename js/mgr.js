@@ -17,6 +17,7 @@ const mgrPl = (n, a, b, c) => n + " " + (n % 10 === 1 && n % 100 !== 11 ? a : n 
 
 function mgrRange(r){
   const t = mgrToday(), m1 = t.slice(0, 8) + "01";
+  if (r === "rev") return perData && perData.from ? [perData.from.iso, perData.to.iso] : [mgrShift(t, -6), t];   // период ревизии — по датам актов
   if (r === "w") return [mgrShift(t, -6), t];
   if (r === "d30") return [mgrShift(t, -29), t];
   if (r === "pm"){ const end = mgrShift(m1, -1); return [end.slice(0, 8) + "01", end]; }
@@ -31,8 +32,8 @@ function mgrInit(){
   if (!k) return;
   if (!$("mgrFrom").value){
     /* быстрый период («Этот месяц») пересчитывается от сегодня — завтра в нём и сегодняшние акты; даты руками — как были */
-    const q = mgrj(MGRQ, null), r = q && q.r ? mgrRange(q.r) : q && q.from && q.to ? [q.from, q.to] : mgrRange("m");
-    mgrRsel = q && q.r ? q.r : q && q.from ? "" : "m";
+    const q = mgrj(MGRQ, null), r = q && q.r ? mgrRange(q.r) : q && q.from && q.to ? [q.from, q.to] : mgrRange("rev");
+    mgrRsel = q && q.r ? q.r : q && q.from ? "" : "rev";
     $("mgrFrom").value = r[0]; $("mgrTo").value = r[1];
     if (q && q.k) mgrKindSel = q.k;
   }
@@ -91,6 +92,7 @@ async function mgrLoad(){
   const from = $("mgrFrom").value, to = $("mgrTo").value, mk = mgrKey();
   if (!mk) return mgrInit();
   if (!from || !to || from > to){ $("mgrWarn").textContent = "Проверьте даты: «с» не позже «по»."; return; }
+  if (mgrRsel === "rev" && !perData && mgrGrp === "per" && useKind === "d") return;   // даты придут с периодом ревизии (perDraw)
   mgrs(MGRQ, {from, to, k: mgrKindSel, r: mgrRsel});
   document.querySelectorAll("#mgrQuick button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.r === mgrRsel)));
   $("mgrWarn").textContent = "";
@@ -187,7 +189,7 @@ function mgrKindDraw(){
 }
 let mgrT = 0;
 const mgrSoon = () => { clearTimeout(mgrT); mgrT = setTimeout(mgrLoad, 350); };
-let mgrRsel = "m";
+let mgrRsel = "rev";
 $("mgrFrom").addEventListener("change", () => { mgrRsel = ""; mgrSoon(); });
 $("mgrTo").addEventListener("change", () => { mgrRsel = ""; mgrSoon(); });
 $("mgrQuick").addEventListener("click", e => {
@@ -221,27 +223,47 @@ $("mgrCopy").addEventListener("click", async () => {
   setTimeout(() => { $("mgrCopy").textContent = "Скопировать сводку"; }, 1800);
 });
 
-/* ── вкладки менеджера ── */
-let mgrTab = ["sum", "use", "sal", "ord", "inc", "ref", "pub", "rep"].includes(mgrj("mechty-mgr-tab", "sum")) ? mgrj("mechty-mgr-tab", "sum") : "sum";
+/* ── разделы менеджера ──
+   «Период» — расход по периоду ревизии, списания и проработки, письма (одна страница); «Закупка» — автозаявка и приход;
+   «Продажи и рецепты»; «Справочник и меню» — справочник и «Гостям». Открытая вкладка раздела — mgrSubs. */
+const MGR_G = {per: ["use", "sum", "rep"], buy: ["ord", "inc"], sal: ["sal"], dir: ["ref", "pub"]};
+const MGR_EL = {sum: "mgrSum", use: "mgrUse", sal: "mgrSal", ord: "mgrOrd", inc: "mgrInc", pub: "mgrPub", ref: "mgrRef"};
+const mgrGOf = t => Object.keys(MGR_G).find(g => MGR_G[g].includes(t)) || "per";
+let mgrSubs = Object.assign({buy: "ord", dir: "ref"}, mgrj("mechty-mgr-subs", {}));
+let mgrGrp = (() => { const v = mgrj("mechty-mgr-tab", "per"); return MGR_G[v] ? v : mgrGOf(v); })();   // раньше хранилась вкладка
+const mgrOn = t => mgrGrp === "per" ? MGR_G.per.includes(t) : mgrGrp === "sal" ? t === "sal" : mgrSubs[mgrGrp] === t;
 function mgrTabDraw(){
-  document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === mgrTab)));
-  $("mgrSum").hidden = mgrTab !== "sum";
-  $("mgrUse").hidden = mgrTab !== "use";
-  $("mgrSal").hidden = mgrTab !== "sal";
-  $("mgrOrd").hidden = mgrTab !== "ord";
-  $("mgrInc").hidden = mgrTab !== "inc";
-  $("mgrPub").hidden = mgrTab !== "pub";
-  $("mgrRep").hidden = mgrTab !== "rep";
-  $("mgrRef").hidden = mgrTab !== "ref";
+  document.querySelectorAll("#mgrTabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.g === mgrGrp)));
+  $("mgrSubBuy").hidden = mgrGrp !== "buy"; $("mgrSubDir").hidden = mgrGrp !== "dir";
+  document.querySelectorAll(".mgrsub button").forEach(b => b.setAttribute("aria-pressed", String(mgrSubs[mgrGOf(b.dataset.t)] === b.dataset.t)));
+  Object.keys(MGR_EL).forEach(t => { $(MGR_EL[t]).hidden = !mgrOn(t); });
+  $("mgrRepD").hidden = mgrGrp !== "per";
 }
-const mgrTabLoad = () => mgrTab === "ref" ? refLoad() : mgrTab === "ord" ? ordLoad() : mgrTab === "inc" ? incLoad() : mgrTab === "use" ? useLoad() : mgrTab === "pub" ? pubLoad() : mgrTab === "rep" ? repLoad() : mgrTab === "sal" ? salLoad() : mgrLoad();
+function mgrTabLoad(){
+  if (mgrGrp === "per"){ useLoad(); mgrLoad(); if ($("mgrRepD").open) repLoad(); return; }
+  if (mgrGrp === "sal") return salLoad();
+  const t = mgrSubs[mgrGrp];
+  return t === "ref" ? refLoad() : t === "pub" ? pubLoad() : t === "ord" ? ordLoad() : incLoad();
+}
+/* открыть вкладку (из ссылки «справочник» и т. п.) */
+function mgrGo(t){
+  const g = mgrGOf(t);
+  mgrGrp = g;
+  if (MGR_G[g].length > 1 && g !== "per") mgrSubs[g] = t;
+  mgrs("mechty-mgr-tab", mgrGrp); mgrs("mechty-mgr-subs", mgrSubs);
+  mgrTabDraw(); mgrTabLoad();
+}
 $("mgrTabs").addEventListener("click", e => {
-  const b = e.target.closest("button[data-t]");
-  if (!b || b.dataset.t === mgrTab) return;
-  mgrTab = b.dataset.t; mgrs("mechty-mgr-tab", mgrTab);
-  buzz(8); mgrTabDraw();
-  mgrTabLoad();
+  const b = e.target.closest("button[data-g]");
+  if (!b || b.dataset.g === mgrGrp) return;
+  buzz(8); mgrGo(b.dataset.g === "per" ? "use" : b.dataset.g === "sal" ? "sal" : mgrSubs[b.dataset.g]);
 });
+document.querySelectorAll(".mgrsub").forEach(x => x.addEventListener("click", e => {
+  const b = e.target.closest("button[data-t]");
+  if (!b || mgrSubs[mgrGrp] === b.dataset.t) return;
+  buzz(8); mgrGo(b.dataset.t);
+}));
+$("mgrRepD").addEventListener("toggle", () => { if ($("mgrRepD").open && mgrKey()) repLoad(); });
 
 /* ── справочник позиций ──
    строка: [раздел, позиция, ед., код R-Keeper, тара, норма, поставщик, цена, заметка, есть в бланке] */
@@ -530,7 +552,7 @@ $("mgrOlist").addEventListener("click", e => {
   const b = e.target.closest("button[data-copy]");
   if (b) return ordCopy(b, b.dataset.copy);
   const t = e.target.closest("button[data-tab]");
-  if (t){ mgrTab = t.dataset.tab; mgrs("mechty-mgr-tab", mgrTab); mgrTabDraw(); mgrTabLoad(); }
+  if (t) mgrGo(t.dataset.tab);
 });
 $("mgrOcopy").addEventListener("click", () => ordCopy($("mgrOcopy")));
 $("mgrOwarn").addEventListener("click", e => { if (e.target.id === "ordRetry") ordLoad(); });
@@ -1062,6 +1084,10 @@ function perDraw(){
     miss.map(r => esc(r.n) + (r.miss === "from" ? " — нет в " + d.from.wd : " — нет в " + d.to.wd)).join(", ") + '</p></details>';
   html += '<p class="mgrfoot"><button type="button" class="link" id="perCopy">Скопировать итог</button></p></div>';
   $("useList").innerHTML = html;
+  /* сводка списаний ниже — за тот же период (если выбран «Период ревизии») */
+  if (mgrRsel === "rev" && ($("mgrFrom").value !== d.from.iso || $("mgrTo").value !== d.to.iso || !mgrData)){
+    $("mgrFrom").value = d.from.iso; $("mgrTo").value = d.to.iso; mgrLoad();
+  }
 }
 async function perClick(e){
   if (e.target.id !== "perCopy" || !perData) return;

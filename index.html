@@ -426,41 +426,19 @@
 
     <div id="mgrBox" hidden>
       <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
-        <button type="button" data-t="sum" aria-pressed="true">Сводка списаний</button>
-        <button type="button" data-t="use" aria-pressed="false">Расход</button>
-        <button type="button" data-t="sal" aria-pressed="false">Продажи</button>
-        <button type="button" data-t="ord" aria-pressed="false">Автозаявка</button>
+        <button type="button" data-g="per" aria-pressed="true">Период</button>
+        <button type="button" data-g="buy" aria-pressed="false">Закупка</button>
+        <button type="button" data-g="sal" aria-pressed="false">Продажи и рецепты</button>
+        <button type="button" data-g="dir" aria-pressed="false">Справочник и меню</button>
+      </div>
+      <div class="modes mgrsub" id="mgrSubBuy" role="group" aria-label="Закупка" hidden>
+        <button type="button" data-t="ord" aria-pressed="true">Автозаявка</button>
         <button type="button" data-t="inc" aria-pressed="false">Приход</button>
-        <button type="button" data-t="ref" aria-pressed="false">Справочник</button>
+      </div>
+      <div class="modes mgrsub" id="mgrSubDir" role="group" aria-label="Справочник и меню" hidden>
+        <button type="button" data-t="ref" aria-pressed="true">Справочник</button>
         <button type="button" data-t="pub" aria-pressed="false">Гостям</button>
-        <button type="button" data-t="rep" aria-pressed="false">Отчёт</button>
       </div>
-      <div id="mgrSum">
-      <div class="result tcard wo">
-        <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
-        <div class="wobody">
-          <div class="wo2 mgrd">
-            <div><label class="label" for="mgrFrom">С</label><input id="mgrFrom" type="date"></div>
-            <div><label class="label" for="mgrTo">По</label><input id="mgrTo" type="date"></div>
-          </div>
-          <div class="quick" id="mgrQuick">
-            <button type="button" data-r="w">7 дней</button>
-            <button type="button" data-r="m">Этот месяц</button>
-            <button type="button" data-r="pm">Прошлый месяц</button>
-            <button type="button" data-r="d30">30 дней</button>
-          </div>
-          <div class="modes mgrkind" id="mgrKind" role="group" aria-label="Вид актов">
-            <button type="button" data-k="all" aria-pressed="true">Всё</button>
-            <button type="button" data-k="wo" aria-pressed="false">Списания</button>
-            <button type="button" data-k="pr" aria-pressed="false">Проработки</button>
-          </div>
-          <p class="warn" id="mgrWarn" role="status"></p>
-        </div>
-      </div>
-      <div id="mgrOut"></div>
-      <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
-      </div>
-
       <div id="mgrUse" hidden>
         <p class="wnhint mgrrhint" id="useHintD">Период — от прошлой ревизии до последней (ревизия — день, когда посчитаны все зоны: чт перед открытием, вс после закрытия;
           готова, как только все нажали «Завершить»). <b>Ожидалось = было + приход − продано − списания − проработки</b>; продано — по продажам R-Keeper
@@ -482,6 +460,53 @@
         <p class="warn" id="useWarn" role="status"></p>
         <div id="useList"></div>
       </div>
+
+      <div id="mgrSum">
+      <div class="result tcard wo">
+        <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
+        <div class="wobody">
+          <div class="wo2 mgrd">
+            <div><label class="label" for="mgrFrom">С</label><input id="mgrFrom" type="date"></div>
+            <div><label class="label" for="mgrTo">По</label><input id="mgrTo" type="date"></div>
+          </div>
+          <div class="quick" id="mgrQuick">
+            <button type="button" data-r="rev">Период ревизии</button>
+            <button type="button" data-r="w">7 дней</button>
+            <button type="button" data-r="m">Этот месяц</button>
+            <button type="button" data-r="pm">Прошлый месяц</button>
+            <button type="button" data-r="d30">30 дней</button>
+          </div>
+          <div class="modes mgrkind" id="mgrKind" role="group" aria-label="Вид актов">
+            <button type="button" data-k="all" aria-pressed="true">Всё</button>
+            <button type="button" data-k="wo" aria-pressed="false">Списания</button>
+            <button type="button" data-k="pr" aria-pressed="false">Проработки</button>
+          </div>
+          <p class="warn" id="mgrWarn" role="status"></p>
+        </div>
+      </div>
+      <div id="mgrOut"></div>
+      <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
+      </div>
+
+      <details class="incmapd mgrrepd" id="mgrRepD"><summary>Письма: после ревизии и недельный отчёт</summary>
+      <div id="mgrRep">
+        <p class="wnhint mgrrhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₸ (если продажи
+          ещё не загружены — второе письмо, когда их загрузят). Каждый понедельник в 9:00 — письмо за прошлую неделю: последняя ревизия против продаж,
+          списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p>
+        <div class="result tcard wo"><div class="tname"><em id="repAuto"></em><h3>Письмо</h3></div><div class="wobody">
+          <label class="label" for="repTo">Кому (через запятую; пусто — владельцу таблицы)</label>
+          <input id="repTo" type="text" inputmode="email" autocomplete="off" placeholder="manager@example.com">
+          <div class="refbtns"><button type="button" class="wogo" id="repSave">Сохранить адреса</button><button type="button" class="link" id="repToggle"></button></div>
+          <p class="warn" id="repMsg" role="status"></p>
+        </div></div>
+        <div class="quick" id="repQuick">
+          <button type="button" data-r="pw" aria-pressed="true">Прошлая неделя</button>
+          <button type="button" data-r="tw" aria-pressed="false">Эта неделя</button>
+        </div>
+        <div class="repview" id="repView"></div>
+        <p class="mgrfoot"><button type="button" class="link" id="repSend" disabled>Отправить это письмо сейчас</button></p>
+      </div>
+      </details>
 
       <div id="mgrSal" hidden>
         <p class="wnhint mgrrhint">Загрузите отчёт R-Keeper «продажи по блюдам» — за один день (дату выберете в календаре) или <b>с разбивкой по дням</b> за неделю: продажи сохранятся по дням
@@ -558,24 +583,6 @@
           <div id="pubList"></div>
           <datalist id="pubChs"></datalist><datalist id="pubSecs"></datalist>
         </div>
-      </div>
-
-      <div id="mgrRep" hidden>
-        <p class="wnhint mgrrhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₸ (если продажи
-          ещё не загружены — второе письмо, когда их загрузят). Каждый понедельник в 9:00 — письмо за прошлую неделю: последняя ревизия против продаж,
-          списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p>
-        <div class="result tcard wo"><div class="tname"><em id="repAuto"></em><h3>Письмо</h3></div><div class="wobody">
-          <label class="label" for="repTo">Кому (через запятую; пусто — владельцу таблицы)</label>
-          <input id="repTo" type="text" inputmode="email" autocomplete="off" placeholder="manager@example.com">
-          <div class="refbtns"><button type="button" class="wogo" id="repSave">Сохранить адреса</button><button type="button" class="link" id="repToggle"></button></div>
-          <p class="warn" id="repMsg" role="status"></p>
-        </div></div>
-        <div class="quick" id="repQuick">
-          <button type="button" data-r="pw" aria-pressed="true">Прошлая неделя</button>
-          <button type="button" data-r="tw" aria-pressed="false">Эта неделя</button>
-        </div>
-        <div class="repview" id="repView"></div>
-        <p class="mgrfoot"><button type="button" class="link" id="repSend" disabled>Отправить это письмо сейчас</button></p>
       </div>
 
       <div id="mgrRef" hidden>

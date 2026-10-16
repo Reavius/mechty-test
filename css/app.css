@@ -795,3 +795,12 @@ div.userow{cursor:default}
 #usePer{width:100%}
 #salPick{margin-top:12px}
 #salPick .wo2{grid-template-columns:1fr}
+/* разделы менеджера: 4 раздела, внутри «Закупки» и «Справочника» — вкладки */
+.mgrtabs{grid-template-columns:repeat(2,1fr)}
+@media (min-width:641px){.mgrtabs{grid-template-columns:repeat(4,1fr)}}
+.mgrtabs button:last-child:nth-child(odd){grid-column:auto}
+.mgrsub{grid-template-columns:repeat(2,1fr);margin:0 0 10px}
+.mgrsub button{font-size:13px;padding:9px 10px}
+.mgrrepd{margin:18px 0 6px}
+.mgrrepd > summary{font-size:14px}
+#mgrSum{margin-top:18px}
