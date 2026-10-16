@@ -863,3 +863,37 @@ details.perstep[open]{border-color:var(--accent)}
 #mgrSum.perbody .result{margin-top:12px}
 #mgrSum.perbody,#mgrInc.perbody{margin-top:0}
 #salSrc{margin:12px 0 0}
+/* шаги нумеруются сами (рецепты появляются, только когда нужны) */
+.persteps{counter-reset:pstep}
+.persteps > .perstep:not([hidden]) .psn::before{counter-increment:pstep;content:counter(pstep)}
+.perstep[hidden]{display:none}
+.pst small u{text-decoration:none;color:var(--accent);font-weight:600}
+.perl{margin:14px 0 6px}
+#stepRev .wo2{margin-top:12px}
+#mgrRepD .mgrhelp{margin-top:12px}
+/* продажи: файлы и календарь месяца */
+.salfiles{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.salfiles li{border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.salfiles li.salferr{border-color:var(--red-line)}
+.salfn{display:block;font-size:13.5px;font-weight:600;word-break:break-word}
+.salfiles small{display:block;font-size:12px;margin-top:3px}
+.salfd{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:12.5px;color:var(--muted);font-weight:600}
+.salfd input{flex:1;min-width:0;padding:7px 9px;border-radius:8px}
+.salneed{color:var(--red)}
+#salCal{margin-top:16px}
+.scalh{display:flex;align-items:center;justify-content:space-between}
+.scalh b{font-size:14.5px;text-transform:capitalize}
+.scalh .link{font-size:22px;line-height:1;padding:2px 12px}
+.scalh .link:disabled{opacity:.3}
+.scals{margin:4px 0 8px}
+.scalw,.scalg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.scalw span{font-size:10.5px;color:var(--muted);text-align:center;font-weight:600}
+.scal{font-family:var(--sans);border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:8px;padding:5px 0 4px;cursor:pointer;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.scal b{font-size:13px;font-weight:600}
+.scal small{font-size:10px;margin-top:1px;font-variant-numeric:tabular-nums}
+.scal.has{border-color:var(--accent);color:var(--fg)}
+.scal.has small{color:var(--accent);font-weight:700}
+.scal.miss{border-color:var(--red-line);color:var(--fg)}
+.scal.miss small{color:var(--red);font-weight:700}
+.scal.fut{opacity:.35;cursor:default}
+.scal:focus-visible{outline:2px solid var(--accent);outline-offset:1px}

@@ -1665,6 +1665,7 @@ function manager(p) {
   if (p.mgr === "sales") return mgrSales(p);
   if (p.mgr === "zags") return mgrZags();
   if (p.mgr === "refauto") return mgrRefAuto(p);
+  if (p.mgr === "reportto") return { ok: true, emails: reportTo(), auto: reportOn() };
   return { error: "action" };
 }
 /* строки журналов списаний и проработок за период (даты «с» и «по» включительно, ГГГГ-ММ-ДД):
@@ -2306,7 +2307,7 @@ function mgrSales(p) {
     const k = dishKey(r.name, r.code), x = by[k] || (by[k] = { name: r.name, code: r.code, qty: 0, sum: 0 });
     x.qty += r.qty; x.sum += r.sum;
   });
-  return { ok: true, days: Object.values(byDay).sort((a, b) => b.iso.localeCompare(a.iso)).slice(0, 60),
+  return { ok: true, days: Object.values(byDay).sort((a, b) => b.iso.localeCompare(a.iso)).slice(0, 130),
     dishes: Object.values(by).filter(x => x.qty > 0).sort((a, b) => b.qty - a.qty), since: from, from: from, to: to === "9999-12-31" ? "" : to,
     label: label, qty: round3(qty), sum: Math.round(sum), work: workDays() };
 }
@@ -2368,8 +2369,18 @@ function mgrPeriod(p) {
   if (R.length < 2) return out;
   let i = p && p.i != null && String(p.i) !== "" ? parseInt(p.i, 10) : R.length - 1;
   if (!(i >= 1 && i < R.length)) i = R.length - 1;
-  const A = R[i - 1], B = R[i], inP = t => t > A.at && t <= B.at;
-  out.i = i; out.from = revOut(A, i - 1); out.to = revOut(B, i);
+  let a = i - 1;
+  /* свои даты: остатки есть только на ревизиях — период расширяется до ближайших: начало — последняя ревизия не позже «с»,
+     конец — первая не раньше «по» (её ещё нет — последняя) */
+  const isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(x || "");
+  if (p && isoOk(p.from) && isoOk(p.to) && p.from <= p.to) {
+    a = 0; for (let k = 0; k < R.length; k++) if (R[k].iso <= p.from) a = k;
+    i = R.length - 1; for (let k = R.length - 1; k >= 0; k--) if (R[k].iso >= p.to) i = k;
+    if (i <= a) { if (a < R.length - 1) i = a + 1; else { a = R.length - 2; i = R.length - 1; } }
+    out.req = { from: p.from, to: p.to };
+  }
+  const A = R[a], B = R[i], inP = t => t > A.at && t <= B.at;
+  out.i = i; out.a = a; out.from = revOut(A, a); out.to = revOut(B, i);
   out.skipped = tl.all.filter(x => !x.full && x.iso >= A.iso && x.iso <= B.iso && x !== A && x !== B).map(x => ({ d: x.d, z: x.z }));
 
   /* справочник: ключ, единица, тара, цена */
