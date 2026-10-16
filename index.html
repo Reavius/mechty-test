@@ -425,28 +425,30 @@
     </form>
 
     <div id="mgrBox" hidden>
-      <div class="modes mgrtabs" id="mgrTabs" role="group" aria-label="Раздел менеджера">
-        <button type="button" data-g="per" aria-pressed="true">Период</button>
-        <button type="button" data-g="buy" aria-pressed="false">Закупка</button>
-        <button type="button" data-g="sal" aria-pressed="false">Продажи и рецепты</button>
-        <button type="button" data-g="dir" aria-pressed="false">Справочник и меню</button>
-      </div>
-      <div class="modes mgrsub" id="mgrSubBuy" role="group" aria-label="Закупка" hidden>
-        <button type="button" data-t="ord" aria-pressed="true">Автозаявка</button>
-        <button type="button" data-t="inc" aria-pressed="false">Приход</button>
-      </div>
-      <div class="modes mgrsub" id="mgrSubDir" role="group" aria-label="Справочник и меню" hidden>
-        <button type="button" data-t="ref" aria-pressed="true">Справочник</button>
-        <button type="button" data-t="pub" aria-pressed="false">Гостям</button>
-      </div>
+      <nav class="mgrnav" id="mgrNav" aria-label="Разделы бар-менеджера">
+        <div class="mgrtabs" id="mgrTabs" role="group" aria-label="Раздел">
+          <button type="button" data-g="per" aria-pressed="true"><b>Период</b><small>расход · списания</small></button>
+          <button type="button" data-g="buy" aria-pressed="false"><b>Закупка</b><small>заявка · приход</small></button>
+          <button type="button" data-g="sal" aria-pressed="false"><b>Продажи</b><small>и рецепты</small></button>
+          <button type="button" data-g="dir" aria-pressed="false"><b>Справочник</b><small>и меню</small></button>
+        </div>
+        <div class="mgrsub" id="mgrSubBuy" role="group" aria-label="Закупка" hidden>
+          <button type="button" data-t="ord" aria-pressed="true">Автозаявка</button>
+          <button type="button" data-t="inc" aria-pressed="false">Приход</button>
+        </div>
+        <div class="mgrsub" id="mgrSubDir" role="group" aria-label="Справочник и меню" hidden>
+          <button type="button" data-t="ref" aria-pressed="true">Справочник</button>
+          <button type="button" data-t="pub" aria-pressed="false">Меню для гостей</button>
+        </div>
+      </nav>
       <div id="mgrUse" hidden>
-        <p class="wnhint mgrrhint" id="useHintD">Период — от прошлой ревизии до последней (ревизия — день, когда посчитаны все зоны: чт перед открытием, вс после закрытия;
+        <details class="mgrhelp" id="useHintD"><summary>Как это работает</summary><p class="wnhint">Период — от прошлой ревизии до последней (ревизия — день, когда посчитаны все зоны: чт перед открытием, вс после закрытия;
           готова, как только все нажали «Завершить»). <b>Ожидалось = было + приход − продано − списания − проработки</b>; продано — по продажам R-Keeper
           и расходу на блюдо (вкладка «Продажи»), заготовки разложены на сырьё по рецептам. Расхождение = стало − ожидалось: минус — недостача, плюс — излишек,
-          в рублях — по цене закупки. Показаны все позиции, самые дорогие расхождения — первыми.</p>
-        <p class="wnhint mgrrhint" id="useHintM" hidden>Месячная: расход между двумя месячными ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него
-          объяснено актами. Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов).</p>
-        <div class="modes mgrkind" id="useKind" role="group" aria-label="Какая ревизия">
+          в рублях — по цене закупки. Показаны все позиции, самые дорогие расхождения — первыми.</p></details>
+        <details class="mgrhelp" id="useHintM" hidden><summary>Как это работает</summary><p class="wnhint">Месячная: расход между двумя месячными ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него
+          объяснено актами. Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов).</p></details>
+        <div class="mgrseg" id="useKind" role="group" aria-label="Какая ревизия">
           <button type="button" data-k="d" aria-pressed="true">Период ревизии</button>
           <button type="button" data-k="m" aria-pressed="false">Месячная</button>
         </div>
@@ -490,9 +492,9 @@
 
       <details class="incmapd mgrrepd" id="mgrRepD"><summary>Письма: после ревизии и недельный отчёт</summary>
       <div id="mgrRep">
-        <p class="wnhint mgrrhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₽ (если продажи
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₽ (если продажи
           ещё не загружены — второе письмо, когда их загрузят). Каждый понедельник в 9:00 — письмо за прошлую неделю: последняя ревизия против продаж,
-          списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p>
+          списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p></details>
         <div class="result tcard wo"><div class="tname"><em id="repAuto"></em><h3>Письмо</h3></div><div class="wobody">
           <label class="label" for="repTo">Кому (через запятую; пусто — владельцу таблицы)</label>
           <input id="repTo" type="text" inputmode="email" autocomplete="off" placeholder="manager@example.com">
@@ -509,9 +511,9 @@
       </details>
 
       <div id="mgrSal" hidden>
-        <p class="wnhint mgrrhint">Загрузите отчёт R-Keeper «продажи по блюдам» — за один день (дату выберете в календаре) или <b>с разбивкой по дням</b> за неделю: продажи сохранятся по дням
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Загрузите отчёт R-Keeper «продажи по блюдам» — за один день (дату выберете в календаре) или <b>с разбивкой по дням</b> за неделю: продажи сохранятся по дням
           и сами разложатся по периодам ревизий во вкладке «Расход». Повторная загрузка тех же дней заменяет их.
-          Здесь же — расход на блюдо и рецепты заготовок: сайт предложит их сам по техкартам и меню, подтвердите один раз.</p>
+          Здесь же — расход на блюдо и рецепты заготовок: сайт предложит их сам по техкартам и меню, подтвердите один раз.</p></details>
         <div class="result tcard wo"><div class="tname"><em id="salSrc"></em><h3>Продажи R-Keeper</h3></div><div class="wobody">
           <label class="wogo incfile">Загрузить продажи по блюдам (Excel / CSV)<input type="file" id="salFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
           <div id="salPick" hidden></div>
@@ -536,19 +538,19 @@
       </div>
 
       <div id="mgrOrd" hidden>
-        <p class="wnhint mgrrhint">К заказу = <b>норма − остаток</b> по позициям справочника с нормой, с округлением до целой тары.
-          Остаток — из самой свежей ревизии: ежедневной или месячной; приход после неё прибавляется. Снимите галочку с того, что заказывать не нужно.</p>
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">К заказу = <b>норма − остаток</b> по позициям справочника с нормой, с округлением до целой тары.
+          Остаток — из самой свежей ревизии: ежедневной или месячной; приход после неё прибавляется. Снимите галочку с того, что заказывать не нужно.</p></details>
         <div id="mgrOreq"></div>
         <p class="mgrsum" id="mgrOsrc"></p>
         <p class="warn" id="mgrOwarn" role="status"></p>
         <div id="mgrOlist"></div>
-        <p class="mgrfoot"><button type="button" class="link" id="mgrOcopy" disabled>Скопировать заявку</button></p>
+        <p class="mgrfoot"><button type="button" class="wogo" id="mgrOcopy" disabled>Скопировать всю заявку</button></p>
       </div>
 
       <div id="mgrInc" hidden>
-        <p class="wnhint mgrrhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
           и сопоставит товары со справочником: по коду R-Keeper, по названию, которое уже встречалось, или подскажет похожее — проверьте.
-          Второй раз то же сопоставление подтверждать не нужно. Старый .xls откройте в Excel и сохраните как «Книга Excel (.xlsx)».</p>
+          Второй раз то же сопоставление подтверждать не нужно. Старый .xls откройте в Excel и сохраните как «Книга Excel (.xlsx)».</p></details>
         <label class="wogo incfile">Загрузить накладные (Excel / CSV)<input type="file" id="incFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label>
         <p class="warn" id="incWarn" role="status"></p>
         <div id="incImp" hidden></div>
@@ -586,9 +588,9 @@
       </div>
 
       <div id="mgrRef" hidden>
-        <p class="wnhint mgrrhint">Позиции — из бланка месячной ревизии, новые добавляются сами. Заполняйте здесь или в таблице ревизии,
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Позиции — из бланка месячной ревизии, новые добавляются сами. Заполняйте здесь или в таблице ревизии,
           лист «Справочник». Бутылочное бар считает в литрах: <b>тара</b> — объём одной бутылки (0,7), по ней приход бутылками переводится в литры; у кг — вес упаковки, у шт — штук в упаковке,
-          <b>норма</b> — сколько держать, в тех же единицах.</p>
+          <b>норма</b> — сколько держать, в тех же единицах.</p></details>
         <input id="mgrRq" class="tq" type="search" placeholder="Поиск по позиции" autocomplete="off" aria-label="Поиск по справочнику">
         <div class="quick" id="mgrRf">
           <button type="button" data-f="all" aria-pressed="true">Все</button>
