@@ -319,7 +319,7 @@ function refMeta(r){
   p.push(r[4] ? "тара " + esc(r[4]) : '<em>нет тары</em>');
   p.push(r[5] ? "норма " + esc(r[5]) : '<em>нет нормы</em>');
   if (r[6]) p.push(esc(r[6]));
-  if (r[7]) p.push(esc(r[7]) + " ₸");
+  if (r[7]) p.push(esc(r[7]) + " ₽");
   if (!r[9]) p.push('<em>нет в бланке</em>');
   return p.join(" · ");
 }
@@ -332,7 +332,7 @@ function refForm(r, i){
     fld("refTara", "Тара", r[4], 'type="text" inputmode="decimal" maxlength="12" placeholder="0,7"') +
     fld("refNorm", "Норма", r[5], 'type="text" inputmode="decimal" maxlength="12" placeholder="3"') +
     fld("refSup", "Поставщик", r[6], 'type="text" list="mgrSups" maxlength="80"') +
-    fld("refPrice", "Цена, ₸", r[7], 'type="text" inputmode="decimal" maxlength="12"') +
+    fld("refPrice", "Цена, ₽", r[7], 'type="text" inputmode="decimal" maxlength="12"') +
     '</div>' + fld("refNote", "Заметка", r[8], 'type="text" maxlength="200"') +
     '<p class="wnhint">Тара: литровая позиция (ед. «литр» или «—» — бар считает бутылочное в литрах) — объём бутылки (0,7); кг — вес упаковки; шт — штук в упаковке (24); «бут» — объём бутылки. ' +
       'Норма и остаток — в единицах позиции.</p>' +
@@ -625,8 +625,8 @@ function incListDraw(){
   const inv = keys.map(k => by[k]).sort((a, b) => b.iso.localeCompare(a.iso));
   const total = inv.reduce((a, x) => a + x.sum, 0);
   $("incSum").innerHTML = mgrRu(incData.from) + " — " + mgrRu(incData.to) + ": <b>" + mgrPl(inv.length, "накладная", "накладные", "накладных") + "</b>" +
-    (total ? " на " + mgrNum(Math.round(total)) + " ₸" : "");
-  $("incList").innerHTML = inv.slice(0, 40).map(x => '<div class="result tcard mgrt"><div class="tname"><em>' + (x.sum ? mgrNum(Math.round(x.sum)) + " ₸" : "") + '</em>' +
+    (total ? " на " + mgrNum(Math.round(total)) + " ₽" : "");
+  $("incList").innerHTML = inv.slice(0, 40).map(x => '<div class="result tcard mgrt"><div class="tname"><em>' + (x.sum ? mgrNum(Math.round(x.sum)) + " ₽" : "") + '</em>' +
     '<h3>' + esc(x.date) + (x.no ? " №" + esc(x.no) : "") + '</h3><small class="mgrwhy">' + esc(x.sup || "поставщик не указан") + '</small></div>' +
     '<table><tbody>' + x.rows.map(r => '<tr><td class="n">' + esc(r[4]) + '</td><td class="v">' + mgrNum(r[5]) + (r[6] ? " " + esc(r[6]) : "") + '</td></tr>').join("") +
     '</tbody></table></div>').join("") || '<p class="empty">За этот период прихода нет.</p>';
@@ -786,7 +786,7 @@ function incDraw(){
     '<ul class="olist incl">' + inc.rows.map((r, i) => {
       const ref = r.ri >= 0 ? refRows[r.ri] : null;
       return '<li class="inc-' + (r.kq && r.ri >= 0 ? "guess" : r.how || "no") + '" data-i="' + i + '"><div class="incr"><span class="refn">' + esc(r.name) + (r.code ? ' <small>код ' + esc(r.code) + '</small>' : "") + '</span>' +
-        '<small class="mgrwhy">' + (r.date ? mgrRu(r.date) + (r.no ? " №" + esc(r.no) : "") + " · " : "") + mgrNum(r.qty) + (r.unit ? " " + esc(r.unit) : "") + (r.price ? " · " + mgrNum(r.price) + " ₸" : "") +
+        '<small class="mgrwhy">' + (r.date ? mgrRu(r.date) + (r.no ? " №" + esc(r.no) : "") + " · " : "") + mgrNum(r.qty) + (r.unit ? " " + esc(r.unit) : "") + (r.price ? " · " + mgrNum(r.price) + " ₽" : "") +
           ' · <b>' + (r.kq && r.ri >= 0 ? "проверьте коэффициент: " + esc(r.unit || "ед.") + " → " + esc(refRows[r.ri][2] || "ед.") : incHow[r.how]) + '</b></small>' +
         '<div class="incpick"><input type="text" list="incRefs" data-f="ref" value="' + (ref ? esc(incLabel(ref)) + '"' : '" placeholder="Позиция справочника"') + ' aria-label="Позиция справочника">' +
         '<label class="inck">× <input type="text" inputmode="decimal" data-f="k" value="' + mgrNum(r.k) + '" aria-label="Коэффициент"></label></div>' +
@@ -1044,7 +1044,7 @@ function perDraw(){
   const S = d.sales || {want: [], miss: [], nodish: [], have: []}, rows = d.rows.filter(r => !r.info && !r.miss);
   const info = d.rows.filter(r => r.info), miss = d.rows.filter(r => r.miss);
   const dd = iso => ["вс", "пн", "вт", "ср", "чт", "пт", "сб"][new Date(iso + "T00:00:00Z").getUTCDay()] + " " + mgrRu(iso).slice(0, 5);
-  $("useSum").innerHTML = '<b>' + perLab(d.from, d.to) + '</b>' + (d.to.who ? " (" + esc(d.to.who) + ")" : "") + ' · недостача <b class="salshort">' + perMoney(d.short) + ' ₸</b> · излишек <b>' + perMoney(d.over) + ' ₸</b> · позиций ' + rows.length;
+  $("useSum").innerHTML = '<b>' + perLab(d.from, d.to) + '</b>' + (d.to.who ? " (" + esc(d.to.who) + ")" : "") + ' · недостача <b class="salshort">' + perMoney(d.short) + ' ₽</b> · излишек <b>' + perMoney(d.over) + ' ₽</b> · позиций ' + rows.length;
   const wm = d.womiss || [];
   const W = [
     !S.want.length ? "В этом периоде смен не было — продаж не ждём: любое расхождение — потери или ошибка пересчёта." :
@@ -1058,7 +1058,7 @@ function perDraw(){
     wm.filter(x => x.why === "ambiguous").length ? "Списания не учтены — в бланке несколько позиций с таким названием: " + wm.filter(x => x.why === "ambiguous").map(x => x.n).join(", ") + "." : "",
     wm.filter(x => x.why === "unit").length ? "Списания не учтены — единица акта не переводится в единицу позиции (задайте единицу и тару в справочнике): " + wm.filter(x => x.why === "unit").map(x => x.n + " (" + (x.u || "?") + (x.pu ? " → " + x.pu : "") + ")").join(", ") + "." : "",
     (d.unconv || []).length ? "Не переводится единица (задайте единицу и тару в справочнике): " + d.unconv.join(", ") + "." : "",
-    d.noprice ? "У " + mgrPl(d.noprice, "позиции", "позиций", "позиций") + " с расхождением нет цены закупки — в сумму ₸ не вошли (цена заполнится из накладных или в справочнике)." : ""
+    d.noprice ? "У " + mgrPl(d.noprice, "позиции", "позиций", "позиций") + " с расхождением нет цены закупки — в сумму ₽ не вошли (цена заполнится из накладных или в справочнике)." : ""
   ].filter(Boolean);
   $("useWarn").innerHTML = W.map(esc).join("<br>");
   const n = x => mgrNum(r2(x));
@@ -1074,7 +1074,7 @@ function perDraw(){
     const u = useU(r.u), cls = Math.abs(r.diff) < 1e-9 ? "per0" : r.diff < 0 ? "perneg" : "perpos";
     return '<li class="' + cls + '"><div class="userow"><span class="usen"><span class="refn">' + esc(r.n) + '</span><small class="mgrwhy">' + esc(why(r)) + '</small></span>' +
       '<span class="usev"><b>' + (Math.abs(r.diff) < 1e-9 ? "сходится" : (r.diff < 0 ? "−" : "+") + n(Math.abs(r.diff)) + " " + u) + '</b>' +
-      (r.money ? '<small>' + (r.money < 0 ? "−" : "+") + perMoney(r.money) + ' ₸</small>' : r.diff && !r.price ? '<small>нет цены</small>' : "") + '</span></div></li>';
+      (r.money ? '<small>' + (r.money < 0 ? "−" : "+") + perMoney(r.money) + ' ₽</small>' : r.diff && !r.price ? '<small>нет цены</small>' : "") + '</span></div></li>';
   };
   let html = '<div class="result tcard mgrt"><div class="tname"><em>' + perLab(d.from, d.to) + '</em><h3>Ревизия против продаж</h3></div>' +
     (rows.length ? '<ul class="olist usel">' + rows.map(line).join("") + '</ul>' : '<p class="empty">Нет позиций, посчитанных в обеих ревизиях.</p>');
@@ -1091,8 +1091,8 @@ function perDraw(){
 }
 async function perClick(e){
   if (e.target.id !== "perCopy" || !perData) return;
-  const d = perData, t = ["Ревизия против продаж, " + perLab(d.from, d.to), "Недостача: " + perMoney(d.short) + " ₸, излишек: " + perMoney(d.over) + " ₸", ""]
-    .concat(d.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).map(r => "— " + r.n + ": " + (r.diff < 0 ? "−" : "+") + mgrNum(r2(Math.abs(r.diff))) + " " + useU(r.u) + (r.money ? " (" + perMoney(r.money) + " ₸)" : ""))).join("\n");
+  const d = perData, t = ["Ревизия против продаж, " + perLab(d.from, d.to), "Недостача: " + perMoney(d.short) + " ₽, излишек: " + perMoney(d.over) + " ₽", ""]
+    .concat(d.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).map(r => "— " + r.n + ": " + (r.diff < 0 ? "−" : "+") + mgrNum(r2(Math.abs(r.diff))) + " " + useU(r.u) + (r.money ? " (" + perMoney(r.money) + " ₽)" : ""))).join("\n");
   let ok = false;
   try { await navigator.clipboard.writeText(t); ok = true; } catch (err) {}
   e.target.textContent = ok ? "Скопировано ✓" : "Не скопировалось";
@@ -1329,7 +1329,7 @@ function pubHead(rows){
   for (let i = 0; i < Math.min(rows.length, 40); i++){
     const cells = rows[i].map(c => typeof c === "string" ? c.toLowerCase().replace(/\s+/g, " ").trim() : "");
     const n = pick(cells, /^(наименование|название|блюдо)( блюда)?$/, /наимен|блюдо|товар|назван/, /^код|групп|категор|раздел/);
-    const p = pick(cells, /^цена( продажи| с ндс)?(, ?(₸|тг|тенге|руб))?$/, /цена|стоимост/, /себестоим|закуп|сумм|^стоимость$/);
+    const p = pick(cells, /^цена( продажи| с ндс)?(, ?(₽|руб\.?|р\.?|₸|тг|тенге))?$/, /цена|стоимост/, /себестоим|закуп|сумм|^стоимость$/);
     if (n >= 0 && p >= 0) return {hr: i, n, p, c: pick(cells, /^код( блюда)?$/, /^код|артикул/, /групп/), hd: rows[i]};
   }
   return null;
@@ -1617,7 +1617,7 @@ function salPerDraw(sl){
   if (salPer.r === "rev" || !salPer.from){ $("salPF").value = sl.from || ""; $("salPT").value = sl.to || ""; }
   document.querySelectorAll("#salQuick button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.r === salPer.r)));
   $("salPerLab").textContent = (sl.label || (sl.from ? mgrRu(sl.from).slice(0, 5) + " — " + (sl.to ? mgrRu(sl.to).slice(0, 5) : "сегодня") : "")) +
-    " · " + mgrNum(Math.round(sl.qty || 0)) + " порц." + (sl.sum ? " · " + mgrNum(sl.sum) + " ₸" : "");
+    " · " + mgrNum(Math.round(sl.qty || 0)) + " порц." + (sl.sum ? " · " + mgrNum(sl.sum) + " ₽" : "");
 }
 $("salQuick").addEventListener("click", e => {
   const b = e.target.closest("button[data-r]");
@@ -1635,7 +1635,7 @@ function salDaysDraw(){
   const D = (sal.days || []).slice(0, 14);
   $("salSrc").textContent = D.length ? "загружено по " + salWd(D[0].iso) + " " + mgrRu(D[0].iso).slice(0, 5) : "";
   $("salDays").innerHTML = D.length ? '<p class="label saldl">Загружено по дням</p><ul class="saldays">' + D.map(d => '<li><b>' + salWd(d.iso) + " " + mgrRu(d.iso).slice(0, 5) + '</b> · ' +
-    mgrNum(Math.round(d.qty)) + ' порц.' + (d.sum ? " · " + mgrNum(Math.round(d.sum)) + " ₸" : "") + '</li>').join("") + '</ul>' : '<p class="wnhint">Продаж ещё нет — загрузите отчёт R-Keeper.</p>';
+    mgrNum(Math.round(d.qty)) + ' порц.' + (d.sum ? " · " + mgrNum(Math.round(d.sum)) + " ₽" : "") + '</li>').join("") + '</ul>' : '<p class="wnhint">Продаж ещё нет — загрузите отчёт R-Keeper.</p>';
 }
 $("salWarn").addEventListener("click", e => { if (e.target.id === "salRetry") salLoad(); });
 

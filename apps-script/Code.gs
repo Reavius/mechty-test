@@ -1745,7 +1745,7 @@ function refSync() {
   }
   return blank;
 }
-/* значения как текст: числа — с запятой и без оформления таблицы («9 500,00 ₸» → «9500») */
+/* значения как текст: числа — с запятой и без оформления таблицы («9 500,00 ₽» → «9500») */
 function refVals(v) {
   return v.map(r => r.map(x => typeof x === "number" ? String(Math.round(x * 1000) / 1000).replace(".", ",") : x instanceof Date ? "" : String(x)));
 }
@@ -2193,7 +2193,7 @@ function mgrUsage(p) {
      в 20:00 дня акта, как смена (бой в воскресную смену — до ночной ревизии, в четверговую — после дневной);
    — приход — в полдень дня накладной, а с отметкой «до / после ревизии» — в начале / в конце дня.
    Ожидалось = было + приход − продано (по «Расходу на блюдо») − списания − проработки; расхождение = стало − ожидалось
-   (минус — недостача, плюс — излишек), в тенге — по цене закупки из справочника. Порога нет: показываются все позиции.
+   (минус — недостача, плюс — излишек), в рублях — по цене закупки из справочника. Порога нет: показываются все позиции.
    Заготовки с рецептом («Рецепты заготовок») раскладываются на сырьё: их остаток, списания и продажи через них — сырьё по рецепту. */
 const AST = 5 * 3600e3;
 const isoAt = (iso, h) => Date.parse(iso + "T00:00:00Z") - AST + h * 3600e3;          // день по Астане, час h (33 — 9:00 следующего)
@@ -2360,7 +2360,7 @@ function mgrZagSet(p) {
 }
 
 /* расчёт периода: p.i — номер ревизии в ленте (конец периода), по умолчанию последняя.
-   Строка: {n, key, u — единица ежедневной ревизии, was, inc, sold, wo, pr, exp, now, diff, price — ₸ за u, money, zag, raw, miss} */
+   Строка: {n, key, u — единица ежедневной ревизии, was, inc, sold, wo, pr, exp, now, diff, price — ₽ за u, money, zag, raw, miss} */
 function mgrPeriod(p) {
   const ref = mgrRef();
   if (!ref.ok) return ref;
@@ -2985,16 +2985,16 @@ function reportHtml(d) {
   if (d.per) {
     const P = d.per, lab = x => x.wd + " " + x.d.slice(0, 5);
     h += '<h3 style="' + H + '">Последняя ревизия против продаж (' + hx(lab(P.from) + " → " + lab(P.to)) + ')</h3>' +
-      '<p style="margin:0 0 6px">Недостача <b style="color:#c0392b">' + fmtN(Math.round(P.short)) + ' ₸</b> · излишек <b>' + fmtN(Math.round(P.over)) + ' ₸</b>' +
+      '<p style="margin:0 0 6px">Недостача <b style="color:#c0392b">' + fmtN(Math.round(P.short)) + ' ₽</b> · излишек <b>' + fmtN(Math.round(P.over)) + ' ₽</b>' +
         (P.sales.miss.length ? ' · <span style="color:#a0522d">нет продаж за ' + P.sales.miss.length + ' дн.</span>' : "") + '</p>' +
-      tb(["Позиция", "Расхождение", "₸"], P.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).slice(0, 15)
+      tb(["Позиция", "Расхождение", "₽"], P.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).slice(0, 15)
         .map(r => [r.n, (r.diff > 0 ? "+" : "") + fmtN(r.diff) + " " + r.u, r.money ? fmtN(r.money) : ""]));
   } else h += '<h3 style="' + H + '">Странности последней ревизии' + (d.odd.date ? " (" + hx(ru(d.odd.date)) + " против " + hx(ru(d.odd.prev)) + ")" : "") + '</h3>' +
     (d.odd.err ? '<p style="color:#c0392b;font:14px Arial,sans-serif;margin:0">Не удалось посчитать (таблица занята или ошибка) — смотрите вкладку «Расход» на сайте.</p>' : tb(["Позиция", "Что не так"], d.odd.odd.map(x => [x.n, x.f])));
   h += '<h3 style="' + H + '">Списания и проработки — по причинам</h3>' + tb(["Причина", "Строк"], d.wo.why) +
     '<h3 style="' + H + '">Чаще всего списывали</h3>' + tb(["Позиция", "Всего", "Раз"], d.wo.items.map(x => [x.n, x.u === "л" && x.q > 0 && x.q < 1 ? fmtN(x.q * 1000) + " мл" : x.u === "кг" && x.q > 0 && x.q < 1 ? fmtN(x.q * 1000) + " гр" : fmtN(x.q) + (x.u ? " " + x.u : ""), x.c])) +
     '<h3 style="' + H + '">Акты по барменам</h3>' + tb(["Кто", "Актов"], d.wo.who);
-  h += '<h3 style="' + H + '">Приход</h3>' + tb(["Поставщик", "Сумма, ₸", "Накладных"], d.inc.sup.map(x => [x[0], x[1] ? fmtN(Math.round(x[1])) : "", x[2]]));
+  h += '<h3 style="' + H + '">Приход</h3>' + tb(["Поставщик", "Сумма, ₽", "Накладных"], d.inc.sup.map(x => [x[0], x[1] ? fmtN(Math.round(x[1])) : "", x[2]]));
   h += '<h3 style="' + H + '">Ниже нормы сейчас</h3>' + (d.lowErr ? '<p style="color:#c0392b;font:14px Arial,sans-serif;margin:0">Не удалось посчитать (таблица занята или ошибка) — смотрите вкладку «Автозаявка» на сайте.</p>' : tb(["Позиция", "Не хватает", "Поставщик"], d.low.map(x => [x.n, fmtN(x.need) + (x.u ? " " + x.u : ""), x.sup]))) +
     (d.nonorm ? '<p style="color:#888;margin:6px 0 0">Без нормы в справочнике: ' + d.nonorm + ' позиций.</p>' : "");
   h += '<h3 style="' + H + '">Заявки бартендеров</h3>' + tb(["Отправлено", "Заявка", "Кто", "Позиций"], d.orders || []);
@@ -3059,7 +3059,7 @@ function revMailSend(per) {
   const list = reportTo(), rcpt = list.length ? list.join(",") : Session.getEffectiveUser().getEmail();
   if (!rcpt) return { error: "noto" };
   const lab = x => x.wd + " " + x.d.slice(0, 5), miss = per.sales.miss;
-  MailApp.sendEmail({ to: rcpt, subject: "Бар «Мечты» — ревизия " + lab(per.to) + ": недостача " + fmtN(Math.round(per.short)) + " ₸" +
+  MailApp.sendEmail({ to: rcpt, subject: "Бар «Мечты» — ревизия " + lab(per.to) + ": недостача " + fmtN(Math.round(per.short)) + " ₽" +
     (miss.length ? " (без продаж за " + miss.map(d => WD_RU[isoWd(d)]).join(", ") + ")" : ""), htmlBody: periodHtml(per), name: "Бар «Мечты»" });
   return { ok: true, to: rcpt };
 }
@@ -3075,16 +3075,16 @@ function periodHtml(per) {
     S.nodish.length ? "Блюда без расхода на блюдо (" + S.nodish.length + "): " + S.nodish.slice(0, 10).map(x => x.name).join(", ") + (S.nodish.length > 10 ? "…" : "") + " — их ингредиенты выглядят недостачей." : "",
     (per.zagno || []).length ? "Заготовки без рецепта: " + per.zagno.join(", ") + "." : "",
     (per.nokey || []).length ? "Нет в справочнике: " + per.nokey.join(", ") + "." : "",
-    per.noprice ? "Без цены закупки (не в сумме ₸): " + per.noprice + " поз." : ""].filter(Boolean);
+    per.noprice ? "Без цены закупки (не в сумме ₽): " + per.noprice + " поз." : ""].filter(Boolean);
   const rows = per.rows.filter(r => !r.info && !r.miss);
   let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
     '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — ревизия ' + hx(lab(per.to)) + '</h2>' +
     '<p style="margin:0;color:#666">Период ' + hx(lab(per.from) + " → " + lab(per.to)) + (per.to.who ? " · считали: " + hx(per.to.who) : "") + '</p>' +
-    '<p style="margin:10px 0 0;font-size:16px">Недостача <b style="color:#c0392b">' + fmtN(Math.round(per.short)) + ' ₸</b> · излишек <b>' + fmtN(Math.round(per.over)) + ' ₸</b></p>' +
+    '<p style="margin:10px 0 0;font-size:16px">Недостача <b style="color:#c0392b">' + fmtN(Math.round(per.short)) + ' ₽</b> · излишек <b>' + fmtN(Math.round(per.over)) + ' ₽</b></p>' +
     warn.map(w => '<p style="margin:8px 0 0;color:#a0522d">' + hx(w) + '</p>').join("") +
     '<p style="margin:14px 0 6px;color:#666;font-size:12px">Ожидалось = было + приход − продано − списано − проработки; расхождение = стало − ожидалось (минус — недостача).</p>' +
     '<table style="border-collapse:collapse;width:100%;max-width:760px;font:13px Arial,sans-serif"><tr>' +
-    [["Позиция", 1], ["Было"], ["Приход"], ["Продано"], ["Списано"], ["Прораб."], ["Ожидалось"], ["Стало"], ["Расхожд."], ["₸"]].map(x => th(x[0], x[1])).join("") + '</tr>' +
+    [["Позиция", 1], ["Было"], ["Приход"], ["Продано"], ["Списано"], ["Прораб."], ["Ожидалось"], ["Стало"], ["Расхожд."], ["₽"]].map(x => th(x[0], x[1])).join("") + '</tr>' +
     rows.map(r => '<tr>' + td(r.n + " (" + (r.u === "л" ? "л" : r.u) + ")", 1) + td(n(r.was)) + td(n(r.inc)) + td(n(r.sold)) + td(n(r.wo)) + td(n(r.pr)) + td(n(r.exp)) + td(n(r.now)) +
       td(Math.abs(r.diff) < 1e-9 ? "0" : (r.diff > 0 ? "+" : "") + fmtN(r.diff), 0, r.diff < -1e-9 ? "color:#c0392b;font-weight:700" : r.diff > 1e-9 ? "color:#b9770e;font-weight:700" : "color:#999") +
       td(r.money ? fmtN(r.money) : "", 0, r.money < 0 ? "color:#c0392b" : "") + '</tr>').join("") + '</table>';
