@@ -507,13 +507,20 @@ function ordGroups(){
   const sups = Object.keys(g).sort((a, b) => (a === "Без поставщика") - (b === "Без поставщика") || a.localeCompare(b, "ru"));
   return {g, sups, none, ok};
 }
+/* остаток: из ревизии и что было после неё (приход, продажи, списания) — «сейчас» */
+const ordDay = x => salWd(x) + " " + mgrRu(x).slice(0, 5);
+const ordWhy = r => r.rq == null ? "остаток " + mgrNum(r.q) + (r.inq ? " + приход " + mgrNum(r.inq) : "") :
+  (r.inc || r.sold || r.wo || r.zq ? "ревизия " + mgrNum(r.rq) + (r.zq ? " (+" + mgrNum(r.zq) + " в заготовках)" : "") + (r.inc ? " + приход " + mgrNum(r.inc) : "") +
+    (r.sold ? " − продано " + mgrNum(r.sold) : "") + (r.wo ? " − списано " + mgrNum(r.wo) : "") + " ≈ сейчас " + mgrNum(r.q) : "остаток " + mgrNum(r.q));
 function ordDraw(){
   const d = ordData, m = d.src.m, dd = d.src.d, src = [];
+  const miss = [...new Set([].concat(...Object.values(d.flow || {}).map(f => f.miss || [])))].sort();
   if (dd) src.push("ежедневная ревизия " + (dd.date ? mgrRu(dd.date) : "") + (dd.name ? " (" + esc(dd.name) + ")" : "") + " — " + mgrPl(dd.n, "позиция", "позиции", "позиций"));
   if (m) src.push("месячная" + (m.title ? " «" + esc(m.title) + "»" : "") + (m.date ? " от " + mgrRu(m.date) : "") + (m.open ? " (идёт новая — взята прошлая)" : ""));
   $("mgrOsrc").innerHTML = src.length ? "Остатки: " + src.join(" · ") : "Ревизий ещё нет — остатков нет.";
   $("mgrOwarn").textContent = (dd && dd.partial ? "Последняя ежедневная " + dd.partial + " — посчитаны не все зоны; остатки взяты из полной " + mgrRu(dd.date) + ". " : "") +
-    (dd && dd.miss.length ? "Из ежедневной ревизии не нашлись в справочнике (назовите их так же, как в бланке месячной): " + dd.miss.join(", ") + "." : "");
+    (dd && dd.miss.length ? "Из ежедневной ревизии не нашлись в справочнике (назовите их так же, как в бланке месячной): " + dd.miss.join(", ") + ". " : "") +
+    (miss.length ? "Продажи после ревизии загружены не за все смены (нет за " + (miss.length > 6 ? miss.slice(0, 3).map(ordDay).join(", ") + " … " + miss.slice(-2).map(ordDay).join(", ") + " — " + mgrPl(miss.length, "смена", "смены", "смен") : miss.map(ordDay).join(", ")) + ") — остаток «сейчас» завышен; загрузите их в «Период» → «Продажи R-Keeper»." : "");
   if (!d.rows.length){
     $("mgrOlist").innerHTML = '<p class="empty">Норма не задана ни у одной позиции. Заполните «Норму» и «Тару» в <button type="button" class="link" data-tab="ref">справочнике</button> — заявка посчитается сама.</p>';
     $("mgrOcopy").disabled = true;
@@ -521,7 +528,7 @@ function ordDraw(){
   }
   const G = ordGroups();
   const line = r => '<li class="' + (ordOff.has(ordKey(r)) ? "" : "on") + '"><label class="row1"><span><span class="ordn">' + esc(r.n) + '</span>' +
-    '<small class="mgrwhy">остаток ' + mgrNum(r.q) + (r.inq ? ' + приход ' + mgrNum(r.inq) : "") + ' · норма ' + mgrNum(r.norm) + (r.from ? ' · ' + ORD_FROM[r.from] + (r.date && r.date !== "0000-00-00" ? " " + mgrRu(r.date).slice(0, 5) : "") : "") + '</small></span>' +
+    '<small class="mgrwhy">' + ordWhy(r) + ' · норма ' + mgrNum(r.norm) + (r.from ? ' · ' + ORD_FROM[r.from] + (r.date && r.date !== "0000-00-00" ? " " + mgrRu(r.date).slice(0, 5) : "") : "") + '</small></span>' +
     '<b class="ordq">' + esc(r.l.text) + '</b><input type="checkbox" data-k="' + esc(ordKey(r)) + '"' + (ordOff.has(ordKey(r)) ? "" : " checked") + ' aria-label="' + esc(r.n) + '"></label></li>';
   let html = '<p class="mgrsum">К заказу <b>' + mgrPl(G.sups.reduce((a, s) => a + G.g[s].length, 0), "позиция", "позиции", "позиций") + '</b> · в норме ' + G.ok +
     (d.nonorm ? ' · без нормы ' + d.nonorm + ' (<button type="button" class="link" data-tab="ref">справочник</button>)' : "") + '</p>';
@@ -895,133 +902,24 @@ $("incImp").addEventListener("click", async e => {
 /* ── расход и странности ──
    позиция с сервера: {n, sec, key, u, v: [остаток на каждую ревизию или null], inc: [{iso, q}], wo: [{iso, q}]};
    ревизии: cols [{iso, who}] по порядку. Период — между соседними ревизиями, где позиция посчитана в обеих. */
-let useData = null, useKind = mgrj("mechty-mgr-use", {k: "d"}).k === "m" ? "m" : "d", useSens = 0.5, useOpen = -1;
-const isoDays = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
-const median = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+let useData = null, useKind = mgrj("mechty-mgr-use", {k: "d"}).k === "m" ? "m" : "d";   // d — период ежедневной ревизии, m — месячная
 const useU = u => { const s = String(u || "").trim(); return s === "литр" || !s ? "л" : s === "бут" ? "бут." : s; };
-const useTol = u => /^(шт|бут\.)$/.test(useU(u)) ? 1 : 0.1;              // меньше этого — не странность, а погрешность пересчёта
-
-function usePeriods(x){
-  const C = useData.cols, out = [];
-  for (let i = 1; i < C.length; i++){
-    if (x.v[i] == null) continue;
-    let j = i - 1;
-    /* пара — дни с теми же посчитанными зонами (день без клуба — не полный остаток) */
-    while (j >= 0 && (x.v[j] == null || (C[j].z && C[i].z && C[j].z !== C[i].z))) j--;
-    if (j < 0) continue;
-    const from = C[j].iso, to = C[i].iso, sum = arr => arr.filter(y => y.iso > from && y.iso <= to).reduce((a, y) => a + y.q, 0);
-    /* акт — в период по времени записи: разбили бутылку вечером после пересчёта — это уже следующий период */
-    const byT = C[j].t && C[i].t, woq = x.wo.filter(y => byT && y.t ? y.t > C[j].t && y.t <= C[i].t : y.iso > from && y.iso <= to).reduce((a, y) => a + y.q, 0);
-    const inq = sum(x.inc), use = x.v[j] + inq - x.v[i];
-    out.push({i, from, to, days: Math.max(1, isoDays(from, to)), was: x.v[j], now: x.v[i], inq, woq, use, net: use - woq});
-  }
-  return out;
-}
-/* последний период позиции против «обычного» */
-function useCheck(x){
-  const ps = usePeriods(x), last = ps[ps.length - 1], L = useData.cols.length - 1;
-  if (!last || last.i !== L) return {ps, last: null};
-  let base = ps.slice(0, -1);
-  if (useData.kind === "d"){
-    const wd = new Date(last.to).getUTCDay(), same = base.filter(p => new Date(p.to).getUTCDay() === wd);
-    if (same.length >= 3) base = same;
-  }
-  base = base.slice(-8);
-  const rate = base.length >= 2 ? median(base.map(p => p.net / p.days)) : null, tol = useTol(x.u);
-  const exp = rate == null ? null : Math.max(0, rate * last.days);
-  let flag = "", lvl = 0;
-  if (last.use < -tol){ flag = "остаток вырос на " + mgrNum(r2(-last.use)) + " " + useU(x.u) + (x.key ? " без прихода" : " (приход не учитывается — позиции нет в справочнике)"); lvl = 3; }
-  else if (exp != null && last.net > exp * (1 + useSens) && last.net - exp > tol){ flag = "расход выше обычного" + (exp > 0 ? " на " + Math.round((last.net / exp - 1) * 100) + "%" : ""); lvl = 2; }
-  else if (exp != null && exp > tol && last.net < exp * (1 - Math.min(useSens, 0.9)) && exp - last.net > tol){ flag = "расход ниже обычного — проверьте пересчёт"; lvl = 1; }
-  return {ps, last, exp, flag, lvl, nbase: base.length};
-}
 const r2 = x => Math.round(x * 100) / 100;
-
-async function useLoad(){
-  const mk = mgrKey();
-  if (!mk) return mgrInit();
+/* «Период»: ежедневная и месячная считаются одинаково — ревизия против продаж */
+function useLoad(){
+  if (!mgrKey()) return mgrInit();
   document.querySelectorAll("#useKind button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === useKind)));
   $("useHintD").hidden = useKind !== "d"; $("useHintM").hidden = useKind === "d";
-  $("useSens").hidden = useKind === "d"; $("usePerBox").hidden = useKind !== "d";
-  if (useKind === "d") return perLoad();
-  perStepsDraw();
-  document.querySelectorAll("#useSens button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === useSens)));
-  $("useWarn").textContent = "";
-  if (!useData || useData.kind !== useKind) $("useList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
-  const d = await api({mgr: "usage", mk, kind: useKind});
-  if (d.error === "mgr") return mgrExpired();
-  if (!d.ok){
-    $("useList").innerHTML = "";
-    $("useWarn").innerHTML = d.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)."
-      : 'Нет связи с таблицей. <button type="button" class="link" id="useRetry">Повторить</button>';
-    return;
-  }
-  if (d.kind !== useKind) return;                                        // пока грузили, переключили ревизию
-  useData = d; useOpen = -1; useDraw();
-}
-function useDraw(){
-  const d = useData, C = d.cols;
-  if (C.length < 2){
-    $("useSum").textContent = "";
-    $("useList").innerHTML = '<p class="empty">Нужно хотя бы две ' + (d.kind === "m" ? "закрытые месячные" : "законченные ежедневные") + ' ревизии — расход считается между ними.</p>';
-    return;
-  }
-  const L = C[C.length - 1], P = C[C.length - 2];
-  const rows = d.items.map((x, i) => Object.assign({x, i}, useCheck(x))).filter(r => r.last);
-  const odd = rows.filter(r => r.lvl).sort((a, b) => b.lvl - a.lvl || a.x.n.localeCompare(b.x.n, "ru"));
-  const noref = d.items.filter(x => !x.key).length;
-  $("useSum").innerHTML = (d.kind === "m" && L.who ? "«" + esc(L.who) + "» от <b>" + mgrRu(L.iso) + "</b>" : "Ревизия <b>" + mgrRu(L.iso) + "</b>" + (L.who ? " (" + esc(L.who) + ")" : "")) + " против " + mgrRu(P.iso) +
-    " · позиций " + rows.length + " · <b>странностей " + odd.length + "</b>" + (rows.some(r => r.nbase < 2) ? " · у части позиций мало истории — «обычного» ещё нет" : "");
-  const wm = d.womiss || [], wn = wm.filter(x => x.why === "name"), wu = wm.filter(x => x.why === "unit");
-  $("useWarn").textContent = [noref ? "Не найдены в справочнике (приход и списания для них не учитываются): " + d.items.filter(x => !x.key).map(x => x.n).join(", ") + "." : "",
-    wn.length ? "Списания не учтены — названия нет в справочнике (назовите в акте как в бланке ревизии): " + wn.map(x => x.n).join(", ") + "." : "",
-    wm.some(x => x.why === "ambiguous") ? "Списания не учтены — в бланке несколько позиций с таким названием (уточните в бланке): " + wm.filter(x => x.why === "ambiguous").map(x => x.n).join(", ") + "." : "",
-    wu.length ? "Списания не учтены — единица акта не переводится в единицу позиции: " + wu.map(x => x.n + " (" + (x.u || "?") + " → " + (x.pu || "?") + ")").join(", ") + "." : ""]
-    .filter(Boolean).join(" ");
-  const unit = x => useU(x.u);
-  const line = r => {
-    const l = r.last, u = unit(r.x);
-    return '<li class="use' + r.lvl + (useOpen === r.i ? " open" : "") + '" data-i="' + r.i + '"><button type="button" class="userow" data-i="' + r.i + '">' +
-      '<span class="usen"><span class="refn">' + esc(r.x.n) + '</span>' +
-      '<small class="mgrwhy">было ' + mgrNum(r2(l.was)) + (l.inq ? ' + приход ' + mgrNum(r2(l.inq)) : "") + ' · стало ' + mgrNum(r2(l.now)) + (l.woq ? ' · списано ' + mgrNum(r2(l.woq)) : "") +
-        (r.flag ? ' · <b>' + esc(r.flag) + '</b>' : "") + '</small></span>' +
-      '<span class="usev"><b>' + mgrNum(r2(l.use)) + ' ' + u + '</b><small>' + (r.exp != null ? "обычно ~" + mgrNum(r2(r.exp + l.woq)) : "истории мало") + '</small></span></button>' +
-      (useOpen === r.i ? useHist(r) : "") + '</li>';
-  };
-  let html = "";
-  if (odd.length) html += '<div class="result tcard mgrt"><div class="tname"><em>' + mgrRu(P.iso).slice(0, 5) + " → " + mgrRu(L.iso).slice(0, 5) + '</em><h3>Странности</h3></div><ul class="olist usel">' + odd.map(line).join("") + '</ul></div>';
-  else html += '<p class="empty useok">Странностей нет — расход в пределах обычного.</p>';
-  html += '<div class="result tcard mgrt"><div class="tname"><em>расход за период</em><h3>Все позиции</h3></div><ul class="olist usel">' +
-    rows.slice().sort((a, b) => a.x.n.localeCompare(b.x.n, "ru")).map(line).join("") + '</ul></div>';
-  $("useList").innerHTML = html;
-}
-/* история позиции: последние периоды */
-function useHist(r){
-  const u = useU(r.x.u);
-  return '<table class="usehist"><thead><tr><th>Период</th><th>Расход</th><th>В день</th></tr></thead><tbody>' +
-    r.ps.slice(-8).reverse().map(p => '<tr><td class="n">' + mgrRu(p.from).slice(0, 5) + " → " + mgrRu(p.to).slice(0, 5) +
-      (p.inq ? '<small class="mgrwhy">приход ' + mgrNum(r2(p.inq)) + '</small>' : "") + (p.woq ? '<small class="mgrwhy">списано ' + mgrNum(r2(p.woq)) + '</small>' : "") + '</td>' +
-      '<td class="v">' + mgrNum(r2(p.use)) + ' ' + u + '</td><td class="v">' + mgrNum(r2(p.net / p.days)) + '</td></tr>').join("") + '</tbody></table>';
+  return perLoad();
 }
 $("useKind").addEventListener("click", e => {
   const b = e.target.closest("button[data-k]");
   if (!b || b.dataset.k === useKind) return;
-  useKind = b.dataset.k; mgrs("mechty-mgr-use", {k: useKind}); buzz(8); useLoad();
+  useKind = b.dataset.k; mgrs("mechty-mgr-use", {k: useKind}); buzz(8);
+  perData = null; perI = null; perRange = null; perInc = {key: "", text: "…"};
+  useLoad();
 });
-$("useSens").addEventListener("click", e => {
-  const b = e.target.closest("button[data-s]");
-  if (!b) return;
-  useSens = +b.dataset.s; buzz(8);
-  document.querySelectorAll("#useSens button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-  if (useData) useDraw();
-});
-$("useList").addEventListener("click", e => {
-  if (useKind === "d") return perClick(e);
-  const b = e.target.closest("button.userow");
-  if (!b) return;
-  const i = +b.dataset.i;
-  useOpen = useOpen === i ? -1 : i; buzz(8); useDraw();
-});
+$("useList").addEventListener("click", perClick);
 $("useWarn").addEventListener("click", e => { if (e.target.id === "useRetry") useLoad(); });
 
 /* ── период ревизии: ревизия против продаж ──
@@ -1035,7 +933,7 @@ async function perLoad(){
   if (!mk) return mgrInit();
   $("useWarn").textContent = "";
   if (!perData) $("useList").innerHTML = '<ul class="olist mgrskel">' + skel(6) + '</ul>';
-  const d = await api(Object.assign({mgr: "period", mk}, perRange ? perRange : perI != null ? {i: perI} : {}));
+  const kind = useKind, d = await api(Object.assign({mgr: "period", mk}, kind === "m" ? {kind: "m"} : {}, perRange && kind === "d" ? perRange : perI != null ? {i: perI} : {}));
   if (d.error === "mgr") return mgrExpired();
   if (!d.ok){
     $("useList").innerHTML = "";
@@ -1043,7 +941,7 @@ async function perLoad(){
       : 'Нет связи с таблицей. <button type="button" class="link" id="useRetry">Повторить</button>';
     return;
   }
-  if (useKind !== "d") return;                                           // пока грузили, переключили на месячную
+  if (kind !== useKind) return;                                          // пока грузили, переключили ежедневную / месячную
   perData = d; perDraw();
 }
 function perDraw(){
@@ -1054,11 +952,14 @@ function perDraw(){
   if (d.from){ $("perFrom").value = d.req ? d.req.from : d.from.iso; $("perTo").value = d.req ? d.req.to : d.to.iso; }
   $("perRangeHint").textContent = d.req && d.from && (d.req.from !== d.from.iso || d.req.to !== d.to.iso) ?
     "Остатки есть только на ревизиях: период расширен до " + perLab(d.from, d.to) + "." : "";
+  const m = d.kind === "m";
   $("usePerBox").hidden = R.length < 2;
+  $("usePerL").textContent = m ? "Между месячными" : "Между ревизиями";
+  $("perOwn").hidden = $("perOwnBox").hidden = $("perRangeHint").hidden = $("revEdD").hidden = m;   // свои даты и ручной ввод — у ежедневной
   if (R.length < 2 || !d.from){
     perStepsDraw();
     $("useSum").textContent = "";
-    $("useList").innerHTML = '<p class="empty">Нужны хотя бы две ревизии — дни, когда посчитаны все зоны и все нажали «Завершить». Расход считается между ними.</p>';
+    $("useList").innerHTML = '<p class="empty">' + (m ? "Нужны хотя бы две месячные ревизии, посчитанные целиком." : "Нужны хотя бы две ревизии — дни, когда посчитаны все зоны и все нажали «Завершить».") + ' Расход считается между ними.</p>';
     return;
   }
   const S = d.sales || {want: [], miss: [], nodish: [], have: []}, rows = d.rows.filter(r => !r.info && !r.miss);
@@ -1096,7 +997,7 @@ function perDraw(){
       '<span class="usev"><b>' + (Math.abs(r.diff) < 1e-9 ? "сходится" : (r.diff < 0 ? "−" : "+") + n(Math.abs(r.diff)) + " " + u) + '</b>' +
       (r.money ? '<small>' + (r.money < 0 ? "−" : "+") + perMoney(r.money) + ' ₽</small>' : r.diff && !r.price ? '<small>нет цены</small>' : "") + '</span></div></li>';
   };
-  let html = '<div class="result tcard mgrt"><div class="tname"><em>' + perLab(d.from, d.to) + '</em><h3>Ревизия против продаж</h3></div>' +
+  let html = '<div class="result tcard mgrt"><div class="tname"><em>' + perLab(d.from, d.to) + '</em><h3>' + (m ? "Месячная" : "Ревизия") + ' против продаж</h3></div>' +
     (rows.length ? '<ul class="olist usel">' + rows.map(line).join("") + '</ul>' : '<p class="empty">Нет позиций, посчитанных в обеих ревизиях.</p>');
   if (info.length) html += '<details class="incmapd perd"><summary>Заготовки — разложены на сырьё (' + info.length + ')</summary><ul class="olist usel">' +
     info.map(r => '<li><div class="userow"><span class="usen"><span class="refn">' + esc(r.n) + '</span><small class="mgrwhy">было ' + n(r.was) + ' · стало ' + n(r.now) + ' ' + useU(r.u) + ' — уже в остатке сырья по рецепту</small></span></div></li>').join("") + '</ul></details>';
@@ -1125,19 +1026,11 @@ let perInc = {key: "", text: "…"};
 function perStepsDraw(){
   const d = perData;
   $("perSteps").hidden = false;
-  $("stepRev").hidden = useKind !== "d";
   const st = (id, cls, html) => { $(id).innerHTML = html; $(id).closest(".perstep").dataset.st = cls; };
   perMailDraw();
-  if (useKind !== "d"){
-    $("stepRec").hidden = true;
-    st("stepSalS", "", "загрузка продаж R-Keeper — разложатся по периодам сами");
-    st("stepIncS", "", "загрузка накладных и список");
-    st("stepWoS", "", mgrData ? mgrPl(new Set(mgrData.rows.map(r => r[9])).size, "акт", "акта", "актов") + " за " + mgrRu(mgrData.from).slice(0, 5) + " — " + mgrRu(mgrData.to).slice(0, 5) : "…");
-    return;
-  }
   /* двух ревизий ещё нет — загружать продажи и накладные уже можно, считать пока не с чем */
   if (!d || !d.from){
-    st("stepRevS", "warn", d ? "нужны две ревизии — дни, где посчитаны все зоны и все нажали «Завершить»" : "…");
+    st("stepRevS", "warn", !d ? "…" : useKind === "m" ? "нужны две месячные, посчитанные целиком" : "нужны две ревизии — дни, где посчитаны все зоны и все нажали «Завершить»");
     st("stepSalS", "", "загрузите — разложатся по периодам сами");
     st("stepIncS", "", "загрузите накладные — войдут в свой период");
     st("stepWoS", "", mgrData ? mgrPl(new Set(mgrData.rows.map(r => r[9])).size, "акт", "акта", "актов") + " за " + mgrRu(mgrData.from).slice(0, 5) + " — " + mgrRu(mgrData.to).slice(0, 5) : "…");
@@ -1174,7 +1067,7 @@ function perStepsDraw(){
 }
 async function perClick(e){
   if (e.target.id !== "perCopy" || !perData) return;
-  const d = perData, t = ["Ревизия против продаж, " + perLab(d.from, d.to), "Недостача: " + perMoney(d.short) + " ₽, излишек: " + perMoney(d.over) + " ₽", ""]
+  const d = perData, t = [(d.kind === "m" ? "Месячная" : "Ревизия") + " против продаж, " + perLab(d.from, d.to), "Недостача: " + perMoney(d.short) + " ₽, излишек: " + perMoney(d.over) + " ₽", ""]
     .concat(d.rows.filter(r => !r.info && !r.miss && Math.abs(r.diff) > 1e-9).map(r => "— " + r.n + ": " + (r.diff < 0 ? "−" : "+") + mgrNum(r2(Math.abs(r.diff))) + " " + useU(r.u) + (r.money ? " (" + perMoney(r.money) + " ₽)" : ""))).join("\n");
   let ok = false;
   try { await navigator.clipboard.writeText(t); ok = true; } catch (err) {}
