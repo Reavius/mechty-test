@@ -389,9 +389,13 @@ const round3 = x => Math.round(x * 1000) / 1000;
 
 /* первое добавление дня: столбец «Итога» и позиции, которых нет на листе зон (вниз, по порядку «Итога») */
 function revNewDay(ts, zs, day) {
-  const st = { day: day, date: revDayDate(day), tc: ts.getLastColumn() + 1, zones: {}, fin: {} };
-  ensureCols(ts, st.tc);
-  ts.getRange(1, st.tc, 2, 1).setNumberFormat("@").setValues([[st.date], [""]]);
+  const lc = ts.getLastColumn(), date = revDayDate(day);
+  const man = lc >= 2 && String(ts.getRange(1, lc).getDisplayValue()).trim() === date;   // бар-менеджер уже внёс день вручную — досчитываем в него
+  const st = { day: day, date: date, tc: man ? lc : lc + 1, zones: {}, fin: {} };
+  if (!man) {
+    ensureCols(ts, st.tc);
+    ts.getRange(1, st.tc, 2, 1).setNumberFormat("@").setValues([[st.date], [""]]);
+  }
   const zl = Math.max(zs.getLastRow(), 3);
   const have = {}, miss = [];
   if (zl > 3) zs.getRange(4, 1, zl - 3, 1).getValues().forEach(r => { have[String(r[0]).trim()] = 1; });
@@ -1091,6 +1095,8 @@ function doPost(e) {
     if (p.mgr === "dishset") return jsonOut(mgrDishSet(p));
     if (p.mgr === "salesput") return jsonOut(mgrSalesPut(p));
     if (p.mgr === "zagset") return jsonOut(mgrZagSet(p));
+    if (p.mgr === "revset") return jsonOut(mgrRevSet(p));
+    if (p.mgr === "revundo") return jsonOut(mgrRevUndo(p));
     if (p.mgr === "refauto") return jsonOut(mgrRefAuto(p));
     return jsonOut({ error: "action" });
   } catch (err) {
@@ -1664,6 +1670,7 @@ function manager(p) {
   if (p.mgr === "period") return mgrPeriod(p);
   if (p.mgr === "sales") return mgrSales(p);
   if (p.mgr === "zags") return mgrZags();
+  if (p.mgr === "revget") return mgrRevGet(p);
   if (p.mgr === "refauto") return mgrRefAuto(p);
   if (p.mgr === "reportto") return { ok: true, emails: reportTo(), auto: reportOn() };
   return { error: "action" };
@@ -2232,6 +2239,124 @@ function revTimeline() {
 }
 const revOut = (x, i) => ({ i: i, d: x.d, iso: x.iso, who: x.who, wd: WD_RU[isoWd(x.iso)], at: x.at });
 
+/* ручная ревизия бар-менеджера: столбец дня в «Итоге» — посмотреть, поправить или внести за дату целиком (посчитали на бумаге).
+   Правки пишутся прямо в «Итог» (их сразу видят период, письма и отчёт) и строкой на каждую позицию в «Ревизия журнал»:
+   «вручную · дата», прежнее значение («было 0,7»), новое и id правки — по id её можно отменить.
+   Ревизию, которая ещё идёт на сайте, не трогаем. Новый день встаёт в «Итог» по дате; без зон он — полная ревизия,
+   её момент — 17:00 дня («перед открытием») или 8:59 следующего («после закрытия»). */
+const REV_MAN = "вручную";
+const ddmmOk = s => /^\d{2}\.\d{2}\.\d{4}$/.test(String(s || "")) && !!dmy(s);
+function revColOf(ts, d) {
+  const lc = ts.getLastColumn(), h = lc >= 2 ? ts.getRange(1, 2, 1, lc - 1).getDisplayValues()[0] : [];
+  for (let i = h.length - 1; i >= 0; i--) if (String(h[i]).trim() === d) return i + 2;
+  return 0;
+}
+const revCell = v => v === "" || v == null || isNaN(num(v)) ? null : round3(num(v));
+/* p.d — «dd.MM.yyyy» (по умолчанию — последняя ревизия) → {days, d, col, who, man, ro, items: [{r, n, u, v, p — в прошлой ревизии}], pd} */
+function mgrRevGet(p) {
+  const ref = mgrRef(), ss = revBook(), ts = revTotal(ss), tl = revTimeline(), R = tl.revs, st = revDay(false);
+  const open = st && !revDone(st) ? st.date : "", du = dailyUnits(ref.ok ? ref : null), pos = revPositions(ts);
+  const d = ddmmOk(p.d) ? String(p.d) : R.length ? R[R.length - 1].d : "", iso = d ? dmy(d) : "";
+  const days = tl.all.map(x => ({ d: x.d, iso: x.iso, wd: WD_RU[isoWd(x.iso)], who: x.who, full: x.full })).reverse().slice(0, 60);
+  if (open && !days.some(x => x.d === open)) days.unshift({ d: open, iso: dmy(open), wd: WD_RU[isoWd(dmy(open))], who: "", full: false });
+  const col = d ? revColOf(ts, d) : 0, prev = R.filter(x => x.iso < iso).pop(), h = pos.length ? pos[pos.length - 1].row - 2 : 0;
+  const cv = col && h ? ts.getRange(3, col, h, 1).getValues() : [], pv = prev && h ? ts.getRange(3, prev.col, h, 1).getValues() : [];
+  const who = col ? String(ts.getRange(2, col).getDisplayValue()).trim() : "";
+  return { ok: true, days: days, d: d, today: revDayDate(revDayKey()), col: col, who: who, man: who.indexOf(" · " + REV_MAN) >= 0, ro: !!open && d === open,
+    pd: prev ? WD_RU[isoWd(prev.iso)] + " " + prev.d.slice(0, 5) : "",
+    items: pos.map(x => ({ r: x.row, n: x.n, u: du(x.n), v: col ? revCell(cv[x.row - 3][0]) : null, p: prev ? revCell(pv[x.row - 3][0]) : null })) };
+}
+/* {d, vals: [[строка, позиция, число или ""]], when: "до"|"после" (для нового дня), who} — пусто = «не считали» */
+function mgrRevSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const d = String(p.d || ""), iso = dmy(d);
+  if (!ddmmOk(d) || iso > revDayKey()) return { error: "bad" };
+  const vals = Array.isArray(p.vals) ? p.vals.slice(0, 3000) : [], nv = [];
+  for (const v of vals) {
+    const s = Array.isArray(v) ? String(v[2] == null ? "" : v[2]).trim().replace(",", ".") : "x";
+    if (s !== "" && !(/^-?\d+(\.\d+)?$/.test(s) && Math.abs(+s) <= 100000)) return { error: "bad" };
+    nv.push({ r: parseInt(v[0], 10), n: String(v[1] || "").trim(), v: s === "" ? "" : round3(+s) });
+  }
+  const who = clean(p.who, 60) || "бар-менеджер", id = "m" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  const lock = lockOrBusy(20000);
+  try {
+    const ss = revBook(), ts = revTotal(ss), st = revDay(true);
+    if (st && !revDone(st) && st.date === d) return { error: "open" };
+    const pos = revPositions(ts), at = {};
+    pos.forEach(x => { at[x.row] = x.n; });
+    let col = revColOf(ts, d), fresh = false;
+    if (!col) {
+      if (!nv.some(x => x.v !== "")) return { error: "empty" };
+      const lc = ts.getLastColumn(), hd = lc >= 2 ? ts.getRange(1, 2, 1, lc - 1).getDisplayValues()[0] : [];
+      let after = 1;
+      hd.forEach((x, i) => { const y = dmy(x); if (y && y <= iso) after = i + 2; });
+      if (after < lc) {
+        ts.insertColumnsAfter(after, 1);
+        if (st && st.tc > after) { st.tc++; revDaySave(st); }             // столбец идущего дня сдвинулся
+      } else ensureCols(ts, after + 1);
+      col = after + 1; fresh = true;
+      ts.getRange(1, col, 2, 1).setNumberFormat("@").setValues([[d], [who + " · " + REV_MAN]]);
+      revAtSet(d, p.when === "до" ? isoAt(iso, 17) : isoAt(iso, 33) - 60000);
+    }
+    const h = pos.length ? pos[pos.length - 1].row - 2 : 0, cur = h ? ts.getRange(3, col, h, 1).getValues() : [], now = new Date(), log = [];
+    let skip = 0;
+    nv.forEach(x => {
+      if (!(x.r >= 3) || at[x.r] !== x.n) { skip++; return; }           // строку сдвинули в таблице — пропускаем
+      const o = revCell(cur[x.r - 3][0]), ov = o == null ? "" : o;
+      if (ov === x.v) return;
+      cur[x.r - 3][0] = x.v;
+      log.push([now, who, REV_MAN + " · " + d, "было " + (o == null ? "—" : String(o).replace(".", ",")), x.n, x.v, id]);
+    });
+    if (log.length) {
+      ts.getRange(3, col, h, 1).setValues(cur);
+      const lg = revLog(ss), ll = lg.getLastRow();
+      ensureRows(lg, ll + log.length);
+      lg.getRange(ll + 1, 1, log.length, 7).setValues(log);
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, n: log.length, skip: skip, id: log.length ? id : "", fresh: fresh };
+  } finally { lock.releaseLock(); }
+}
+/* отменить правку {id}: прежние значения из журнала обратно; ручной день, оставшийся пустым, убирается из «Итога» */
+function mgrRevUndo(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const id = String(p.id || "");
+  if (!/^m[0-9a-z]{4,20}$/.test(id)) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    const ss = revBook(), lg = revLog(ss), last = lg.getLastRow(), rows = last >= 2 ? lg.getRange(2, 1, last - 1, 7).getValues() : [];
+    if (rows.some(r => String(r[6]) === id + "u")) return { ok: true, n: 0 };
+    const mine = rows.filter(r => String(r[6]) === id);
+    if (!mine.length) return { error: "gone" };
+    const d = String(mine[0][2]).split(" · ")[1] || "", st = revDay(false);
+    if (st && !revDone(st) && st.date === d) return { error: "open" };
+    const ts = revTotal(ss), col = revColOf(ts, d), pos = revPositions(ts), byN = {};
+    if (!col) return { error: "gone" };
+    pos.forEach(x => { if (!(x.n in byN)) byN[x.n] = x.row; });
+    const h = pos.length ? pos[pos.length - 1].row - 2 : 0, cur = h ? ts.getRange(3, col, h, 1).getValues() : [], now = new Date(), who = clean(p.who, 60) || "бар-менеджер", back = [];
+    mine.forEach(r => {
+      const row = byN[String(r[4]).trim()], m = String(r[3]).match(/^было (.+)$/);
+      if (!row || !m) return;
+      const v = m[1].trim() === "—" ? "" : round3(num(m[1]));
+      cur[row - 3][0] = v;
+      back.push([now, who, REV_MAN + " · " + d, "отмена правки", String(r[4]).trim(), v, id + "u"]);
+    });
+    if (back.length) {
+      ts.getRange(3, col, h, 1).setValues(cur);
+      ensureRows(lg, last + back.length);
+      lg.getRange(last + 1, 1, back.length, 7).setValues(back);
+    }
+    let gone = false;
+    if (String(ts.getRange(2, col).getDisplayValue()).indexOf(" · " + REV_MAN) >= 0 && cur.every(r => r[0] === "" || r[0] == null)) {
+      ts.deleteColumn(col);                                               // пустой ручной день — столбец убираем совсем
+      if (st && st.tc > col) { st.tc--; revDaySave(st); }
+      revAtSet(d, 0); gone = true;
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, n: back.length, gone: gone };
+  } finally { lock.releaseLock(); }
+}
+
 /* продажи по дням: лист «Продажи» в таблице ревизии (строка — блюдо за день); загрузка за те же дни заменяет их */
 const SALES = "Продажи";
 const SALES_HEAD = ["Дата", "Код R-Keeper", "Блюдо", "Кол-во", "Сумма", "Файл", "Загружено"];
@@ -2285,15 +2410,18 @@ function mgrSalesPut(p) {
   } finally { lock.releaseLock(); }
 }
 /* для сайта: какие дни загружены и продажи по блюдам за период: p.from / p.to (ГГГГ-ММ-ДД) или p.per = "rev" —
-   последний период ревизии (продажи тех же смен, что во «Расходе»); по умолчанию — последние 35 дней */
+   период ревизии (p.a → p.i — номера ревизий в ленте; без них — последний) (продажи тех же смен, что во «Расходе»); по умолчанию — последние 35 дней */
 function mgrSales(p) {
   const rows = salesRows(), byDay = {}, by = {}, isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(x || "");
   let from = isoOk(p.from) ? p.from : new Date(Date.now() + AST - 34 * 864e5).toISOString().slice(0, 10), to = isoOk(p.to) ? p.to : "9999-12-31", label = "";
   let inR = r => r.iso >= from && r.iso <= to;
   if (p.per === "rev") {
     const R = revTimeline().revs;
+    let i = parseInt(p.i, 10), a = parseInt(p.a, 10);                  // период из «Периода» (номера ревизий в ленте); по умолчанию — последний
+    if (!(i >= 1 && i < R.length)) i = R.length - 1;
+    if (!(a >= 0 && a < i)) a = i - 1;
     if (R.length >= 2) {
-      const A = R[R.length - 2], B = R[R.length - 1];
+      const A = R[a], B = R[i];
       inR = r => saleAt(r.iso) > A.at && saleAt(r.iso) <= B.at;
       from = A.iso; to = B.iso; label = WD_RU[isoWd(A.iso)] + " " + A.d.slice(0, 5) + " → " + WD_RU[isoWd(B.iso)] + " " + B.d.slice(0, 5);
     }

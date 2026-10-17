@@ -271,7 +271,11 @@ document.querySelectorAll(".mgrsub").forEach(x => x.addEventListener("click", e 
 }));
 $("mgrRepD").addEventListener("toggle", () => { if ($("mgrRepD").open && mgrKey()) repLoad(); });
 $("stepInc").addEventListener("toggle", () => { if ($("stepInc").open && mgrKey()) incLoad(); });
-$("stepRec").addEventListener("click", e => { if (e.target.closest("button[data-go]")) { buzz(8); mgrGo("sal"); } });
+$("stepRec").addEventListener("click", e => {
+  if (!e.target.closest("button[data-go]")) return;
+  if (perData && perData.from) salPer = {r: "rev", from: "", to: "", i: perData.i, a: perData.a};   // блюда того же периода, что выбран в «Периоде»
+  buzz(8); mgrGo("sal");
+});
 
 /* ── справочник позиций ──
    строка: [раздел, позиция, ед., код R-Keeper, тара, норма, поставщик, цена, заметка, есть в бланке] */
@@ -1184,6 +1188,159 @@ $("usePer").addEventListener("change", () => { if (!$("usePer").value) return; p
   perRange = {from: f, to: t}; perI = null; buzz(8); perLoad();
 }));
 
+/* ── цифры ревизии вручную: столбец дня «Итога» — по умолчанию то, что посчитали на сайте; можно поправить или внести день целиком ── */
+let revEd = null, revEdMode = "edit", revEdUndo = null, revEdMsg = "";        // режим: edit — правка дня, pick — новая (дата не выбрана), new — новая за дату
+const revKey = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/[-–—,«»"'():;=]+/g, " ").replace(/\s+/g, " ").trim();
+const revKey2 = s => revKey(s).replace(/\s(л|кг|шт|литр|бут|гр|г|мл)$/, "");
+const revNumOk = s => s === "" || /^-?\d+([.,]\d+)?$/.test(s);
+async function revEdLoad(d, mode){
+  if (!revEd) $("revEd").innerHTML = '<p class="wnhint">Загружаю…</p>';
+  const x = await api({mgr: "revget", mk: mgrKey(), d: d || ""});
+  if (x.error === "mgr") return mgrExpired();
+  if (!x.ok){ $("revEd").innerHTML = '<p class="warn">' + (x.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : "Нет связи с таблицей.") + '</p>'; return; }
+  if (mode === "new" && x.col) revEdMsg = "За " + x.d.slice(0, 5) + " ревизия уже есть — ниже её цифры, их можно поправить.";
+  revEd = x; revEdMode = x.col ? "edit" : mode === "new" ? "new" : "pick"; revEdDraw();
+}
+function revEdDraw(){
+  const x = revEd, ro = x.ro, list = revEdMode !== "pick";
+  const opt = y => '<option value="' + y.d + '"' + (revEdMode === "edit" && y.d === x.d ? " selected" : "") + '>' + y.wd + " " + y.d.slice(0, 5) + (y.who ? " · " + esc(y.who) : "") +
+    (y.d === x.d && x.ro ? " · идёт на сайте" : y.full ? "" : " · не все зоны") + '</option>';
+  let h = '<p class="wnhint">Здесь цифры из ревизии на сайте. Поправьте, если ошиблись, или внесите ревизию за дату, если считали на бумаге. Всё пишется в таблицу «Итог» и журнал ревизии — правку можно отменить.</p>' +
+    '<div class="wo2 mgrd' + (revEdMode === "edit" ? " one" : "") + '"><div><label class="label" for="revEdSel">Ревизия</label><select id="revEdSel">' + x.days.map(opt).join("") +
+    '<option value="new"' + (revEdMode !== "edit" ? " selected" : "") + '>+ внести за дату вручную</option></select></div>';
+  const iso = x.d ? x.d.split(".").reverse().join("-") : "", wd = iso ? new Date(iso + "T00:00:00Z").getUTCDay() : -1;
+  if (revEdMode !== "edit")
+    h += '<div><label class="label" for="revEdDate">Дата</label><input id="revEdDate" type="date" max="' + mgrToday() + '" value="' + (revEdMode === "new" ? iso : "") + '"></div>';
+  h += '</div>';
+  if (revEdMode === "new") h += '<div class="wo2 mgrd"><div><label class="label" for="revEdWhen">Считали</label><select id="revEdWhen"><option value="до"' + (wd === 4 ? " selected" : "") + '>перед открытием</option>' +
+    '<option value="после"' + (wd === 4 ? "" : " selected") + '>после закрытия</option></select></div><div><p class="wnhint">Продажи и приход этого дня войдут в период ' + (wd === 4 ? "после" : "до") + ' неё — так же, как у ревизии на сайте.</p></div></div>';
+  if (revEdMsg) h += '<p class="wnhint" role="status">' + revEdMsg + '</p>';
+  if (list){
+    if (ro) h += '<p class="warn">Ревизия этого дня ещё идёт на сайте — поправить можно, когда все зоны нажмут «Завершить».</p>';
+    else if (x.man) h += '<p class="wnhint">Эту ревизию внесли вручную.</p>';
+    h += '<input type="search" id="revEdQ" class="refq" placeholder="Найти позицию" autocomplete="off">' +
+      '<ul class="olist reved" id="revEdList">' + x.items.map((it, i) => '<li data-i="' + i + '"><label class="userow"><span class="usen"><span class="refn">' + esc(it.n) + '</span>' +
+        (it.p != null ? '<small class="mgrwhy">в прошлой' + (x.pd ? " (" + x.pd + ")" : "") + ': ' + mgrNum(it.p) + ' ' + useU(it.u) + '</small>' : "") + '</span>' +
+        '<span class="revq"><input type="text" inputmode="decimal" data-i="' + i + '" value="' + (it.v == null ? "" : mgrNum(it.v)) + '" placeholder="—"' + (ro ? " disabled" : "") + '><small>' + useU(it.u) + '</small></span></label></li>').join("") + '</ul>';
+    if (!ro) h += '<details class="incmapd"><summary>Вставить из Excel, текста или файла</summary>' +
+      '<p class="wnhint">Строки «Позиция — 0,7» или два столбца из таблицы (название и число). Совпавшие позиции подставятся в поля выше — проверьте и сохраните.</p>' +
+      '<textarea id="revEdPaste" rows="4" placeholder="Джин Хендрикс	1,4"></textarea><div class="refbtns"><button type="button" class="wogo" id="revEdPasteGo">Подставить</button>' +
+      '<label class="wogo incfile">Файл Excel / CSV<input type="file" id="revEdFile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label></div><p class="wnhint" id="revEdPasteRes" role="status"></p></details>' +
+      '<p class="warn" id="revEdWarn" role="status"></p><button type="button" class="wogo" id="revEdSave" disabled>Сохранить</button>';
+  }
+  if (revEdUndo && revEdUndo.d === x.d) h += '<p class="mgrfoot"><button type="button" class="link" id="revEdUndo">Отменить последнюю правку (' + mgrPl(revEdUndo.n, "позиция", "позиции", "позиций") + ')</button></p>';
+  $("revEd").innerHTML = h;
+  revEdMsg = "";
+}
+/* изменённые поля: [строка, позиция, значение] */
+function revEdChanged(){
+  const out = [];
+  document.querySelectorAll("#revEdList input").forEach(inp => {
+    const it = revEd.items[+inp.dataset.i], s = inp.value.trim(), was = it.v == null ? "" : mgrNum(it.v);
+    const ch = s !== was && !(s !== "" && was !== "" && revNumOk(s) && Math.abs(parseFloat(s.replace(",", ".")) - it.v) < 1e-9);
+    inp.closest("li").classList.toggle("chg", ch);
+    inp.classList.toggle("bad", !revNumOk(s));
+    if (ch) out.push([it.r, it.n, s]);
+  });
+  return out;
+}
+function revEdCount(){
+  const ch = revEdChanged(), bad = document.querySelectorAll("#revEdList input.bad").length;
+  $("revEdSave").disabled = !ch.length || !!bad;
+  $("revEdSave").textContent = bad ? "Исправьте поля, отмеченные красным" : ch.length ? "Сохранить — " + mgrPl(ch.length, "изменение", "изменения", "изменений") : "Сохранить";
+}
+/* вставка: строки или ячейки → {i: количество}; совпадение — по названию позиции (без «ё», знаков и «, кг» в конце) */
+function revEdFill(rows){
+  const k1 = {}, k2 = {};
+  revEd.items.forEach((it, i) => { const a = revKey(it.n), b = revKey2(it.n); if (!(a in k1)) k1[a] = i; if (!(b in k2)) k2[b] = i; });
+  const find = s => { const a = revKey(s); return a in k1 ? k1[a] : revKey2(s) in k2 ? k2[revKey2(s)] : -1; };
+  const nm = v => typeof v === "number" ? v : typeof v === "string" && /^\s*-?\d+([.,]\d+)?\s*$/.test(v) ? parseFloat(v.replace(",", ".")) : null;
+  const got = {}, miss = [];
+  let dup = 0;
+  rows.forEach(r => {
+    let i = -1, q = null, name = "";
+    if (r.length > 1){
+      for (let j = 0; j < r.length && i < 0; j++){
+        if (typeof r[j] !== "string" || !r[j].trim() || nm(r[j]) != null) continue;
+        i = find(r[j]);
+        if (i >= 0) q = r.slice(j + 1).map(nm).find(v => v != null);
+        else if (!name) name = r[j].trim();
+      }
+    } else {
+      const s = String(r[0] || "").trim(), m = s.match(/^(.*?)[\s:;=—–-]*(-?\d+(?:[.,]\d+)?)\s*(л|литр|шт|кг|бут)?\.?\s*$/i);
+      if (m && m[1].trim()){ i = find(m[1]); q = parseFloat(m[2].replace(",", ".")); name = m[1].trim(); }
+    }
+    if (i < 0 || q == null){ if (name && (i < 0 ? r.some(v => nm(v) != null) || r.length === 1 : true)) miss.push(name); return; }
+    if (i in got){ got[i] += q; dup++; } else got[i] = q;
+  });
+  let n = 0;
+  Object.keys(got).forEach(i => {
+    const inp = document.querySelector('#revEdList input[data-i="' + i + '"]');
+    if (inp){ inp.value = mgrNum(got[i]); n++; }
+  });
+  revEdCount();
+  $("revEdPasteRes").textContent = (n ? "Подставлено: " + mgrPl(n, "позиция", "позиции", "позиций") + " — выделены, проверьте и сохраните." : "Ни одна позиция не совпала с бланком.") +
+    (dup ? " Повторы одной позиции сложены (" + dup + ")." : "") + (miss.length ? " Не нашлись в бланке: " + miss.slice(0, 12).join(", ") + (miss.length > 12 ? "…" : "") + "." : "");
+}
+$("revEdD").addEventListener("toggle", () => { if ($("revEdD").open && !revEd) revEdLoad(perData && perData.to ? perData.to.d : ""); });
+$("revEd").addEventListener("input", e => {
+  if (e.target.closest("#revEdList")) return revEdCount();
+  if (e.target.id === "revEdQ"){
+    const q = revKey(e.target.value);
+    document.querySelectorAll("#revEdList li").forEach(li => { li.hidden = !!q && revKey(revEd.items[+li.dataset.i].n).indexOf(q) < 0; });
+  }
+});
+$("revEd").addEventListener("change", async e => {
+  const t = e.target;
+  if (t.id === "revEdSel"){
+    if (revEdChanged().length && !confirm("Несохранённые изменения пропадут. Продолжить?")){ revEdDraw(); return; }
+    if (t.value === "new"){ revEdMode = "pick"; revEdDraw(); return; }
+    revEdLoad(t.value);
+  } else if (t.id === "revEdDate" && t.value){
+    if (t.value > mgrToday()) return;
+    revEdLoad(t.value.split("-").reverse().join("."), "new");
+  } else if (t.id === "revEdFile" && t.files[0]){
+    const f = t.files[0];
+    t.value = "";
+    let tb;
+    try { tb = await readTable(f); } catch (err) { $("revEdPasteRes").textContent = f.name + ": " + xErrText(err); return; }
+    revEdFill([].concat.apply([], tb.sheets.filter(s => !s.hidden).map(s => s.rows)));
+  }
+});
+$("revEd").addEventListener("click", async e => {
+  const id = e.target.id;
+  if (id === "revEdPasteGo"){
+    const lines = $("revEdPaste").value.split(/\r?\n/).filter(s => s.trim());
+    revEdFill(lines.map(s => s.indexOf("\t") >= 0 ? s.split("\t").map(c => c.trim()) : [s]));
+  } else if (id === "revEdSave"){
+    const vals = revEdChanged();
+    if (!vals.length) return;
+    const b = e.target, fresh = !revEd.col;
+    b.disabled = true; b.textContent = "Сохраняю…";
+    const r = await pubPost({mgr: "revset", d: revEd.d, vals, when: fresh && $("revEdWhen") ? $("revEdWhen").value : "", who: me ? me.name : ""});
+    if (!r) return;
+    if (!r.ok){
+      $("revEdWarn").textContent = r.error === "open" ? "Ревизия этого дня ещё идёт на сайте — поправить можно после «Завершить»." : r.error === "empty" ? "Введите хотя бы одну цифру." :
+        r.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : r.error === "busy" ? "Таблица занята — попробуйте через минуту." : "Не сохранилось: " + (r.error || "нет связи");
+      revEdCount(); return;
+    }
+    revEdUndo = r.id ? {id: r.id, d: revEd.d, n: r.n} : null;
+    revEdMsg = "Сохранено ✓ " + mgrPl(r.n, "позиция", "позиции", "позиций") + (r.fresh ? " — ревизия " + revEd.d.slice(0, 5) + " добавлена" : "") + (r.skip ? " · " + r.skip + " пропущено: строки в таблице сдвинулись — проверьте" : "") + ". Расчёт периода обновлён.";
+    buzz(8);
+    await revEdLoad(revEd.d);
+    perLoad();
+  } else if (id === "revEdUndo" && revEdUndo){
+    e.target.disabled = true;
+    const r = await pubPost({mgr: "revundo", id: revEdUndo.id, who: me ? me.name : ""});
+    if (!r) return;
+    if (!r.ok){ e.target.disabled = false; e.target.textContent = r.error === "open" ? "Ревизия дня идёт на сайте — отменить нельзя" : "Не отменилось: " + (r.error || "нет связи"); return; }
+    const d = revEdUndo.d;
+    revEdUndo = null; revEdMsg = "Правка отменена" + (r.gone ? " — ручная ревизия " + d.slice(0, 5) + " убрана" : "") + ".";
+    await revEdLoad(r.gone ? "" : d);
+    perLoad();
+  }
+});
+
 /* ── гостям: меню и «Состав и аллергены» из таблицы ──
    строка меню: [глава, глава EN, раздел, раздел EN, плитки, название, EN, описание, EN, объём, ед., цена, id в карте, код R-Keeper, скрыть, uid]
    строка карты: [раздел, id, название, EN, состав для гостей, EN, полный состав, аллергены, EN, объём подачи, фото, значок, на этикетке, только этикетка, скрыть] */
@@ -1654,7 +1811,7 @@ function salSuggest(d){
 
 /* период продаж: «rev» — последний период ревизии (те же смены, что во «Расходе»), иначе даты «с» / «по» */
 let salPer = {r: "rev", from: "", to: ""};
-const salPerQ = () => salPer.r === "rev" ? {per: "rev"} : {from: salPer.from, to: salPer.to};
+const salPerQ = () => salPer.r === "rev" ? Object.assign({per: "rev"}, salPer.i != null ? {i: salPer.i, a: salPer.a} : {}) : {from: salPer.from, to: salPer.to};
 async function salLoad(){
   const mk = mgrKey();
   if (!mk) return mgrInit();

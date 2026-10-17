@@ -897,3 +897,14 @@ details.perstep[open]{border-color:var(--accent)}
 .scal.miss small{color:var(--red);font-weight:700}
 .scal.fut{opacity:.35;cursor:default}
 .scal:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* ручная ревизия бар-менеджера */
+.reved .wo2{margin-top:10px}
+.reved .wo2.one{grid-template-columns:1fr}
+.reved input[type="search"],.reved textarea{width:100%;box-sizing:border-box;margin-top:10px;font-family:var(--sans);font-size:16px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg)}
+.reved .olist{margin-top:8px;max-height:60vh;overflow-y:auto}
+.reved .userow{cursor:default;padding:8px 12px}
+.revq{display:flex;align-items:center;gap:6px;flex:none}
+.revq input{width:84px;padding:8px 10px;text-align:right;font-size:16px}
+.revq small{width:22px;color:var(--muted);font-size:12px}
+.reved li.chg{background:color-mix(in srgb, var(--accent) 12%, transparent)}
+.revq input.bad{border-color:#d33;outline-color:#d33}
