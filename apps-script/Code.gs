@@ -389,9 +389,13 @@ const round3 = x => Math.round(x * 1000) / 1000;
 
 /* первое добавление дня: столбец «Итога» и позиции, которых нет на листе зон (вниз, по порядку «Итога») */
 function revNewDay(ts, zs, day) {
-  const st = { day: day, date: revDayDate(day), tc: ts.getLastColumn() + 1, zones: {}, fin: {} };
-  ensureCols(ts, st.tc);
-  ts.getRange(1, st.tc, 2, 1).setNumberFormat("@").setValues([[st.date], [""]]);
+  const lc = ts.getLastColumn(), date = revDayDate(day);
+  const man = lc >= 2 && String(ts.getRange(1, lc).getDisplayValue()).trim() === date;   // бар-менеджер уже внёс день вручную — досчитываем в него
+  const st = { day: day, date: date, tc: man ? lc : lc + 1, zones: {}, fin: {} };
+  if (!man) {
+    ensureCols(ts, st.tc);
+    ts.getRange(1, st.tc, 2, 1).setNumberFormat("@").setValues([[st.date], [""]]);
+  }
   const zl = Math.max(zs.getLastRow(), 3);
   const have = {}, miss = [];
   if (zl > 3) zs.getRange(4, 1, zl - 3, 1).getValues().forEach(r => { have[String(r[0]).trim()] = 1; });
@@ -1091,6 +1095,8 @@ function doPost(e) {
     if (p.mgr === "dishset") return jsonOut(mgrDishSet(p));
     if (p.mgr === "salesput") return jsonOut(mgrSalesPut(p));
     if (p.mgr === "zagset") return jsonOut(mgrZagSet(p));
+    if (p.mgr === "revset") return jsonOut(mgrRevSet(p));
+    if (p.mgr === "revundo") return jsonOut(mgrRevUndo(p));
     if (p.mgr === "refauto") return jsonOut(mgrRefAuto(p));
     return jsonOut({ error: "action" });
   } catch (err) {
@@ -1664,6 +1670,7 @@ function manager(p) {
   if (p.mgr === "period") return mgrPeriod(p);
   if (p.mgr === "sales") return mgrSales(p);
   if (p.mgr === "zags") return mgrZags();
+  if (p.mgr === "revget") return mgrRevGet(p);
   if (p.mgr === "refauto") return mgrRefAuto(p);
   if (p.mgr === "reportto") return { ok: true, emails: reportTo(), auto: reportOn() };
   return { error: "action" };
@@ -1853,11 +1860,13 @@ function mgrOrder() {
     /* готовая (все зоны) — как закрытая; дата — когда закончили считать; пока идёт новая — прошлая со своей датой */
     const open = ms.block.open && !ms.block.done, date = open ? dmy(ms.prevDate) : dmy(ms.block.end || ms.block.date);
     out.src.m = { title: open ? ms.prev || "" : ms.block.title, date: date, open: open };
+    /* момент — когда сдали последнюю зону (лента месячных: последняя посчитанная — это она); иначе конец её дня */
+    const mt = mrevTimeline(), ml = mt[mt.length - 1], mat = ml && ml.iso === date ? ml.at : date ? isoAt(date, 33) - 60000 : 0;
     let sec = "";
     ms.rows.forEach(x => {
       if (x.t === "h" || x.t === "s") { sec = x.n; return; }
       const q = open ? x.p : x.tot;
-      if (q != null) put(refKey(sec, x.n), q, "m", date || "0000-00-00", date ? isoAt(date, 33) - 60000 : 0);
+      if (q != null) put(refKey(sec, x.n), q, "m", date || "0000-00-00", mat);
     });
   }
 
@@ -1882,14 +1891,31 @@ function mgrOrder() {
     }
   } catch (e) { out.src.d = null; }
 
-  const inc = inByKey();                                               // пришло после ревизии — тоже на баре
+  /* остаток сейчас: ревизия + приход − продажи − списания и проработки после неё (тем же расчётом, что «Период»;
+     заготовки с рецептом — в сырьё). Продажи загружены не за все смены после ревизии — сайт предупредит: остаток завышен */
+  const flow = {}, M = perMaps(ref), now = Date.now();
+  out.flow = {};
+  ["d", "m"].forEach(src => {
+    const keys = Object.keys(stock).filter(k => stock[k].from === src && stock[k].at);
+    if (!keys.length) return;
+    try {
+      const items = {}, A = { at: stock[keys[0]].at, iso: stock[keys[0]].date };
+      keys.forEach(k => { items[k] = perItem(k, k, M.RU[k] === "литр" ? "л" : M.RU[k], stock[k].q, null); });
+      const o = perCalc(M, A, { at: now, iso: new Date(now + AST).toISOString().slice(0, 10) }, items, [], { rows: [] });
+      o.rows.forEach(r => { flow[r.key] = r; });
+      out.flow[src] = { miss: o.sales.miss, nodish: o.sales.nodish.length };
+    } catch (e) { console.error("автозаявка: " + (e && e.stack || e)); }
+  });
+  const inc = inByKey(), r3 = x => Math.round(x * 1000) / 1000;
   ref.rows.forEach(r => {
     const norm = num(String(r[5]).replace(",", "."));
     if (!String(r[5]).trim() || !(norm > 0)) { out.nonorm++; return; }
-    const k = refKey(r[0], r[1]), s = stock[k] || null;
-    const inq = s && s.at ? (inc[k] || []).filter(x => incAt(x.iso, x.w) > s.at).reduce((a, x) => a + (conv(x.q, x.u, RU[k], RT[k]) || 0), 0) : 0;
-    out.rows.push({ sec: r[0], n: r[1], u: r[2], code: r[3], tara: num(String(r[4]).replace(",", ".")), norm: norm,
-      sup: r[6], q: s ? Math.round(s.q * 1000) / 1000 : null, from: s ? s.from : "", date: s ? s.date : "", inq: Math.round(inq * 1000) / 1000 });
+    const k = refKey(r[0], r[1]), s = stock[k] || null, f = s ? flow[k] : null;
+    const row = { sec: r[0], n: r[1], u: r[2], code: r[3], tara: num(String(r[4]).replace(",", ".")), norm: norm,
+      sup: r[6], q: s ? r3(s.q) : null, from: s ? s.from : "", date: s ? s.date : "", inq: 0 };
+    if (f && f.exp != null) Object.assign(row, { rq: r3(s.q), q: r3(Math.max(0, f.exp)), inc: f.inc, sold: f.sold, wo: r3(f.wo + f.pr), zq: f.zwas || 0 });
+    else if (s && s.at) row.inq = r3((inc[k] || []).filter(x => incAt(x.iso, x.w) > s.at).reduce((a, x) => a + (conv(x.q, x.u, RU[k], RT[k]) || 0), 0));
+    out.rows.push(row);
   });
   return out;
 }
@@ -2232,6 +2258,124 @@ function revTimeline() {
 }
 const revOut = (x, i) => ({ i: i, d: x.d, iso: x.iso, who: x.who, wd: WD_RU[isoWd(x.iso)], at: x.at });
 
+/* ручная ревизия бар-менеджера: столбец дня в «Итоге» — посмотреть, поправить или внести за дату целиком (посчитали на бумаге).
+   Правки пишутся прямо в «Итог» (их сразу видят период, письма и отчёт) и строкой на каждую позицию в «Ревизия журнал»:
+   «вручную · дата», прежнее значение («было 0,7»), новое и id правки — по id её можно отменить.
+   Ревизию, которая ещё идёт на сайте, не трогаем. Новый день встаёт в «Итог» по дате; без зон он — полная ревизия,
+   её момент — 17:00 дня («перед открытием») или 8:59 следующего («после закрытия»). */
+const REV_MAN = "вручную";
+const ddmmOk = s => /^\d{2}\.\d{2}\.\d{4}$/.test(String(s || "")) && !!dmy(s);
+function revColOf(ts, d) {
+  const lc = ts.getLastColumn(), h = lc >= 2 ? ts.getRange(1, 2, 1, lc - 1).getDisplayValues()[0] : [];
+  for (let i = h.length - 1; i >= 0; i--) if (String(h[i]).trim() === d) return i + 2;
+  return 0;
+}
+const revCell = v => v === "" || v == null || isNaN(num(v)) ? null : round3(num(v));
+/* p.d — «dd.MM.yyyy» (по умолчанию — последняя ревизия) → {days, d, col, who, man, ro, items: [{r, n, u, v, p — в прошлой ревизии}], pd} */
+function mgrRevGet(p) {
+  const ref = mgrRef(), ss = revBook(), ts = revTotal(ss), tl = revTimeline(), R = tl.revs, st = revDay(false);
+  const open = st && !revDone(st) ? st.date : "", du = dailyUnits(ref.ok ? ref : null), pos = revPositions(ts);
+  const d = ddmmOk(p.d) ? String(p.d) : R.length ? R[R.length - 1].d : "", iso = d ? dmy(d) : "";
+  const days = tl.all.map(x => ({ d: x.d, iso: x.iso, wd: WD_RU[isoWd(x.iso)], who: x.who, full: x.full })).reverse().slice(0, 60);
+  if (open && !days.some(x => x.d === open)) days.unshift({ d: open, iso: dmy(open), wd: WD_RU[isoWd(dmy(open))], who: "", full: false });
+  const col = d ? revColOf(ts, d) : 0, prev = R.filter(x => x.iso < iso).pop(), h = pos.length ? pos[pos.length - 1].row - 2 : 0;
+  const cv = col && h ? ts.getRange(3, col, h, 1).getValues() : [], pv = prev && h ? ts.getRange(3, prev.col, h, 1).getValues() : [];
+  const who = col ? String(ts.getRange(2, col).getDisplayValue()).trim() : "";
+  return { ok: true, days: days, d: d, today: revDayDate(revDayKey()), col: col, who: who, man: who.indexOf(" · " + REV_MAN) >= 0, ro: !!open && d === open,
+    pd: prev ? WD_RU[isoWd(prev.iso)] + " " + prev.d.slice(0, 5) : "",
+    items: pos.map(x => ({ r: x.row, n: x.n, u: du(x.n), v: col ? revCell(cv[x.row - 3][0]) : null, p: prev ? revCell(pv[x.row - 3][0]) : null })) };
+}
+/* {d, vals: [[строка, позиция, число или ""]], when: "до"|"после" (для нового дня), who} — пусто = «не считали» */
+function mgrRevSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const d = String(p.d || ""), iso = dmy(d);
+  if (!ddmmOk(d) || iso > revDayKey()) return { error: "bad" };
+  const vals = Array.isArray(p.vals) ? p.vals.slice(0, 3000) : [], nv = [];
+  for (const v of vals) {
+    const s = Array.isArray(v) ? String(v[2] == null ? "" : v[2]).trim().replace(",", ".") : "x";
+    if (s !== "" && !(/^-?\d+(\.\d+)?$/.test(s) && Math.abs(+s) <= 100000)) return { error: "bad" };
+    nv.push({ r: parseInt(v[0], 10), n: String(v[1] || "").trim(), v: s === "" ? "" : round3(+s) });
+  }
+  const who = clean(p.who, 60) || "бар-менеджер", id = "m" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  const lock = lockOrBusy(20000);
+  try {
+    const ss = revBook(), ts = revTotal(ss), st = revDay(true);
+    if (st && !revDone(st) && st.date === d) return { error: "open" };
+    const pos = revPositions(ts), at = {};
+    pos.forEach(x => { at[x.row] = x.n; });
+    let col = revColOf(ts, d), fresh = false;
+    if (!col) {
+      if (!nv.some(x => x.v !== "")) return { error: "empty" };
+      const lc = ts.getLastColumn(), hd = lc >= 2 ? ts.getRange(1, 2, 1, lc - 1).getDisplayValues()[0] : [];
+      let after = 1;
+      hd.forEach((x, i) => { const y = dmy(x); if (y && y <= iso) after = i + 2; });
+      if (after < lc) {
+        ts.insertColumnsAfter(after, 1);
+        if (st && st.tc > after) { st.tc++; revDaySave(st); }             // столбец идущего дня сдвинулся
+      } else ensureCols(ts, after + 1);
+      col = after + 1; fresh = true;
+      ts.getRange(1, col, 2, 1).setNumberFormat("@").setValues([[d], [who + " · " + REV_MAN]]);
+      revAtSet(d, p.when === "до" ? isoAt(iso, 17) : isoAt(iso, 33) - 60000);
+    }
+    const h = pos.length ? pos[pos.length - 1].row - 2 : 0, cur = h ? ts.getRange(3, col, h, 1).getValues() : [], now = new Date(), log = [];
+    let skip = 0;
+    nv.forEach(x => {
+      if (!(x.r >= 3) || at[x.r] !== x.n) { skip++; return; }           // строку сдвинули в таблице — пропускаем
+      const o = revCell(cur[x.r - 3][0]), ov = o == null ? "" : o;
+      if (ov === x.v) return;
+      cur[x.r - 3][0] = x.v;
+      log.push([now, who, REV_MAN + " · " + d, "было " + (o == null ? "—" : String(o).replace(".", ",")), x.n, x.v, id]);
+    });
+    if (log.length) {
+      ts.getRange(3, col, h, 1).setValues(cur);
+      const lg = revLog(ss), ll = lg.getLastRow();
+      ensureRows(lg, ll + log.length);
+      lg.getRange(ll + 1, 1, log.length, 7).setValues(log);
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, n: log.length, skip: skip, id: log.length ? id : "", fresh: fresh };
+  } finally { lock.releaseLock(); }
+}
+/* отменить правку {id}: прежние значения из журнала обратно; ручной день, оставшийся пустым, убирается из «Итога» */
+function mgrRevUndo(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const id = String(p.id || "");
+  if (!/^m[0-9a-z]{4,20}$/.test(id)) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    const ss = revBook(), lg = revLog(ss), last = lg.getLastRow(), rows = last >= 2 ? lg.getRange(2, 1, last - 1, 7).getValues() : [];
+    if (rows.some(r => String(r[6]) === id + "u")) return { ok: true, n: 0 };
+    const mine = rows.filter(r => String(r[6]) === id);
+    if (!mine.length) return { error: "gone" };
+    const d = String(mine[0][2]).split(" · ")[1] || "", st = revDay(false);
+    if (st && !revDone(st) && st.date === d) return { error: "open" };
+    const ts = revTotal(ss), col = revColOf(ts, d), pos = revPositions(ts), byN = {};
+    if (!col) return { error: "gone" };
+    pos.forEach(x => { if (!(x.n in byN)) byN[x.n] = x.row; });
+    const h = pos.length ? pos[pos.length - 1].row - 2 : 0, cur = h ? ts.getRange(3, col, h, 1).getValues() : [], now = new Date(), who = clean(p.who, 60) || "бар-менеджер", back = [];
+    mine.forEach(r => {
+      const row = byN[String(r[4]).trim()], m = String(r[3]).match(/^было (.+)$/);
+      if (!row || !m) return;
+      const v = m[1].trim() === "—" ? "" : round3(num(m[1]));
+      cur[row - 3][0] = v;
+      back.push([now, who, REV_MAN + " · " + d, "отмена правки", String(r[4]).trim(), v, id + "u"]);
+    });
+    if (back.length) {
+      ts.getRange(3, col, h, 1).setValues(cur);
+      ensureRows(lg, last + back.length);
+      lg.getRange(last + 1, 1, back.length, 7).setValues(back);
+    }
+    let gone = false;
+    if (String(ts.getRange(2, col).getDisplayValue()).indexOf(" · " + REV_MAN) >= 0 && cur.every(r => r[0] === "" || r[0] == null)) {
+      ts.deleteColumn(col);                                               // пустой ручной день — столбец убираем совсем
+      if (st && st.tc > col) { st.tc--; revDaySave(st); }
+      revAtSet(d, 0); gone = true;
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, n: back.length, gone: gone };
+  } finally { lock.releaseLock(); }
+}
+
 /* продажи по дням: лист «Продажи» в таблице ревизии (строка — блюдо за день); загрузка за те же дни заменяет их */
 const SALES = "Продажи";
 const SALES_HEAD = ["Дата", "Код R-Keeper", "Блюдо", "Кол-во", "Сумма", "Файл", "Загружено"];
@@ -2285,15 +2429,18 @@ function mgrSalesPut(p) {
   } finally { lock.releaseLock(); }
 }
 /* для сайта: какие дни загружены и продажи по блюдам за период: p.from / p.to (ГГГГ-ММ-ДД) или p.per = "rev" —
-   последний период ревизии (продажи тех же смен, что во «Расходе»); по умолчанию — последние 35 дней */
+   период ревизии (p.a → p.i — номера ревизий в ленте; без них — последний) (продажи тех же смен, что во «Расходе»); по умолчанию — последние 35 дней */
 function mgrSales(p) {
   const rows = salesRows(), byDay = {}, by = {}, isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(x || "");
   let from = isoOk(p.from) ? p.from : new Date(Date.now() + AST - 34 * 864e5).toISOString().slice(0, 10), to = isoOk(p.to) ? p.to : "9999-12-31", label = "";
   let inR = r => r.iso >= from && r.iso <= to;
   if (p.per === "rev") {
     const R = revTimeline().revs;
+    let i = parseInt(p.i, 10), a = parseInt(p.a, 10);                  // период из «Периода» (номера ревизий в ленте); по умолчанию — последний
+    if (!(i >= 1 && i < R.length)) i = R.length - 1;
+    if (!(a >= 0 && a < i)) a = i - 1;
     if (R.length >= 2) {
-      const A = R[R.length - 2], B = R[R.length - 1];
+      const A = R[a], B = R[i];
       inR = r => saleAt(r.iso) > A.at && saleAt(r.iso) <= B.at;
       from = A.iso; to = B.iso; label = WD_RU[isoWd(A.iso)] + " " + A.d.slice(0, 5) + " → " + WD_RU[isoWd(B.iso)] + " " + B.d.slice(0, 5);
     }
@@ -2365,7 +2512,8 @@ function mgrZagSet(p) {
 function mgrPeriod(p) {
   const ref = mgrRef();
   if (!ref.ok) return ref;
-  const tl = revTimeline(), R = tl.revs, out = { ok: true, revs: R.map(revOut), rows: [] };
+  if (p && p.kind === "m") return mgrPeriodM(p, ref);
+  const tl = revTimeline(), R = tl.revs, out = { ok: true, kind: "d", revs: R.map(revOut), rows: [] };
   if (R.length < 2) return out;
   let i = p && p.i != null && String(p.i) !== "" ? parseInt(p.i, 10) : R.length - 1;
   if (!(i >= 1 && i < R.length)) i = R.length - 1;
@@ -2379,31 +2527,82 @@ function mgrPeriod(p) {
     if (i <= a) { if (a < R.length - 1) i = a + 1; else { a = R.length - 2; i = R.length - 1; } }
     out.req = { from: p.from, to: p.to };
   }
-  const A = R[a], B = R[i], inP = t => t > A.at && t <= B.at;
+  const A = R[a], B = R[i];
   out.i = i; out.a = a; out.from = revOut(A, a); out.to = revOut(B, i);
   out.skipped = tl.all.filter(x => !x.full && x.iso >= A.iso && x.iso <= B.iso && x !== A && x !== B).map(x => ({ d: x.d, z: x.z }));
 
-  /* справочник: ключ, единица, тара, цена */
-  const byName = {}, byAll = {}, RU = {}, RT = {}, RP = {}, RN = {};
-  ref.rows.forEach(r => {
-    const key = refKey(r[0], r[1]), k = nameKey(r[1]);
-    RU[key] = refUn(r[2]); RT[key] = num(String(r[4]).replace(",", ".")); RP[key] = num(String(r[7]).replace(",", ".")); RN[key] = { sec: r[0], n: r[1] };
-    if (r[9] === 1) { byName[k] = k in byName ? null : key; (byAll[k] = byAll[k] || []).push(key); }
-  });
-  const keyOf = (sec, n) => { const k = refKey(sec || "", n); if (sec && k in RU) return k; const b = byName[nameKey(n)]; return b || ""; };
-
   /* остатки двух ревизий */
-  const ss = revBook(), ts = revTotal(ss), pos = revPositions(ts), du = dailyUnits(ref);
+  const M = perMaps(ref), ss = revBook(), ts = revTotal(ss), pos = revPositions(ts), du = dailyUnits(ref);
   const h = pos.length ? pos[pos.length - 1].row - 2 : 0;
   const va = h ? ts.getRange(3, A.col, h, 1).getValues() : [], vb = h ? ts.getRange(3, B.col, h, 1).getValues() : [];
-  const val = v => v === "" || v == null || isNaN(num(v)) ? null : round3(num(v));
   const items = {}, nokey = [];
   pos.forEach(x => {
-    const key = byName[nameKey(x.n)] || "";
+    const key = M.byName[nameKey(x.n)] || "";
     if (!key) { nokey.push(x.n); return; }
     if (items[key]) return;                                              // одна позиция дважды в «Итоге» — первая
-    items[key] = { n: x.n, key: key, u: du(x.n), was: val(va[x.row - 3][0]), now: val(vb[x.row - 3][0]), inc: 0, sold: 0, wo: 0, pr: 0, zwas: 0, znow: 0, zin: 0 };
+    items[key] = perItem(x.n, key, du(x.n), revCell(va[x.row - 3][0]), revCell(vb[x.row - 3][0]));
   });
+  return perCalc(M, A, B, items, nokey, out);
+}
+/* месячные ревизии, посчитанные целиком (идущая — нет): [{col, id, d, iso, who — название, at}];
+   момент — когда закончили считать: последняя запись журнала этой ревизии (по названию, между её началом и началом следующей) */
+function mrevTimeline() {
+  if (MEMO.mtl) return MEMO.mtl;
+  const sh = mrevSheet(true), b = mrevBlock(), out = [];
+  if (!sh || sh.getLastColumn() < 4 || sh.getLastRow() < 7) return MEMO.mtl = out;
+  const lc = sh.getLastColumn(), h = sh.getRange(3, 1, 4, lc).getDisplayValues(), openId = b && b.open && !b.done ? b.total : "";
+  for (let c = 3; c < lc; c++) {
+    const id = String(h[1][c]).trim(), iso = dmy(h[3][c]);
+    if (String(h[2][c]).trim() === "Итог" && id && id !== openId && iso) out.push({ col: c + 1, id: id, iso: iso, d: String(h[3][c]).trim().slice(0, 10), who: String(h[0][c]).trim() });
+  }
+  out.sort((a, x) => a.iso.localeCompare(x.iso));
+  const lg = revBook().getSheetByName(REV_LOG) || revBook().getSheetByName("Журнал ревизии"), ll = lg ? lg.getLastRow() : 0;
+  const log = ll >= 2 ? lg.getRange(2, 1, ll - 1, 3).getValues().filter(r => r[0] instanceof Date).map(r => ({ t: r[0].getTime(), c: String(r[2]) })) : [];
+  out.forEach((x, i) => {
+    const t0 = isoAt(x.iso, 0), t1 = i + 1 < out.length ? isoAt(out[i + 1].iso, 0) : Infinity;
+    let at = 0;
+    log.forEach(r => { if (r.t >= t0 && r.t < t1 && r.t > at && x.who && r.c.indexOf(x.who + " · ") === 0) at = r.t; });
+    x.at = at || (b && b.total === x.id && b.end && dmy(b.end) ? isoAt(dmy(b.end), 33) - 60000 : isoAt(x.iso, 33) - 60000);
+  });
+  return MEMO.mtl = out;
+}
+/* месячная против продаж: p.i — номер месячной в ленте (конец периода), по умолчанию последняя; числа месячной — в единице справочника */
+function mgrPeriodM(p, ref) {
+  const R = mrevTimeline(), out = { ok: true, kind: "m", revs: R.map(revOut), rows: [] };
+  if (R.length < 2) return out;
+  let i = p.i != null && String(p.i) !== "" ? parseInt(p.i, 10) : R.length - 1;
+  if (!(i >= 1 && i < R.length)) i = R.length - 1;
+  const A = R[i - 1], B = R[i], M = perMaps(ref), sh = mrevSheet(true);
+  out.i = i; out.a = i - 1; out.from = revOut(A, i - 1); out.to = revOut(B, i);
+  const c0 = Math.min(A.col, B.col), v = sh.getRange(7, c0, sh.getLastRow() - 6, Math.abs(B.col - A.col) + 1).getValues();
+  const items = {}, nokey = [];
+  let sec = "";
+  mrevRows(sh).forEach(x => {
+    if (x.t !== "i") { sec = x.n; return; }
+    let key = refKey(sec, x.n);
+    if (!(key in M.RU)) key = M.byName[nameKey(x.n)] || "";
+    if (!key) { nokey.push(x.n); return; }
+    if (items[key]) return;
+    items[key] = perItem(x.n, key, M.RU[key] === "литр" ? "л" : M.RU[key], revCell(v[x.r - 7][A.col - c0]), revCell(v[x.r - 7][B.col - c0]));
+  });
+  return perCalc(M, A, B, items, nokey, out);
+}
+/* справочник для расчёта: ключ, единица, тара, цена; позиция бланка по названию (однозначная) */
+function perMaps(ref) {
+  const M = { byName: {}, byAll: {}, RU: {}, RT: {}, RP: {} };
+  ref.rows.forEach(r => {
+    const key = refKey(r[0], r[1]), k = nameKey(r[1]);
+    M.RU[key] = refUn(r[2]); M.RT[key] = num(String(r[4]).replace(",", ".")); M.RP[key] = num(String(r[7]).replace(",", "."));
+    if (r[9] === 1) { M.byName[k] = k in M.byName ? null : key; (M.byAll[k] = M.byAll[k] || []).push(key); }
+  });
+  M.keyOf = (sec, n) => { const k = refKey(sec || "", n); if (sec && k in M.RU) return k; const b = M.byName[nameKey(n)]; return b || ""; };
+  return M;
+}
+const perItem = (n, key, u, was, now) => ({ n: n, key: key, u: u, was: was, now: now, inc: 0, sold: 0, wo: 0, pr: 0, zwas: 0, znow: 0, zin: 0 });
+/* движение между моментами A.at и B.at для позиций items (u — единица позиции: «л», «шт», «кг», «бут»): приход, продажи,
+   списания, проработки, заготовки в сырьё → строки {exp, diff, money}. Общий расчёт для ежедневной, месячной и автозаявки. */
+function perCalc(M, A, B, items, nokey, out) {
+  const byName = M.byName, byAll = M.byAll, RU = M.RU, RT = M.RT, RP = M.RP, keyOf = M.keyOf, inP = t => t > A.at && t <= B.at;
   /* в единицы позиции ревизии; несовместимо — null */
   const toU = (key, q, u) => items[key] ? conv(q, u, items[key].u === "л" ? "литр" : items[key].u, RT[key]) : null;
 
@@ -2519,8 +2718,8 @@ function mgrPeriod(p) {
     const f = conv(1, x.u === "л" ? "литр" : x.u, RU[k], RT[k]);           // сколько единиц справочника в 1 единице ревизии
     r.price = RP[k] && f != null ? Math.round(RP[k] * f * 100) / 100 : 0;
     if (x.zag) { r.info = 1; out.rows.push(r); return; }                  // заготовка с рецептом — уже в сырье
+    if (was != null) r.exp = r3(was + x.inc - x.sold - x.wo - x.pr);      // ожидалось (автозаявке — «сейчас»)
     if (was == null || now == null) { r.miss = was == null ? "from" : "to"; out.rows.push(r); return; }
-    r.exp = r3(was + x.inc - x.sold - x.wo - x.pr);
     r.diff = r3(now - r.exp);
     r.money = Math.round(r.diff * r.price);
     if (r.money < 0) short -= r.money; else over += r.money;

@@ -442,25 +442,22 @@
           готова, как только все нажали «Завершить»). <b>Ожидалось = было + приход − продано − списания − проработки</b>; продано — по продажам R-Keeper
           и расходу на блюдо (раздел «Рецепты»), заготовки разложены на сырьё по рецептам. Расхождение = стало − ожидалось: минус — недостача, плюс — излишек,
           в рублях — по цене закупки. Показаны все позиции, самые дорогие расхождения — первыми.</p></details>
-        <details class="mgrhelp" id="useHintM" hidden><summary>Как это работает</summary><p class="wnhint">Месячная: расход между двумя месячными ревизиями = <b>было + приход − стало</b>; списания и проработки — сколько из него
-          объяснено актами. Последний период сравнивается с обычным расходом позиции (медиана прошлых периодов).</p></details>
+        <details class="mgrhelp" id="useHintM" hidden><summary>Как это работает</summary><p class="wnhint">Месячная считается так же, как период ревизии, только между двумя месячными
+          (посчитанными целиком; момент — когда сдали последнюю зону). <b>Ожидалось = было + приход − продано − списания − проработки</b>, расхождение = стало − ожидалось,
+          в рублях — по цене закупки. Числа месячной — в единицах справочника. Продажи нужны за все смены между ними.</p></details>
         <div class="mgrseg" id="useKind" role="group" aria-label="Какая ревизия">
           <button type="button" data-k="d" aria-pressed="true">Период ревизии</button>
           <button type="button" data-k="m" aria-pressed="false">Месячная</button>
-        </div>
-        <div class="quick" id="useSens" aria-label="Чувствительность" hidden>
-          <button type="button" data-s="0.3" aria-pressed="false">±30%</button>
-          <button type="button" data-s="0.5" aria-pressed="true">±50%</button>
-          <button type="button" data-s="1" aria-pressed="false">±100%</button>
         </div>
         <div class="persteps" id="perSteps">
           <p class="label">Что входит в расчёт периода</p>
           <details class="perstep" id="stepRev"><summary><span class="psn"></span><span class="pst"><b>Ревизии · период</b><small id="stepRevS">…</small></span></summary>
             <div class="perbody">
-              <div class="wo2 mgrd" id="usePerBox"><div><label class="label" for="usePer">Между ревизиями</label><select id="usePer"></select></div></div>
-              <p class="label perl">Или свои даты — остатки берутся из ближайших ревизий</p>
-              <div class="wo2 mgrd"><div><label class="label" for="perFrom">С</label><input id="perFrom" type="date"></div><div><label class="label" for="perTo">По</label><input id="perTo" type="date"></div></div>
+              <div class="wo2 mgrd" id="usePerBox"><div><label class="label" for="usePer" id="usePerL">Между ревизиями</label><select id="usePer"></select></div></div>
+              <p class="label perl" id="perOwn">Или свои даты — остатки берутся из ближайших ревизий</p>
+              <div class="wo2 mgrd" id="perOwnBox"><div><label class="label" for="perFrom">С</label><input id="perFrom" type="date"></div><div><label class="label" for="perTo">По</label><input id="perTo" type="date"></div></div>
               <p class="wnhint" id="perRangeHint"></p>
+              <details class="incmapd reved" id="revEdD"><summary>Цифры ревизии — проверить, поправить или внести вручную</summary><div id="revEd"></div></details>
             </div>
           </details>
           <details class="perstep" id="stepSal"><summary><span class="psn"></span><span class="pst"><b>Продажи R-Keeper</b><small id="stepSalS">…</small></span></summary>
