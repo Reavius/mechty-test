@@ -209,7 +209,7 @@ const UI = {
     batch: "Даты партии", batchDd: "Указаны на ярлыке каждой ёмкости",
     footMenu: "Не является публичной офертой и носит рекламный характер.", footCard: "Технологические карты хранятся на производстве",
     empty: "Ничего не найдено — проверьте написание или сбросьте фильтр.", link: "Состав и аллергены",
-    ml: "мл", pcs: "шт", serve: "Подача", serveDd: "мл, сразу после приготовления", srok: "Годность", al: "Аллергены"},
+    ml: "мл", pcs: "шт", serve: "Подача", serveDd: "мл, сразу после приготовления", srok: "Годность", al: "Аллергены", more: "Узнать больше"},
   en: {title: "Mechty Bar — menu", bar: "Mechty Bar", lang: "Language", tabs: "Section", pmenu: "Menu", pcard: "Ingredients & allergens",
     h1menu: "Menu", ledeMenu: "Cocktails, wine, spirits, beer, soft drinks, coffee and tea. Each cocktail links to its ingredients and allergens.",
     h1card: "Ingredients<br>&amp; allergens", ledeCard: "Our cocktails, premixes, shots and house-made bases: ingredients, allergens and shelf life.",
@@ -217,7 +217,7 @@ const UI = {
     batch: "Batch dates", batchDd: "Shown on the label of each container",
     footMenu: "This menu is not a public offer and is for information only.", footCard: "Recipe cards are kept on site",
     empty: "Nothing found — check the spelling or reset the filter.", link: "Ingredients & allergens",
-    ml: "ml", pcs: "shots", serve: "Serving", serveDd: "ml, served freshly made", srok: "Shelf life", al: "Allergens"}
+    ml: "ml", pcs: "shots", serve: "Serving", serveDd: "ml, served freshly made", srok: "Shelf life", al: "Allergens", more: "Learn more"}
 };
 
 /* язык: выбор гостя → ?lang=en|ru → язык телефона (не русский/казахский и т. п. — английский) */
@@ -260,8 +260,8 @@ function mTile(x){
   const ci = x.c ? cardItem(x.c) : null, n = mName(x), d = mDesc(x);
   return '<article class="mtile">' +
     '<div class="chead"><h3>' + esc(n) + '</h3></div>' +
-    '<div class="cbody"><p class="mdesc">' + esc(d) + '</p>' +
-    (ci && ci.img ? '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async">' : '') + '</div>' +
+    '<div class="cbody">' + (ci && ci.img ? '<div class="mtx"><p class="mdesc">' + esc(d) + '</p><button type="button" class="mmore" data-more="' + esc(x.c) + '">' + t("more") + '<span aria-hidden="true">→</span></button></div>' +
+      '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async" data-more="' + esc(x.c) + '">' : '<p class="mdesc">' + esc(d) + '</p>') + '</div>' +
     '<div class="mfoot">' + (ci ? '<a class="mlink" href="#' + esc(x.c) + '">' + t("link") + ' →</a>' : '<span></span>') +
     '<span class="mvp">' + (x.v ? '<small>' + esc(mVol(x)) + '</small>' : '') + '<b>' + esc(x.p) + '</b></span></div></article>';
 }
@@ -334,6 +334,7 @@ function applyLang(){
   gPanel(gPane);
   drawMenuChips(); drawMenu();
   if (typeof drawCard === "function"){ drawChips(); drawCard(); }
+  if (typeof storyRefresh === "function") storyRefresh();
 }
 
 $("lang").addEventListener("click", e => {
@@ -409,6 +410,9 @@ function pubApply(d){
     if (r[11]) it.icon = String(r[11]);
     if (r[12]) it.ln = String(r[12]);
     if (pubYes(r[13])) it.lo = true;
+    /* «Узнать больше»: История, EN, Вкус, EN, О составе, EN, Цвет (пусто — текст сайта) */
+    const st = {}; ["h", "he", "t", "te", "a", "ae", "col"].forEach((k, j) => { if (r[15 + j]) st[k] = String(r[15 + j]); });
+    if (Object.keys(st).length) it.st = st;
     if (r[3] || r[5]) en[it.id] = [String(r[3] || ""), String(r[5] || "")];
     g.items.push(it);
   }
@@ -434,6 +438,7 @@ function pubRedraw(){
     drawChips(); drawCard();
   }
   if (typeof labRefresh === "function") labRefresh();
+  if (typeof storyRefresh === "function") storyRefresh();               // карточка «Узнать больше» — тексты из таблицы
   const h = decodeURIComponent(location.hash.slice(1));                  // QR на позицию, которой не было в старой копии
   if (h && h !== "bartenders" && h !== "card" && cardItem(h) && typeof jumpTo === "function" && !$("viewBar").hidden){
     const el = document.getElementById(h);

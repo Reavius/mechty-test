@@ -286,6 +286,8 @@ function showView(v){
 
 function route(){
   const h = decodeURIComponent(location.hash.slice(1));
+  if (h.indexOf("story-") === 0){ showView("bar"); if (typeof storyRoute === "function") storyRoute(h.slice(6)); return; }   // «Узнать больше» (QR)
+  if (typeof storyShut === "function") storyShut();                    // ушли с карточки кнопкой «назад» телефона
   if (h === "bartenders") return goBt();
   showView("bar");
   if (h === "card") gPanel("card");

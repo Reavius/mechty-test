@@ -1265,6 +1265,11 @@ async function pubLoad(){
   if (d.warn) $("pubWarn").textContent = "Внимание: " + d.warn + " — верните заголовки в первой строке листа, иначе гости увидят прежнее меню.";
 }
 /* перенос: то, что сейчас в файлах сайта, — строками таблицы */
+/* «Узнать больше»: тексты сайта по умолчанию в порядке столбцов листа «Карта» (История, EN, Вкус, EN, О составе, EN, Цвет) */
+const PUB_STK = ["h", "he", "t", "te", "a", "ae", "col"];
+const pubStDef = id => { const d = typeof STORY !== "undefined" && STORY[id] || {}; return PUB_STK.map(k => d[k] || ""); };
+/* позиции, у которых в таблице пусто там, где на сайте есть текст «Узнать больше» */
+const pubStMiss = () => pubRaw.items.filter(r => r[1] && pubStDef(r[1]).some((v, j) => v && !String(r[15 + j] == null ? "" : r[15 + j]).trim()));
 function pubSeedRows(){
   const P = PUB0, card = {};
   P.data.forEach(g => g.items.forEach(it => { card[it.id] = it; }));
@@ -1280,7 +1285,7 @@ function pubSeedRows(){
     groups.push([g.key, g.cat, g.short, g.rule || "", g.srok || "", g.store || "", g.serve ? "да" : "", g.nolabel ? "да" : "", ge[0] || "", ge[1] || "", ge[2] || ""]);
     g.items.forEach(it => { const e = P.en[it.id] || [];
       items.push([g.key, it.id, it.n, e[0] || "", it.m || "", e[1] || "", (it.c || []).join("; "), it.al || "", "", it.vol == null ? "" : it.vol,
-        it.img || "", (typeof LICON !== "undefined" && LICON[it.id]) || "", it.ln || "", it.lo ? "да" : "", ""]); });
+        it.img || "", (typeof LICON !== "undefined" && LICON[it.id]) || "", it.ln || "", it.lo ? "да" : "", ""].concat(pubStDef(it.id))); });
   });
   return {menu, items, groups};
 }
@@ -1330,6 +1335,9 @@ function pubDraw(){
         (pubOpen === "new:" + si ? '<li class="refli open">' + pubMenuForm(null, s, si) + '</li>' : '<li><button type="button" class="link pubadd" data-add="' + si + '">+ Добавить в «' + esc(s.sec) + '»</button></li>') + '</ul></section>';
     });
   } else {
+    const sm = pubStMiss();
+    if (sm.length && !q) html += '<p class="mgrsum pubstm">Тексты «Узнать больше» есть на сайте, но не в таблице: ' + mgrPl(sm.length, "позиция", "позиции", "позиций") +
+      '. <button type="button" class="link" id="pubStGo">Перенести в таблицу</button> — дальше их можно править здесь.</p>';
     const gname = {};
     pubRaw.groups.forEach(g => { gname[g[0]] = g[1]; });
     const keys = [...new Set(pubRaw.groups.map(g => g[0]).concat(pubRaw.items.map(r => r[0])))];
@@ -1367,8 +1375,9 @@ function pubMenuForm(r, s){
     '<p class="warn" id="pubMsg" role="status"></p><div class="refbtns"><button type="submit" class="wogo">Сохранить</button>' +
     (r ? '<button type="button" class="link pubdel" data-del="1">Удалить</button>' : "") + '<button type="button" class="link" data-cancel="1">Отмена</button></div></form>';
 }
+const pta = (id, label, val, ph) => '<div><label class="label" for="' + id + '">' + label + '</label><textarea id="' + id + '" rows="3" maxlength="600" placeholder="' + esc(ph || "") + '">' + esc(val == null ? "" : val) + '</textarea></div>';
 function pubCardForm(r, key){
-  const x = r || [key, "", "", "", "", "", "", "Не выявлены", "", "", "", "", "", "", ""];
+  const x = r || [key, "", "", "", "", "", "", "Не выявлены", "", "", "", "", "", "", ""], d = pubStDef(x[1] || "");
   const photos = [""].concat(Object.keys(PHW).map(k => "photos/" + k + ".webp")), icons = [""].concat(typeof LART !== "undefined" ? Object.keys(LART).filter(k => k !== "vine" && k !== "corner") : []);
   return '<form class="refed pubf" data-t="c" autocomplete="off" novalidate>' +
     '<div><label class="label" for="pcG">Раздел</label><select id="pcG">' + pubRaw.groups.map(g => '<option value="' + esc(g[0]) + '"' + (g[0] === x[0] ? " selected" : "") + '>' + esc(g[1] || g[0]) + '</option>').join("") + '</select></div>' +
@@ -1378,6 +1387,12 @@ function pubCardForm(r, key){
     pf("pcV", "Подача, мл", x[9], 'type="text" inputmode="numeric" maxlength="10"') + pf("pcL", "На этикетке", x[12], 'type="text" maxlength="40" placeholder="как название"') +
     psel("pcI", "Фото", photos, x[10] || "") + psel("pcK", "Значок", icons, x[11] || "") + '</div>' +
     pchk("pcLo", "Только для этикеток (гостям не показывать)", pubYes(x[13])) + pchk("pcH", "Скрыть", pubYes(x[14])) +
+    '<details class="incmapd pubst"><summary>«Узнать больше» — история, вкус, о составе</summary>' +
+    '<p class="wnhint">Карточка открывается с плитки меню у позиций с фото. Пустое поле — текст сайта (виден серым), «—» — раздел не показывать. ' +
+    'Чтобы влезло в экран телефона: история — до 300 знаков, вкус — до 240, о составе — до 220.</p>' +
+    pta("pcSh", "История", x[15], d[0]) + pta("pcShe", "История EN", x[16], d[1]) + pta("pcSt", "Вкус", x[17], d[2]) + pta("pcSte", "Вкус EN", x[18], d[3]) +
+    pta("pcSa", "О составе", x[19], d[4]) + pta("pcSae", "О составе EN", x[20], d[5]) +
+    '<div class="refgrid">' + pf("pcSc", "Цвет карточки", x[21], 'type="text" maxlength="7" placeholder="' + esc(d[6] || "по фото") + '"') + '</div></details>' +
     '<p class="warn" id="pubMsg" role="status"></p><div class="refbtns"><button type="submit" class="wogo">Сохранить</button>' +
     (r ? '<button type="button" class="link pubdel" data-del="1">Удалить</button>' : "") + '<button type="button" class="link" data-cancel="1">Отмена</button></div></form>';
 }
@@ -1390,6 +1405,16 @@ let pubT = 0;
 $("pubQ").addEventListener("input", () => { clearTimeout(pubT); pubT = setTimeout(pubDraw, 120); });
 $("pubWarn").addEventListener("click", e => { if (e.target.id === "pubRetry") pubLoad(); });
 $("pubList").addEventListener("click", async e => {
+  if (e.target.id === "pubStGo" && !pubBusy){                            // тексты «Узнать больше» с сайта — в пустые ячейки «Карты»
+    const rows = pubStMiss().map(r => ({id: r[1], v: pubStDef(r[1])}));
+    pubBusy = true; e.target.disabled = true; e.target.textContent = "Переносим…";
+    const d = await pubPost({mgr: "pubstory", rows});
+    pubBusy = false;
+    if (!d) return;
+    if (!d.ok){ e.target.disabled = false; e.target.textContent = pubErr(d); return; }
+    buzz(14); pubFetch(); pubLoad();
+    return;
+  }
   const b = e.target.closest("button.refrow");
   if (b){ pubOpen = pubOpen === b.dataset.k ? "" : b.dataset.k; buzz(8); return pubDraw(); }
   const a = e.target.closest("button[data-add], button[data-cadd]");
@@ -1428,7 +1453,9 @@ $("pubList").addEventListener("submit", async e => {
   } else {
     const isNew = pubOpen.startsWith("cnew:"), id = isNew ? "" : pubOpen.slice(2);
     if (!v("pcN")){ $("pubMsg").textContent = "Впишите название."; return; }
-    const row = [v("pcG"), id, v("pcN"), v("pcNe"), v("pcM"), v("pcMe"), v("pcC"), v("pcA") || "Не выявлены", v("pcAe"), pubNum(v("pcV")), v("pcI"), v("pcK"), v("pcL"), on("pcLo"), on("pcH")];
+    const row = [v("pcG"), id, v("pcN"), v("pcNe"), v("pcM"), v("pcMe"), v("pcC"), v("pcA") || "Не выявлены", v("pcAe"), pubNum(v("pcV")), v("pcI"), v("pcK"), v("pcL"), on("pcLo"), on("pcH"),
+      v("pcSh"), v("pcShe"), v("pcSt"), v("pcSte"), v("pcSa"), v("pcSae"), v("pcSc")];
+    if (v("pcSc") && !/^#[0-9a-f]{6}$/i.test(v("pcSc"))){ $("pubMsg").textContent = "Цвет — в виде #F07B55 (или пусто — по фото)."; return; }
     let after = "";
     if (isNew){ const same = pubRaw.items.filter(x => x[1] && x[0] === row[0]); after = same.length ? same[same.length - 1][1] : ""; }
     body = {mgr: "pubset", t: "c", act: isNew ? "add" : "set", key: id, after, row, base: isNew ? null : pubRaw.items.find(x => x[1] === id) || null};

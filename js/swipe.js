@@ -6,7 +6,7 @@
 
   const skip = el => {
     for (; el && el !== document.body; el = el.parentElement){
-      if (el.matches("input, textarea, select, canvas, dialog, [contenteditable]")) return true;
+      if (el.matches("input, textarea, select, canvas, dialog, [contenteditable], .story")) return true;
       if (el.scrollWidth > el.clientWidth + 2 && /auto|scroll/.test(getComputedStyle(el).overflowX)) return true;
     }
     return false;
