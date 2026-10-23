@@ -80,7 +80,24 @@ function jumpTo(id){
   if (!el || el.tagName !== "ARTICLE") return;
   document.querySelectorAll("article.hit").forEach(a => a.classList.remove("hit"));
   el.classList.add("hit");
-  el.scrollIntoView({block:"start", behavior:"smooth"});
+  jumpKeep(el);
+}
+/* Позицию держим на экране 3 с, пока страница догружается: анимации (ScrollTrigger.refresh) на загрузке и после
+   каждой картинки сбрасывают прокрутку, а картинки выше сдвигают позицию вниз (в Safari без поправки) — иначе по QR
+   на чистом телефоне видна только первая страница карты. Начали листать сами — больше не держим. */
+let jumpStop = null;
+function jumpKeep(el){
+  if (jumpStop) jumpStop();
+  const put = () => el.scrollIntoView({block: "start"});
+  put();
+  const want = el.getBoundingClientRect().top, until = Date.now() + 3000, evs = ["touchstart", "wheel", "keydown", "pointerdown"];
+  const t = setInterval(() => {
+    if (Date.now() > until || !el.isConnected) return stop();
+    if (Math.abs(el.getBoundingClientRect().top - want) > 4) put();
+  }, 100);
+  const stop = () => { clearInterval(t); evs.forEach(e => removeEventListener(e, stop, true)); jumpStop = null; };
+  evs.forEach(e => addEventListener(e, stop, {capture: true, passive: true}));
+  jumpStop = stop;
 }
 
 drawChips();
