@@ -65,11 +65,190 @@ function stTone(hex){
 
 let stEl = null, stId = "", stPushed = false, stFrom = null, stBack = null, stQrEl = null;
 const stReduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* ── живая сцена за фото: волны и пузырьки в цвете коктейля, плавающие ингредиенты — петля 3 с, как гифка ──
+   Всё движется по кругу с периодом ровно 3 с (синусы и подъём пузырьков кратны периоду), поэтому шва нет.
+   Внутри бокала — свои пузырьки и блик (маска по фото). Анимация идёт, только пока карточка открыта и видна;
+   «уменьшить движение» в настройках телефона — один неподвижный кадр. */
+const ST_LOOP = 3000;
+const STFX = {
+  pantera: {it: ["pear", "lime", "spark"], fizz: 8, glass: 5},
+  pornstar: {it: ["passion", "flower", "spark"], fizz: 10, glass: 10},
+  tropiki: {it: ["pineapple", "passion", "orange"], fizz: 5, glass: 4},
+  maitai: {it: ["pineapple", "orange", "lime", "leaf"], fizz: 4, glass: 4},
+  negroni: {it: ["orange", "ice"], fizz: 3, glass: 0},
+  hugo: {it: ["cucumber", "lime", "flower", "leaf"], fizz: 14, glass: 14},
+  bluecolada: {it: ["pineapple", "coconut"], fizz: 6, glass: 4, sea: 1},
+  summer: {it: ["strawberry", "orange"], fizz: 12, glass: 12},
+  chili: {it: ["chili", "berry", "lemon"], fizz: 4, glass: 3},
+  grusha: {it: ["pear", "peach", "flower"], fizz: 4, glass: 0},
+  "c-fiero": {it: ["orange", "ice"], fizz: 14, glass: 14},
+  "c-bosford": {it: ["lime", "ice", "juniper"], fizz: 16, glass: 16},
+  "c-watermelon": {it: ["watermelon", "ice"], fizz: 14, glass: 14},
+  "c-collins": {it: ["leaf", "ice", "lemon"], fizz: 14, glass: 14},
+  "c-aperol": {it: ["orange", "ice"], fizz: 14, glass: 14},
+  "c-campari": {it: ["orange", "ice"], fizz: 14, glass: 14},
+  "c-sarti": {it: ["grapefruit", "lime"], fizz: 14, glass: 14}
+};
+const TAU = Math.PI * 2;
+/* повторяемые «случайные» числа от id — сцена у коктейля всегда одна и та же */
+function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+/* ингредиенты: рисуются в точке (0,0), размер r */
+const ST_DRAW = {
+  citrus(x, r, rind, pith, flesh){
+    x.fillStyle = rind; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+    x.fillStyle = pith; x.beginPath(); x.arc(0, 0, r * .86, 0, TAU); x.fill();
+    x.fillStyle = flesh; x.beginPath(); x.arc(0, 0, r * .78, 0, TAU); x.fill();
+    x.strokeStyle = pith; x.lineWidth = r * .07;
+    for (let k = 0; k < 8; k++){ const a = k * TAU / 8; x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(a) * r * .78, Math.sin(a) * r * .78); x.stroke(); }
+    x.fillStyle = pith; x.beginPath(); x.arc(0, 0, r * .1, 0, TAU); x.fill();
+  },
+  orange(x, r){ ST_DRAW.citrus(x, r, "#f08a1c", "#fff1d6", "#ffab3d"); },
+  lime(x, r){ ST_DRAW.citrus(x, r, "#4e9d34", "#effbd8", "#a9d86a"); },
+  lemon(x, r){ ST_DRAW.citrus(x, r, "#f0cf24", "#fffbe0", "#ffe96b"); },
+  grapefruit(x, r){ ST_DRAW.citrus(x, r, "#ee8a52", "#fff0e6", "#ff8f86"); },
+  cucumber(x, r){
+    x.fillStyle = "#2f6b2d"; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+    x.fillStyle = "#cfe9a3"; x.beginPath(); x.arc(0, 0, r * .86, 0, TAU); x.fill();
+    x.fillStyle = "#e8f6cf";
+    for (let k = 0; k < 6; k++){ const a = k * TAU / 6; x.beginPath(); x.ellipse(Math.cos(a) * r * .38, Math.sin(a) * r * .38, r * .12, r * .06, a, 0, TAU); x.fill(); }
+  },
+  leaf(x, r){
+    x.fillStyle = "#3e9a4a"; x.beginPath(); x.moveTo(-r, 0); x.quadraticCurveTo(0, -r * .75, r, 0); x.quadraticCurveTo(0, r * .75, -r, 0); x.fill();
+    x.strokeStyle = "#9fd88f"; x.lineWidth = r * .07; x.beginPath(); x.moveTo(-r * .85, 0); x.lineTo(r * .85, 0); x.stroke();
+  },
+  flower(x, r){
+    x.fillStyle = "#fffaf0";
+    for (let k = 0; k < 5; k++){ const a = k * TAU / 5; x.beginPath(); x.ellipse(Math.cos(a) * r * .5, Math.sin(a) * r * .5, r * .48, r * .3, a, 0, TAU); x.fill(); }
+    x.fillStyle = "#f5c842"; x.beginPath(); x.arc(0, 0, r * .26, 0, TAU); x.fill();
+  },
+  strawberry(x, r){
+    x.fillStyle = "#e2394a"; x.beginPath(); x.moveTo(0, r); x.bezierCurveTo(-r * 1.1, r * .1, -r * .8, -r * .8, 0, -r * .6); x.bezierCurveTo(r * .8, -r * .8, r * 1.1, r * .1, 0, r); x.fill();
+    x.fillStyle = "#ffe08a";
+    for (const [a, b] of [[-.35, -.2], [.3, -.25], [0, .1], [-.3, .3], [.3, .3], [0, .6]]){ x.beginPath(); x.arc(a * r, b * r, r * .05, 0, TAU); x.fill(); }
+    x.fillStyle = "#3e9a4a"; x.beginPath(); x.ellipse(0, -r * .65, r * .45, r * .14, 0, 0, TAU); x.fill();
+  },
+  berry(x, r){ x.fillStyle = "#c8243a"; x.beginPath(); x.arc(0, 0, r * .6, 0, TAU); x.fill(); x.fillStyle = "rgba(255,255,255,.55)"; x.beginPath(); x.arc(-r * .2, -r * .2, r * .15, 0, TAU); x.fill(); },
+  juniper(x, r){ x.fillStyle = "#3d4d8f"; x.beginPath(); x.arc(0, 0, r * .55, 0, TAU); x.fill(); x.fillStyle = "rgba(220,230,255,.5)"; x.beginPath(); x.arc(-r * .18, -r * .18, r * .14, 0, TAU); x.fill(); },
+  chili(x, r){
+    x.fillStyle = "#d8262c"; x.beginPath(); x.moveTo(-r * .9, -r * .2); x.quadraticCurveTo(r * .2, -r * .5, r, r * .6); x.quadraticCurveTo(r * .1, r * .1, -r * .8, r * .25); x.closePath(); x.fill();
+    x.fillStyle = "#3e8a3a"; x.beginPath(); x.ellipse(-r * .9, 0, r * .2, r * .26, 0, 0, TAU); x.fill();
+  },
+  pear(x, r){
+    x.fillStyle = "#c7d455"; x.beginPath(); x.arc(0, r * .3, r * .62, 0, TAU); x.arc(0, -r * .3, r * .4, 0, TAU); x.fill();
+    x.strokeStyle = "#7a5a2e"; x.lineWidth = r * .1; x.beginPath(); x.moveTo(0, -r * .65); x.lineTo(r * .12, -r * .95); x.stroke();
+  },
+  peach(x, r){ x.fillStyle = "#ffab7d"; x.beginPath(); x.arc(0, 0, r * .75, 0, TAU); x.fill(); x.fillStyle = "#ff8a6a"; x.beginPath(); x.arc(r * .25, r * .2, r * .45, 0, TAU); x.fill();
+    x.strokeStyle = "rgba(170,70,50,.45)"; x.lineWidth = r * .06; x.beginPath(); x.moveTo(0, -r * .7); x.quadraticCurveTo(-r * .25, 0, 0, r * .7); x.stroke(); },
+  passion(x, r){
+    x.fillStyle = "#6b2a5a"; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+    x.fillStyle = "#f6c531"; x.beginPath(); x.arc(0, 0, r * .82, 0, TAU); x.fill();
+    x.fillStyle = "#3a2a14";
+    for (let k = 0; k < 9; k++){ const a = k * 2.4, d = r * .5 * Math.sqrt((k + .5) / 9); x.beginPath(); x.arc(Math.cos(a) * d, Math.sin(a) * d, r * .08, 0, TAU); x.fill(); }
+  },
+  pineapple(x, r){
+    x.fillStyle = "#f6c945"; x.beginPath(); x.moveTo(-r, r * .6); x.lineTo(0, -r); x.lineTo(r, r * .6); x.closePath(); x.fill();
+    x.strokeStyle = "rgba(190,130,20,.6)"; x.lineWidth = r * .06;
+    for (let k = -2; k <= 2; k++){ x.beginPath(); x.moveTo(k * r * .35 - r * .5, r * .6); x.lineTo(k * r * .35 + r * .5, -r * .2); x.stroke(); }
+    x.fillStyle = "#c88a2a"; x.fillRect(-r, r * .45, r * 2, r * .18);
+  },
+  coconut(x, r){ x.fillStyle = "#6b4a32"; x.beginPath(); x.arc(0, 0, r, 0, Math.PI); x.fill(); x.fillStyle = "#fdfaf3"; x.beginPath(); x.arc(0, 0, r * .82, 0, Math.PI); x.fill(); x.fillStyle = "#6b4a32"; x.fillRect(-r, -r * .06, r * 2, r * .12); },
+  watermelon(x, r){
+    x.fillStyle = "#3d8a3a"; x.beginPath(); x.moveTo(-r, -r * .5); x.lineTo(r, -r * .5); x.lineTo(0, r); x.closePath(); x.fill();
+    x.fillStyle = "#ec4a5a"; x.beginPath(); x.moveTo(-r * .8, -r * .35); x.lineTo(r * .8, -r * .35); x.lineTo(0, r * .78); x.closePath(); x.fill();
+    x.fillStyle = "#2a1a1a"; for (const [a, b] of [[-.3, -.1], [.3, -.1], [0, .25]]){ x.beginPath(); x.ellipse(a * r, b * r, r * .06, r * .1, 0, 0, TAU); x.fill(); }
+  },
+  ice(x, r){
+    x.fillStyle = "rgba(255,255,255,.28)"; x.strokeStyle = "rgba(255,255,255,.75)"; x.lineWidth = r * .07;
+    x.beginPath(); if (x.roundRect) x.roundRect(-r * .8, -r * .8, r * 1.6, r * 1.6, r * .3); else x.rect(-r * .8, -r * .8, r * 1.6, r * 1.6); x.fill(); x.stroke();
+    x.fillStyle = "rgba(255,255,255,.7)"; x.beginPath(); x.ellipse(-r * .35, -r * .4, r * .25, r * .1, -.6, 0, TAU); x.fill();
+  },
+  spark(x, r){ x.fillStyle = "rgba(255,255,255,.9)"; x.beginPath(); for (let k = 0; k < 8; k++){ const a = k * TAU / 8, d = k % 2 ? r * .2 : r * .7; x.lineTo(Math.cos(a) * d, Math.sin(a) * d); } x.closePath(); x.fill(); }
+};
+let stFx = null;
+/* сцена коктейля: фон, волны, ингредиенты, пузырьки (за бокалом) и пузырьки в бокале */
+function stFxMake(id, tone){
+  const cfg = STFX[id] || {it: ["spark"], fizz: 6, glass: 0}, R = stRand(id), its = [];
+  cfg.it.forEach((type, i) => { for (let k = 0; k < 2; k++) its.push({type, x: (i * 2 + k + .5) / (cfg.it.length * 2) + (R() - .5) * .1, y: .14 + R() * .62,
+    r: .055 + R() * .035, ph: R(), ax: .015 + R() * .02, ay: .02 + R() * .03, rot: R() * TAU, sw: .25 + R() * .35, back: R() < .45}); });
+  const bub = n => Array.from({length: n}, () => ({x: R(), y: R(), r: .006 + R() * .012, k: R() < .5 ? 1 : 2, ph: R()}));
+  return {id, cfg, tone, its, fizz: bub(cfg.fizz), glass: bub(cfg.glass), raf: 0};
+}
+function stFxSize(c){ const d = Math.min(2, window.devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight; if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)){ c.width = Math.round(w * d); c.height = Math.round(h * d); } return {w, h, d}; }
+function stFxFrame(p){
+  const f = stFx, c = $("stBg"), g = $("stFizz");
+  if (!f || !c) return;
+  const {w, h, d} = stFxSize(c), x = c.getContext("2d"), H = f.tone.h, Sa = f.tone.s, m = Math.min(w, h);
+  x.setTransform(d, 0, 0, d, 0, 0);
+  /* фон: светлый центр в тон коктейля, мягкое «дыхание» света */
+  const glow = .5 + .5 * Math.sin(TAU * p);
+  const bg = x.createRadialGradient(w / 2, h * .55, m * .1, w / 2, h * .55, Math.max(w, h) * .75);
+  bg.addColorStop(0, "hsl(" + H + " " + Sa * .5 + "% " + (93 - glow * 2) + "%)");
+  bg.addColorStop(.6, "hsl(" + H + " " + Sa * .8 + "% 80%)");
+  bg.addColorStop(1, "hsl(" + H + " " + Sa + "% 66%)");
+  x.fillStyle = bg; x.fillRect(0, 0, w, h);
+  /* лучи света сверху, медленно качаются */
+  x.save(); x.globalAlpha = .18; x.fillStyle = "#fff";
+  for (let k = 0; k < 3; k++){ const a = -.35 + k * .35 + .05 * Math.sin(TAU * (p + k / 3)); x.beginPath(); x.moveTo(w * (.35 + k * .15), -10); x.lineTo(w * (.35 + k * .15) + Math.tan(a) * h + 40, h); x.lineTo(w * (.35 + k * .15) + Math.tan(a) * h - 10, h); x.closePath(); x.fill(); }
+  x.restore();
+  const items = back => f.its.filter(o => o.back === back).forEach(o => {
+    const r = o.r * m * (o.back ? .8 : 1);
+    x.save();
+    x.translate(o.x * w + Math.sin(TAU * (p + o.ph)) * o.ax * w, o.y * h + Math.cos(TAU * (p + o.ph)) * o.ay * h);
+    x.rotate(o.rot + Math.sin(TAU * (p + o.ph)) * o.sw);
+    x.globalAlpha = o.back ? .45 : .92;
+    ST_DRAW[o.type](x, r);
+    x.restore();
+  });
+  items(true);
+  /* волны «жидкости» внизу — три слоя, бегут по кругу */
+  const amp = f.cfg.sea ? m * .035 : m * .018;
+  for (let k = 0; k < 3; k++){
+    const base = h * ((f.cfg.sea ? .62 : .74) + k * .08);
+    x.fillStyle = "hsla(" + H + " " + Sa + "% " + (62 - k * 8) + "% / " + (.32 + k * .14) + ")";
+    x.beginPath(); x.moveTo(0, h);
+    for (let X = 0; X <= w + 8; X += 8) x.lineTo(X, base + Math.sin(TAU * (X / w * (1.2 + k * .4) - p * (k % 2 ? -1 : 1)) + k) * amp);
+    x.lineTo(w, h); x.closePath(); x.fill();
+  }
+  /* пузырьки за бокалом: поднимаются 1–2 раза за петлю */
+  x.strokeStyle = "rgba(255,255,255,.7)"; x.fillStyle = "rgba(255,255,255,.22)"; x.lineWidth = 1;
+  f.fizz.forEach(b => {
+    const y = h + 10 - (((b.y + p * b.k) % 1) * (h + 20)), X = b.x * w + Math.sin(TAU * (p * 2 + b.ph)) * 5, r = Math.max(1.5, b.r * m);
+    x.beginPath(); x.arc(X, y, r, 0, TAU); x.fill(); x.stroke();
+  });
+  items(false);
+  /* пузырьки в бокале — холст с маской по фото */
+  if (g){
+    const s = stFxSize(g), y = g.getContext("2d");
+    y.setTransform(s.d, 0, 0, s.d, 0, 0); y.clearRect(0, 0, s.w, s.h);
+    if (f.glass.length){
+      y.fillStyle = "rgba(255,255,255,.75)";
+      f.glass.forEach(b => {
+        const yy = s.h * .95 - (((b.y + p * b.k) % 1) * s.h * .6), X = s.w * (.3 + b.x * .4) + Math.sin(TAU * (p * 2 + b.ph)) * 2;
+        y.beginPath(); y.arc(X, yy, Math.max(1, b.r * s.w * .6), 0, TAU); y.fill();
+      });
+    }
+  }
+}
+function stFxLoop(t){
+  if (!stFx || !stId || document.hidden) return (stFx && (stFx.raf = 0));
+  stFxFrame((t % ST_LOOP) / ST_LOOP);
+  stFx.raf = requestAnimationFrame(stFxLoop);
+}
+function stFxStart(id, tone){
+  stFxStop();
+  stFx = stFxMake(id, tone);
+  if (stReduce()) return void requestAnimationFrame(() => stFxFrame(.25));   // один неподвижный кадр
+  stFx.raf = requestAnimationFrame(stFxLoop);
+}
+function stFxStop(){ if (stFx && stFx.raf) cancelAnimationFrame(stFx.raf); if (stFx) stFx.raf = 0; }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && stFx && stId && !stFx.raf && !stReduce()) stFx.raf = requestAnimationFrame(stFxLoop); });
+
 function stBuild(){
   stEl = document.createElement("div");
   stEl.className = "story"; stEl.id = "story"; stEl.hidden = true;
   stEl.setAttribute("role", "dialog"); stEl.setAttribute("aria-modal", "true"); stEl.setAttribute("aria-labelledby", "stName");
-  stEl.innerHTML = '<div class="stph"><img id="stImg" alt="" decoding="async"></div>' +
+  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async">' +
+    '<canvas class="stfizz" id="stFizz" aria-hidden="true"></canvas><span class="stshine" aria-hidden="true"></span></div></div>' +
     '<div class="stpanel"><button type="button" class="stback" id="stBack">' + ST_ICON.back + '<span></span></button>' +
     '<p class="stkick" id="stKick"></p><h2 id="stName"></h2>' +
     '<div class="stpages" id="stPages"></div>' +
@@ -92,7 +271,7 @@ function stBuild(){
       else if (!e.shiftKey && document.activeElement === f[f.length - 1]){ e.preventDefault(); f[0].focus(); }
     }
   });
-  addEventListener("resize", () => { if (stId) stFit(); });
+  addEventListener("resize", () => { if (stId){ stFit(); if (stReduce()) stFxFrame(.25); } });
 }
 const stPage = () => { const p = $("stPages"); return p && p.clientWidth ? Math.round(p.scrollLeft / p.clientWidth) : 0; };
 function stGo(i){ const p = $("stPages"); buzz(8); p.scrollTo({left: i * p.clientWidth, behavior: stReduce() ? "auto" : "smooth"}); }
@@ -115,8 +294,11 @@ function stDraw(it){
   const s = storyOf(it), en = EN(), m = storyMenu(it.id), tone = stTone(s.col);
   const tx = (ru, eng) => en ? eng || ru : ru;
   stEl.style.setProperty("--st-h", tone.h); stEl.style.setProperty("--st-s", tone.s + "%");
-  const img = $("stImg");
+  const img = $("stImg"), pw = PHW[String(it.img).replace(/^.*\/|\.webp$/g, "")];
   if (img.getAttribute("src") !== it.img) img.src = it.img;
+  $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — маска пузырьков и блика совпадает
+  $("stGlass").style.setProperty("--stimg", 'url("' + it.img + '")');
+  if (!stFx || stFx.id !== it.id) stFxStart(it.id, tone); else stFx.tone = tone;
   img.alt = cname(it);
   $("stBack").querySelector("span").textContent = su("back");
   $("stKick").textContent = m ? m.sec : "";
@@ -124,7 +306,7 @@ function stDraw(it){
   const sec = (h, p) => p ? '<h3>' + esc(h) + '</h3><p>' + esc(p) + '</p>' : "";
   const p1 = sec(su("story"), tx(s.h, s.he)) + sec(su("taste"), tx(s.t, s.te));
   const vol = m && m.x.v ? m.x.v : it.vol, al = en && it.alEn ? it.alEn : en ? alEn(it.al) : it.al;
-  const dl = [[su("comp"), comp(it)], [su("abv"), it.abv ? it.abv + "%" : ""], [su("vol"), vol ? vol + " " + t("ml") : ""], [su("al"), al || ""]]
+  const dl = [[su("comp"), comp(it)], [su("abv"), it.abv ? "≈ " + it.abv + "%" : ""], [su("vol"), vol ? vol + " " + t("ml") : ""], [su("al"), al || ""]]
     .filter(r => r[1]).map(r => '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>').join("");
   const p2 = sec(su("about"), tx(s.a, s.ae)) + (dl ? '<dl class="stdl">' + dl + '</dl>' : "");
   $("stPages").innerHTML = [p1, p2].filter(Boolean).map(h => '<section class="stpage">' + h + '</section>').join("");
@@ -155,7 +337,7 @@ function storyOpen(id, from){
 }
 function storyClose(){
   if (!stId || !stEl) return;
-  const from = stFrom, done = () => { stEl.hidden = true; document.documentElement.classList.remove("stopen"); };
+  const from = stFrom, done = () => { stEl.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; };
   stId = ""; stFrom = null; stPushed = false;
   if (stQrEl) stQrEl.hidden = true;
   const r = from && from.isConnected && from.getBoundingClientRect();

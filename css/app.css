@@ -927,7 +927,16 @@ html.stopen{overflow:hidden}
 .stph{position:relative;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(110% 95% at 50% 62%,#fff 0%,var(--st-ph) 72%)}
 .stph::after{content:"";position:absolute;inset:auto 0 0;height:22%;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.08))}
-.stph img{height:88%;width:auto;max-width:86%;object-fit:contain;filter:drop-shadow(0 16px 22px rgba(0,0,0,.2));margin-top:4%}
+.stbg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.stglass{position:relative;z-index:1;height:88%;max-width:86%;margin-top:4%;animation:stfloat 3s ease-in-out infinite}
+.stglass img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 16px 22px rgba(0,0,0,.22))}
+.stfizz,.stshine{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;
+  -webkit-mask:var(--stimg) center/100% 100% no-repeat;mask:var(--stimg) center/100% 100% no-repeat}
+.stshine{background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.5) 50%,transparent 58%);background-size:300% 100%;
+  animation:stshine 3s ease-in-out infinite;mix-blend-mode:screen}
+@keyframes stfloat{0%,100%{transform:translateY(0) rotate(-.8deg)}50%{transform:translateY(-2.5%) rotate(.8deg)}}
+@keyframes stshine{0%{background-position:120% 0}55%,100%{background-position:-20% 0}}
+@media (prefers-reduced-motion:reduce){.stglass,.stshine{animation:none}}
 .stpanel{display:flex;flex-direction:column;min-height:0;padding:18px 20px calc(14px + env(safe-area-inset-bottom))}
 .stback{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;z-index:2;display:inline-flex;align-items:center;gap:2px;
   padding:9px 15px 9px 9px;border-radius:999px;border:0;background:rgba(14,16,20,.62);color:#fff;font:700 14px/1 var(--sans);cursor:pointer;
@@ -968,7 +977,7 @@ html.stopen{overflow:hidden}
 /* горизонтально (и широкий экран) — фото слева, панель справа */
 @media (orientation:landscape) and (min-width:560px), (min-width:900px){
   .story{grid-template-rows:none;grid-template-columns:minmax(0,46fr) minmax(0,54fr)}
-  .stph img{height:84%;margin-top:0}
+  .stglass{height:84%;margin-top:0}
   .stpanel{padding:calc(18px + env(safe-area-inset-top)) calc(28px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) 28px;justify-content:center}
   .stpages{margin:0 -28px}
   .stpage{padding:2px 28px}
