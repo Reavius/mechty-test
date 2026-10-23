@@ -1392,7 +1392,7 @@ function writeoffs(p) {
    История — лист «Заметка» в «Журнале списаний». Повтор add с тем же id ничего не задваивает. */
 const WN_SHEET = "Заметка";
 const WN_HEAD = ["id", "Наименование", "Ед. изм.", "Кол-во", "Причина", "Записал", "Когда", "Взял в акт", "Когда взял", "Списано в акте", "Телефон"];
-const WN_HOLD = 24 * 3600e3, WN_V = 2;
+const WN_HOLD = 24 * 3600e3, WN_V = 2, WN_MAX = 100;                // в заметке (открытые и взятые в акт) — не больше 100 позиций
 /* у каждого вида своя заметка: лист «Заметка» в журнале списаний и в журнале проработок */
 function wnSheet(create, kind) {
   const log = woSheet(woKind(kind), create);
@@ -1430,7 +1430,9 @@ function wnRows(sh) {
 const wnItem = x => ({ id: x.id, n: x.n, u: x.u, q: x.q, why: x.why, who: x.who, at: x.at });
 const wnOpen = rows => rows.filter(x => !x.closed && !x.held).map(wnItem);
 const wnMine = (rows, who) => who ? rows.filter(x => x.held && x.took === who).map(x => Object.assign(wnItem(x), { until: x.since + WN_HOLD, dev: x.dev })) : [];
-const wnAns = (rows, who, more, kind) => Object.assign({ ok: true, v: WN_V, k: woKind(kind), items: wnOpen(rows), mine: wnMine(rows, who) }, more || {});
+/* взятые в акт (ещё не списанные) — заметка показывает их серыми: кто взял и когда вернутся, если акт не создадут */
+const wnHeld = rows => rows.filter(x => x.held).map(x => Object.assign(wnItem(x), { took: x.took, until: x.since + WN_HOLD }));
+const wnAns = (rows, who, more, kind) => Object.assign({ ok: true, v: WN_V, k: woKind(kind), items: wnOpen(rows), mine: wnMine(rows, who), held: wnHeld(rows) }, more || {});
 const wnIds = v => String(v || "").split(",").map(x => x.replace(/[^\w-]/g, "").slice(0, 64)).filter(Boolean);
 
 function wnote(p) {
@@ -1447,6 +1449,7 @@ function wnote(p) {
       const why = kind === "pr" ? "Проработка" : clean(p.why, 120);         // у проработки причина всегда одна
       if (!id || !n || !(q > 0)) return { error: "bad" };
       if (!rows.some(x => x.id === id)) {
+        if (rows.filter(x => !x.closed).length >= WN_MAX) return wnAns(rows, who, { error: "full", max: WN_MAX, ok: false }, kind);
         const top = Math.max(sh.getLastRow(), 1) + 1;
         ensureRows(sh, top);
         sh.getRange(top, 1, 1, 3).setNumberFormat("@"); sh.getRange(top, 5, 1, 2).setNumberFormat("@");

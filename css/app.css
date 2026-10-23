@@ -582,6 +582,8 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .wnin .wnmove{margin:0;background:var(--accent);color:var(--bg)}
 .wnlist li{padding:8px 0;border-bottom:1px solid var(--line)}
 .wnlist li.pend{opacity:.7}
+.wnlist li.held{opacity:.5}
+.wnlist li.held .wnrow b{color:var(--muted)}
 .wnlist .wnempty{font-size:13.5px;color:var(--muted)}
 .wnrow{display:flex;justify-content:space-between;gap:12px;font-size:14.5px;font-weight:600}
 .wnrow span{min-width:0;overflow-wrap:anywhere}
