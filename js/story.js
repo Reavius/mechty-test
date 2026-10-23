@@ -65,168 +65,277 @@ function stTone(hex){
 
 let stEl = null, stId = "", stPushed = false, stFrom = null, stBack = null, stQrEl = null;
 const stReduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-/* ── живая сцена за фото: волны и пузырьки в цвете коктейля, плавающие ингредиенты — петля 3 с, как гифка ──
-   Всё движется по кругу с периодом ровно 3 с (синусы и подъём пузырьков кратны периоду), поэтому шва нет.
-   Внутри бокала — свои пузырьки и блик (маска по фото). Анимация идёт, только пока карточка открыта и видна;
-   «уменьшить движение» в настройках телефона — один неподвижный кадр. */
+/* ── живая сцена за фото: петля 3 с, как гифка ──
+   Глубокий фон в цвете коктейля, мягкие огни бара (боке) и блики света, глянцевая стойка с отражением бокала,
+   пузырьки и ингредиенты из состава — объёмные, с текстурой и бликами; дальние — размыты (глубина резкости).
+   Всё движется по кругу ровно за 3 с, поэтому шва нет. Ингредиенты рисуются один раз в спрайты, кадр — только их
+   перемещение. Анимация идёт, только пока карточка открыта и видна; «уменьшить движение» — один неподвижный кадр. */
 const ST_LOOP = 3000;
 const STFX = {
-  pantera: {it: ["pear", "lime", "spark"], fizz: 8, glass: 5},
-  pornstar: {it: ["passion", "flower", "spark"], fizz: 10, glass: 10},
+  pantera: {it: ["pear", "lime", "berry"], fizz: 8, glass: 5},
+  pornstar: {it: ["passion", "vanilla"], fizz: 10, glass: 10},
   tropiki: {it: ["pineapple", "passion", "orange"], fizz: 5, glass: 4},
-  maitai: {it: ["pineapple", "orange", "lime", "leaf"], fizz: 4, glass: 4},
-  negroni: {it: ["orange", "ice"], fizz: 3, glass: 0},
-  hugo: {it: ["cucumber", "lime", "flower", "leaf"], fizz: 14, glass: 14},
-  bluecolada: {it: ["pineapple", "coconut"], fizz: 6, glass: 4, sea: 1},
-  summer: {it: ["strawberry", "orange"], fizz: 12, glass: 12},
-  chili: {it: ["chili", "berry", "lemon"], fizz: 4, glass: 3},
-  grusha: {it: ["pear", "peach", "flower"], fizz: 4, glass: 0},
-  "c-fiero": {it: ["orange", "ice"], fizz: 14, glass: 14},
+  maitai: {it: ["pineapple", "orange", "lime", "mint"], fizz: 4, glass: 4},
+  negroni: {it: ["orange", "ice", "orange"], fizz: 3, glass: 0},
+  hugo: {it: ["cucumber", "lime", "elder", "mint"], fizz: 14, glass: 14},
+  bluecolada: {it: ["pineapple", "coconut", "ice"], fizz: 6, glass: 4},
+  summer: {it: ["strawberry", "orange", "vanilla"], fizz: 12, glass: 12},
+  chili: {it: ["chili", "barberry", "lemon"], fizz: 4, glass: 3},
+  grusha: {it: ["pear", "peach", "jasmine"], fizz: 4, glass: 0},
+  "c-fiero": {it: ["blood", "ice", "orange"], fizz: 14, glass: 14},
   "c-bosford": {it: ["lime", "ice", "juniper"], fizz: 16, glass: 16},
-  "c-watermelon": {it: ["watermelon", "ice"], fizz: 14, glass: 14},
-  "c-collins": {it: ["leaf", "ice", "lemon"], fizz: 14, glass: 14},
-  "c-aperol": {it: ["orange", "ice"], fizz: 14, glass: 14},
-  "c-campari": {it: ["orange", "ice"], fizz: 14, glass: 14},
-  "c-sarti": {it: ["grapefruit", "lime"], fizz: 14, glass: 14}
+  "c-watermelon": {it: ["watermelon", "ice", "mint"], fizz: 14, glass: 14},
+  "c-collins": {it: ["sorrel", "ice", "lemon"], fizz: 14, glass: 14},
+  "c-aperol": {it: ["orange", "ice", "orange"], fizz: 14, glass: 14},
+  "c-campari": {it: ["blood", "ice", "orange"], fizz: 14, glass: 14},
+  "c-sarti": {it: ["grapefruit", "lime", "ice"], fizz: 14, glass: 14}
 };
 const TAU = Math.PI * 2;
-/* повторяемые «случайные» числа от id — сцена у коктейля всегда одна и та же */
-function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
-/* ингредиенты: рисуются в точке (0,0), размер r */
+/* повторяемые «случайные» числа от строки — сцена и текстуры у коктейля всегда одни и те же */
+function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; s = s || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+const stRG = (x, x0, y0, r0, x1, y1, r1, stops) => { const g = x.createRadialGradient(x0, y0, r0, x1, y1, r1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; };
+const stLG = (x, x0, y0, x1, y1, stops) => { const g = x.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; };
+/* общий глянцевый блик и мягкая тень снизу — объём */
+function stGloss(x, r, a){ x.save(); x.globalCompositeOperation = "source-atop";
+  x.fillStyle = stRG(x, -r * .35, -r * .45, 0, -r * .35, -r * .45, r * .9, [[0, "rgba(255,255,255," + (a || .55) + ")"], [.35, "rgba(255,255,255,.12)"], [1, "rgba(255,255,255,0)"]]); x.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+  x.fillStyle = stRG(x, r * .3, r * .5, 0, r * .3, r * .5, r * 1.2, [[0, "rgba(0,0,0,0)"], [.5, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,.28)"]]); x.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+  x.restore(); }
+/* ингредиенты: рисуются в точке (0,0) радиусом r; R — свои случайные числа для текстуры */
 const ST_DRAW = {
-  citrus(x, r, rind, pith, flesh){
-    x.fillStyle = rind; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
-    x.fillStyle = pith; x.beginPath(); x.arc(0, 0, r * .86, 0, TAU); x.fill();
-    x.fillStyle = flesh; x.beginPath(); x.arc(0, 0, r * .78, 0, TAU); x.fill();
-    x.strokeStyle = pith; x.lineWidth = r * .07;
-    for (let k = 0; k < 8; k++){ const a = k * TAU / 8; x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(a) * r * .78, Math.sin(a) * r * .78); x.stroke(); }
-    x.fillStyle = pith; x.beginPath(); x.arc(0, 0, r * .1, 0, TAU); x.fill();
+  wheel(x, r, R, c){                                       // долька цитруса: цедра, белая подкладка, сегменты с соком
+    x.fillStyle = stRG(x, 0, 0, r * .8, 0, 0, r, [[0, c.rind[0]], [1, c.rind[1]]]); x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+    x.fillStyle = "rgba(0,0,0,.18)"; for (let k = 0; k < 90; k++){ const a = R() * TAU, d = r * (.9 + R() * .08); x.beginPath(); x.arc(Math.cos(a) * d, Math.sin(a) * d, r * .012, 0, TAU); x.fill(); }
+    x.fillStyle = c.pith; x.beginPath(); x.arc(0, 0, r * .88, 0, TAU); x.fill();
+    const n = 10;
+    for (let k = 0; k < n; k++){
+      const a0 = k * TAU / n + .045, a1 = (k + 1) * TAU / n - .045;
+      x.save(); x.beginPath(); x.moveTo(Math.cos((a0 + a1) / 2) * r * .1, Math.sin((a0 + a1) / 2) * r * .1); x.arc(0, 0, r * .8, a0, a1); x.closePath(); x.clip();
+      x.fillStyle = stRG(x, 0, 0, r * .1, 0, 0, r * .8, [[0, c.flesh[0]], [.7, c.flesh[1]], [1, c.flesh[2]]]); x.fillRect(-r, -r, r * 2, r * 2);
+      x.strokeStyle = c.vesicle; x.lineWidth = r * .022; x.lineCap = "round";
+      for (let v = 0; v < 26; v++){ const a = a0 + R() * (a1 - a0), d0 = r * (.2 + R() * .5), L = r * (.06 + R() * .1); x.beginPath(); x.moveTo(Math.cos(a) * d0, Math.sin(a) * d0); x.lineTo(Math.cos(a) * (d0 + L), Math.sin(a) * (d0 + L)); x.stroke(); }
+      x.restore();
+    }
+    x.fillStyle = c.pith; x.beginPath(); x.arc(0, 0, r * .1, 0, TAU); x.fill();
+    stGloss(x, r, .4);
   },
-  orange(x, r){ ST_DRAW.citrus(x, r, "#f08a1c", "#fff1d6", "#ffab3d"); },
-  lime(x, r){ ST_DRAW.citrus(x, r, "#4e9d34", "#effbd8", "#a9d86a"); },
-  lemon(x, r){ ST_DRAW.citrus(x, r, "#f0cf24", "#fffbe0", "#ffe96b"); },
-  grapefruit(x, r){ ST_DRAW.citrus(x, r, "#ee8a52", "#fff0e6", "#ff8f86"); },
-  cucumber(x, r){
-    x.fillStyle = "#2f6b2d"; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
-    x.fillStyle = "#cfe9a3"; x.beginPath(); x.arc(0, 0, r * .86, 0, TAU); x.fill();
-    x.fillStyle = "#e8f6cf";
-    for (let k = 0; k < 6; k++){ const a = k * TAU / 6; x.beginPath(); x.ellipse(Math.cos(a) * r * .38, Math.sin(a) * r * .38, r * .12, r * .06, a, 0, TAU); x.fill(); }
+  orange(x, r, R){ ST_DRAW.wheel(x, r, R, {rind: ["#f39a2a", "#c9600c"], pith: "#fff3df", flesh: ["#ffd27a", "#ffa632", "#f58b1f"], vesicle: "rgba(255,240,200,.55)"}); },
+  blood(x, r, R){ ST_DRAW.wheel(x, r, R, {rind: ["#e26a2a", "#a63a10"], pith: "#fde8da", flesh: ["#ff8a6a", "#d83a2c", "#a51e1e"], vesicle: "rgba(255,200,190,.5)"}); },
+  grapefruit(x, r, R){ ST_DRAW.wheel(x, r, R, {rind: ["#f4b04a", "#d9772e"], pith: "#fff1e6", flesh: ["#ffb4a2", "#ff7f73", "#ef5c58"], vesicle: "rgba(255,225,215,.55)"}); },
+  lime(x, r, R){ ST_DRAW.wheel(x, r, R, {rind: ["#5ba336", "#2f6a1c"], pith: "#f2fbdf", flesh: ["#dff3a6", "#a8d65e", "#86bd3c"], vesicle: "rgba(245,255,220,.6)"}); },
+  lemon(x, r, R){ ST_DRAW.wheel(x, r, R, {rind: ["#f6d93a", "#c9a20e"], pith: "#fffbe6", flesh: ["#fff6b0", "#ffe45a", "#f5cf2a"], vesicle: "rgba(255,255,230,.6)"}); },
+  cucumber(x, r, R){
+    x.fillStyle = stRG(x, 0, 0, r * .85, 0, 0, r, [[0, "#3f7f34"], [1, "#1f4a1a"]]); x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+    x.fillStyle = stRG(x, 0, 0, 0, 0, 0, r * .9, [[0, "#f3fbe1"], [.55, "#d8eeb2"], [1, "#b9de86"]]); x.beginPath(); x.arc(0, 0, r * .9, 0, TAU); x.fill();
+    x.fillStyle = "rgba(255,255,240,.85)"; x.strokeStyle = "rgba(160,200,120,.6)"; x.lineWidth = r * .015;
+    for (let k = 0; k < 3; k++) for (let s = 0; s < 4; s++){ const a = k * TAU / 3 + (s - 1.5) * .2, d = r * (.32 + (s % 2) * .08); x.beginPath(); x.ellipse(Math.cos(a) * d, Math.sin(a) * d, r * .07, r * .035, a, 0, TAU); x.fill(); x.stroke(); }
+    stGloss(x, r, .45);
   },
-  leaf(x, r){
-    x.fillStyle = "#3e9a4a"; x.beginPath(); x.moveTo(-r, 0); x.quadraticCurveTo(0, -r * .75, r, 0); x.quadraticCurveTo(0, r * .75, -r, 0); x.fill();
-    x.strokeStyle = "#9fd88f"; x.lineWidth = r * .07; x.beginPath(); x.moveTo(-r * .85, 0); x.lineTo(r * .85, 0); x.stroke();
+  leafShape(x, r, serr){ x.beginPath(); const N = 18; x.moveTo(-r, 0);
+    for (let k = 1; k <= N; k++){ const t = k / N, X = -r + t * 2 * r, w = Math.sin(Math.PI * t) * r * .48, z = serr && k % 2 ? 1.08 : 1; x.lineTo(X, -w * z); }
+    for (let k = N - 1; k >= 0; k--){ const t = k / N, X = -r + t * 2 * r, w = Math.sin(Math.PI * t) * r * .48, z = serr && k % 2 ? 1.08 : 1; x.lineTo(X, w * z); }
+    x.closePath(); },
+  leaf(x, r, R, c){
+    ST_DRAW.leafShape(x, r, c.serr); x.fillStyle = stLG(x, 0, -r * .5, 0, r * .5, [[0, c.g[0]], [.5, c.g[1]], [1, c.g[2]]]); x.fill();
+    x.strokeStyle = c.vein; x.lineWidth = r * .04; x.beginPath(); x.moveTo(-r * .95, 0); x.quadraticCurveTo(0, -r * .05, r * .95, 0); x.stroke();
+    x.lineWidth = r * .02;
+    for (let k = 1; k < 7; k++){ const X = -r + k * r * .28; for (const sg of [-1, 1]){ x.beginPath(); x.moveTo(X, 0); x.quadraticCurveTo(X + r * .12, sg * r * .12, X + r * .22, sg * r * .3); x.stroke(); } }
+    x.save(); x.clip(); stGloss(x, r * .9, .35); x.restore();
   },
-  flower(x, r){
-    x.fillStyle = "#fffaf0";
-    for (let k = 0; k < 5; k++){ const a = k * TAU / 5; x.beginPath(); x.ellipse(Math.cos(a) * r * .5, Math.sin(a) * r * .5, r * .48, r * .3, a, 0, TAU); x.fill(); }
-    x.fillStyle = "#f5c842"; x.beginPath(); x.arc(0, 0, r * .26, 0, TAU); x.fill();
+  mint(x, r, R){ ST_DRAW.leaf(x, r, R, {g: ["#5fae4c", "#3b8a35", "#2a6a28"], vein: "rgba(190,235,170,.7)", serr: 1}); },
+  sorrel(x, r, R){ ST_DRAW.leaf(x, r, R, {g: ["#74b84a", "#4d9636", "#33722a"], vein: "rgba(205,240,175,.7)", serr: 0}); },
+  blossom(x, r, R, petal, mid){                             // мелкие цветки (бузина, жасмин)
+    const n = 7;
+    for (let k = 0; k < n; k++){
+      const a = k * TAU / n + R() * .4, d = r * (k ? .5 + R() * .15 : 0), cx = Math.cos(a) * d, cy = Math.sin(a) * d, s = r * (.26 + R() * .06);
+      for (let p = 0; p < 5; p++){ const b = p * TAU / 5 + a; x.fillStyle = stRG(x, cx, cy, 0, cx + Math.cos(b) * s * .6, cy + Math.sin(b) * s * .6, s * .7, [[0, mid], [.25, petal[0]], [1, petal[1]]]);
+        x.beginPath(); x.ellipse(cx + Math.cos(b) * s * .55, cy + Math.sin(b) * s * .55, s * .55, s * .36, b, 0, TAU); x.fill(); }
+      x.fillStyle = mid; x.beginPath(); x.arc(cx, cy, s * .16, 0, TAU); x.fill();
+    }
   },
-  strawberry(x, r){
-    x.fillStyle = "#e2394a"; x.beginPath(); x.moveTo(0, r); x.bezierCurveTo(-r * 1.1, r * .1, -r * .8, -r * .8, 0, -r * .6); x.bezierCurveTo(r * .8, -r * .8, r * 1.1, r * .1, 0, r); x.fill();
-    x.fillStyle = "#ffe08a";
-    for (const [a, b] of [[-.35, -.2], [.3, -.25], [0, .1], [-.3, .3], [.3, .3], [0, .6]]){ x.beginPath(); x.arc(a * r, b * r, r * .05, 0, TAU); x.fill(); }
-    x.fillStyle = "#3e9a4a"; x.beginPath(); x.ellipse(0, -r * .65, r * .45, r * .14, 0, 0, TAU); x.fill();
+  elder(x, r, R){ ST_DRAW.blossom(x, r, R, ["#fffdf3", "#ece6c8"], "#e8d36a"); },
+  jasmine(x, r, R){ ST_DRAW.blossom(x, r, R, ["#ffffff", "#efe9f2"], "#f2d98a"); },
+  vanilla(x, r, R){                                          // стручок ванили
+    x.save(); x.rotate(-.3);
+    x.fillStyle = stLG(x, 0, -r * .1, 0, r * .1, [[0, "#5a3a22"], [.5, "#2e1b10"], [1, "#1c1009"]]);
+    x.beginPath(); x.moveTo(-r, 0); x.quadraticCurveTo(0, -r * .16, r, -r * .02); x.quadraticCurveTo(0, r * .14, -r, 0); x.fill();
+    x.strokeStyle = "rgba(255,220,180,.25)"; x.lineWidth = r * .015; for (let k = 0; k < 5; k++){ x.beginPath(); x.moveTo(-r * .9, -r * .02 + k * .01 * r); x.quadraticCurveTo(0, -r * .1 + k * .04 * r, r * .9, -r * .02); x.stroke(); }
+    x.restore();
   },
-  berry(x, r){ x.fillStyle = "#c8243a"; x.beginPath(); x.arc(0, 0, r * .6, 0, TAU); x.fill(); x.fillStyle = "rgba(255,255,255,.55)"; x.beginPath(); x.arc(-r * .2, -r * .2, r * .15, 0, TAU); x.fill(); },
-  juniper(x, r){ x.fillStyle = "#3d4d8f"; x.beginPath(); x.arc(0, 0, r * .55, 0, TAU); x.fill(); x.fillStyle = "rgba(220,230,255,.5)"; x.beginPath(); x.arc(-r * .18, -r * .18, r * .14, 0, TAU); x.fill(); },
-  chili(x, r){
-    x.fillStyle = "#d8262c"; x.beginPath(); x.moveTo(-r * .9, -r * .2); x.quadraticCurveTo(r * .2, -r * .5, r, r * .6); x.quadraticCurveTo(r * .1, r * .1, -r * .8, r * .25); x.closePath(); x.fill();
-    x.fillStyle = "#3e8a3a"; x.beginPath(); x.ellipse(-r * .9, 0, r * .2, r * .26, 0, 0, TAU); x.fill();
+  strawberry(x, r, R){
+    x.beginPath(); x.moveTo(0, r); x.bezierCurveTo(-r * 1.05, r * .2, -r * .85, -r * .75, 0, -r * .6); x.bezierCurveTo(r * .85, -r * .75, r * 1.05, r * .2, 0, r); x.closePath();
+    x.fillStyle = stRG(x, -r * .2, -r * .25, r * .1, 0, 0, r * 1.1, [[0, "#ff5a5f"], [.6, "#d81f35"], [1, "#8e0f1e"]]); x.fill();
+    x.save(); x.clip();
+    for (let k = 0; k < 34; k++){ const X = (R() - .5) * r * 1.5, Y = (R() - .4) * r * 1.4; x.fillStyle = "rgba(90,0,10,.35)"; x.beginPath(); x.ellipse(X, Y + r * .02, r * .045, r * .03, 0, 0, TAU); x.fill();
+      x.fillStyle = "#f6d36a"; x.beginPath(); x.ellipse(X, Y, r * .03, r * .02, .3, 0, TAU); x.fill(); }
+    stGloss(x, r, .5); x.restore();
+    for (let k = 0; k < 6; k++){ const a = Math.PI + k * Math.PI / 5; x.fillStyle = stLG(x, 0, -r * .6, Math.cos(a) * r * .5, -r * .6 + Math.sin(a) * r * .2, [[0, "#2f7a2a"], [1, "#5fae4c"]]);
+      x.beginPath(); x.ellipse(Math.cos(a) * r * .25, -r * .62 + Math.sin(a) * r * .08, r * .3, r * .08, a, 0, TAU); x.fill(); }
   },
-  pear(x, r){
-    x.fillStyle = "#c7d455"; x.beginPath(); x.arc(0, r * .3, r * .62, 0, TAU); x.arc(0, -r * .3, r * .4, 0, TAU); x.fill();
-    x.strokeStyle = "#7a5a2e"; x.lineWidth = r * .1; x.beginPath(); x.moveTo(0, -r * .65); x.lineTo(r * .12, -r * .95); x.stroke();
+  glossBerry(x, r, R, g){ x.fillStyle = stRG(x, -r * .2, -r * .25, r * .05, 0, 0, r, g); x.beginPath(); x.ellipse(0, 0, r * .55, r * .72, .3, 0, TAU); x.fill();
+    x.fillStyle = "rgba(255,255,255,.75)"; x.beginPath(); x.ellipse(-r * .16, -r * .3, r * .1, r * .16, .3, 0, TAU); x.fill(); },
+  barberry(x, r, R){ for (const [dx, dy, s] of [[-.4, -.2, .8], [.35, .1, .9], [-.05, .45, .75]]){ x.save(); x.translate(dx * r, dy * r); ST_DRAW.glossBerry(x, r * s, R, [[0, "#ff4d4d"], [.6, "#c9161f"], [1, "#6e0610"]]); x.restore(); } },
+  berry(x, r, R){ x.save(); x.translate(0, 0); ST_DRAW.glossBerry(x, r * .9, R, [[0, "#ff6b7a"], [.6, "#c8243a"], [1, "#6a0818"]]); x.restore(); },
+  juniper(x, r, R){ for (const [dx, dy] of [[-.35, -.15], [.3, .05], [-.02, .4]]){ x.save(); x.translate(dx * r, dy * r);
+    x.fillStyle = stRG(x, -r * .1, -r * .15, r * .05, 0, 0, r * .45, [[0, "#8a9ad0"], [.5, "#3a4a8c"], [1, "#151c3c"]]); x.beginPath(); x.arc(0, 0, r * .42, 0, TAU); x.fill();
+    x.fillStyle = "rgba(210,220,255,.25)"; x.beginPath(); x.arc(0, 0, r * .42, 0, TAU); x.fill(); x.restore(); } },
+  chili(x, r, R){
+    x.beginPath(); x.moveTo(-r * .85, -r * .25); x.bezierCurveTo(-r * .1, -r * .6, r * .7, -r * .1, r, r * .65); x.bezierCurveTo(r * .45, r * .15, -r * .2, r * .2, -r * .8, r * .22); x.closePath();
+    x.fillStyle = stLG(x, 0, -r * .4, 0, r * .4, [[0, "#ff4a3a"], [.5, "#d01c1c"], [1, "#7a0a0a"]]); x.fill();
+    x.strokeStyle = "rgba(255,255,255,.6)"; x.lineWidth = r * .05; x.lineCap = "round"; x.beginPath(); x.moveTo(-r * .55, -r * .22); x.bezierCurveTo(-r * .1, -r * .42, r * .4, -r * .12, r * .7, r * .3); x.stroke();
+    x.fillStyle = stLG(x, -r, 0, -r * .7, 0, [[0, "#4f8a2a"], [1, "#2b5a18"]]); x.beginPath(); x.ellipse(-r * .86, 0, r * .17, r * .28, .2, 0, TAU); x.fill();
+    x.strokeStyle = "#3d6e1e"; x.lineWidth = r * .08; x.beginPath(); x.moveTo(-r * .95, 0); x.quadraticCurveTo(-r * 1.15, -r * .15, -r * 1.05, -r * .4); x.stroke();
   },
-  peach(x, r){ x.fillStyle = "#ffab7d"; x.beginPath(); x.arc(0, 0, r * .75, 0, TAU); x.fill(); x.fillStyle = "#ff8a6a"; x.beginPath(); x.arc(r * .25, r * .2, r * .45, 0, TAU); x.fill();
-    x.strokeStyle = "rgba(170,70,50,.45)"; x.lineWidth = r * .06; x.beginPath(); x.moveTo(0, -r * .7); x.quadraticCurveTo(-r * .25, 0, 0, r * .7); x.stroke(); },
-  passion(x, r){
-    x.fillStyle = "#6b2a5a"; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
-    x.fillStyle = "#f6c531"; x.beginPath(); x.arc(0, 0, r * .82, 0, TAU); x.fill();
-    x.fillStyle = "#3a2a14";
-    for (let k = 0; k < 9; k++){ const a = k * 2.4, d = r * .5 * Math.sqrt((k + .5) / 9); x.beginPath(); x.arc(Math.cos(a) * d, Math.sin(a) * d, r * .08, 0, TAU); x.fill(); }
+  pear(x, r, R){
+    x.beginPath(); x.moveTo(0, -r * .7); x.bezierCurveTo(r * .35, -r * .7, r * .3, -r * .15, r * .62, r * .3); x.bezierCurveTo(r * .85, r * .95, -r * .85, r * .95, -r * .62, r * .3); x.bezierCurveTo(-r * .3, -r * .15, -r * .35, -r * .7, 0, -r * .7); x.closePath();
+    x.fillStyle = stRG(x, -r * .2, 0, r * .1, 0, r * .2, r * 1.1, [[0, "#e8ea8a"], [.55, "#c4cf4e"], [1, "#7e8f22"]]); x.fill();
+    x.save(); x.clip(); x.fillStyle = stRG(x, r * .4, r * .3, 0, r * .4, r * .3, r * .7, [[0, "rgba(230,110,60,.45)"], [1, "rgba(230,110,60,0)"]]); x.fillRect(-r, -r, r * 2, r * 2);
+    x.fillStyle = "rgba(110,90,30,.35)"; for (let k = 0; k < 40; k++){ x.beginPath(); x.arc((R() - .5) * r * 1.4, (R() - .3) * r * 1.4, r * .012, 0, TAU); x.fill(); }
+    stGloss(x, r, .4); x.restore();
+    x.strokeStyle = "#6b4a22"; x.lineWidth = r * .07; x.lineCap = "round"; x.beginPath(); x.moveTo(0, -r * .68); x.quadraticCurveTo(r * .05, -r * .9, r * .18, -r); x.stroke();
   },
-  pineapple(x, r){
-    x.fillStyle = "#f6c945"; x.beginPath(); x.moveTo(-r, r * .6); x.lineTo(0, -r); x.lineTo(r, r * .6); x.closePath(); x.fill();
-    x.strokeStyle = "rgba(190,130,20,.6)"; x.lineWidth = r * .06;
-    for (let k = -2; k <= 2; k++){ x.beginPath(); x.moveTo(k * r * .35 - r * .5, r * .6); x.lineTo(k * r * .35 + r * .5, -r * .2); x.stroke(); }
-    x.fillStyle = "#c88a2a"; x.fillRect(-r, r * .45, r * 2, r * .18);
+  peach(x, r, R){                                           // долька персика
+    x.beginPath(); x.moveTo(-r, r * .2); x.quadraticCurveTo(0, -r * 1.05, r, r * .2); x.quadraticCurveTo(0, r * .55, -r, r * .2); x.closePath();
+    x.fillStyle = stLG(x, 0, -r * .7, 0, r * .4, [[0, "#ff8f5a"], [.25, "#ffb36b"], [.7, "#ffd38a"], [1, "#e9a04a"]]); x.fill();
+    x.save(); x.clip(); x.fillStyle = stLG(x, 0, -r * .8, 0, -r * .4, [[0, "rgba(200,40,40,.55)"], [1, "rgba(200,40,40,0)"]]); x.fillRect(-r, -r, r * 2, r * 2); stGloss(x, r, .45); x.restore();
   },
-  coconut(x, r){ x.fillStyle = "#6b4a32"; x.beginPath(); x.arc(0, 0, r, 0, Math.PI); x.fill(); x.fillStyle = "#fdfaf3"; x.beginPath(); x.arc(0, 0, r * .82, 0, Math.PI); x.fill(); x.fillStyle = "#6b4a32"; x.fillRect(-r, -r * .06, r * 2, r * .12); },
-  watermelon(x, r){
-    x.fillStyle = "#3d8a3a"; x.beginPath(); x.moveTo(-r, -r * .5); x.lineTo(r, -r * .5); x.lineTo(0, r); x.closePath(); x.fill();
-    x.fillStyle = "#ec4a5a"; x.beginPath(); x.moveTo(-r * .8, -r * .35); x.lineTo(r * .8, -r * .35); x.lineTo(0, r * .78); x.closePath(); x.fill();
-    x.fillStyle = "#2a1a1a"; for (const [a, b] of [[-.3, -.1], [.3, -.1], [0, .25]]){ x.beginPath(); x.ellipse(a * r, b * r, r * .06, r * .1, 0, 0, TAU); x.fill(); }
+  passion(x, r, R){
+    x.fillStyle = stRG(x, 0, 0, r * .8, 0, 0, r, [[0, "#7a3666"], [1, "#3a1230"]]); x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+    x.fillStyle = "#f4ead0"; x.beginPath(); x.arc(0, 0, r * .9, 0, TAU); x.fill();
+    x.fillStyle = stRG(x, 0, 0, 0, 0, 0, r * .84, [[0, "#ffd84a"], [.7, "#f2b81c"], [1, "#d68a0c"]]); x.beginPath(); x.arc(0, 0, r * .84, 0, TAU); x.fill();
+    for (let k = 0; k < 22; k++){ const a = k * 2.4, d = r * .7 * Math.sqrt((k + .5) / 22), X = Math.cos(a) * d, Y = Math.sin(a) * d;
+      x.fillStyle = "rgba(255,230,120,.55)"; x.beginPath(); x.arc(X, Y, r * .1, 0, TAU); x.fill();
+      x.fillStyle = "#1e140a"; x.beginPath(); x.ellipse(X, Y, r * .055, r * .04, a, 0, TAU); x.fill();
+      x.fillStyle = "rgba(255,255,255,.7)"; x.beginPath(); x.arc(X - r * .015, Y - r * .015, r * .012, 0, TAU); x.fill(); }
+    stGloss(x, r, .35);
   },
-  ice(x, r){
-    x.fillStyle = "rgba(255,255,255,.28)"; x.strokeStyle = "rgba(255,255,255,.75)"; x.lineWidth = r * .07;
-    x.beginPath(); if (x.roundRect) x.roundRect(-r * .8, -r * .8, r * 1.6, r * 1.6, r * .3); else x.rect(-r * .8, -r * .8, r * 1.6, r * 1.6); x.fill(); x.stroke();
-    x.fillStyle = "rgba(255,255,255,.7)"; x.beginPath(); x.ellipse(-r * .35, -r * .4, r * .25, r * .1, -.6, 0, TAU); x.fill();
+  pineapple(x, r, R){                                       // кусочек ананаса
+    x.beginPath(); x.moveTo(-r, r * .55); x.lineTo(-r * .15, -r * .9); x.lineTo(r * .3, -r * .9); x.lineTo(r, r * .55); x.closePath();
+    x.fillStyle = stLG(x, 0, -r, 0, r * .6, [[0, "#fff1a8"], [.4, "#fbd54a"], [1, "#e9a91c"]]); x.fill();
+    x.save(); x.clip(); x.strokeStyle = "rgba(200,140,20,.35)"; x.lineWidth = r * .02;
+    for (let k = 0; k < 26; k++){ const X = -r + R() * r * 2; x.beginPath(); x.moveTo(X, r * .55); x.lineTo(X * .3 + r * .05, -r * .9); x.stroke(); }
+    x.fillStyle = stLG(x, 0, r * .35, 0, r * .6, [[0, "rgba(160,110,30,0)"], [1, "rgba(150,95,20,.85)"]]); x.fillRect(-r, r * .3, r * 2, r * .3); stGloss(x, r, .35); x.restore();
   },
-  spark(x, r){ x.fillStyle = "rgba(255,255,255,.9)"; x.beginPath(); for (let k = 0; k < 8; k++){ const a = k * TAU / 8, d = k % 2 ? r * .2 : r * .7; x.lineTo(Math.cos(a) * d, Math.sin(a) * d); } x.closePath(); x.fill(); }
+  coconut(x, r, R){
+    x.fillStyle = stRG(x, 0, 0, r * .6, 0, 0, r, [[0, "#7a5536"], [1, "#3e2717"]]); x.beginPath(); x.arc(0, 0, r, 0, Math.PI); x.closePath(); x.fill();
+    x.strokeStyle = "rgba(160,120,80,.5)"; x.lineWidth = r * .02; for (let k = 0; k < 40; k++){ const a = R() * Math.PI, d = r * (.82 + R() * .18); x.beginPath(); x.moveTo(Math.cos(a) * d, Math.sin(a) * d); x.lineTo(Math.cos(a + .08) * (d + r * .06), Math.sin(a + .08) * (d + r * .06)); x.stroke(); }
+    x.fillStyle = stRG(x, 0, r * .1, 0, 0, r * .1, r * .85, [[0, "#ffffff"], [1, "#efe7d6"]]); x.beginPath(); x.arc(0, 0, r * .8, 0, Math.PI); x.closePath(); x.fill();
+    x.fillStyle = "rgba(250,248,240,.9)"; x.fillRect(-r, -r * .05, r * 2, r * .08);
+  },
+  watermelon(x, r, R){
+    x.beginPath(); x.moveTo(-r, -r * .45); x.quadraticCurveTo(0, -r * .62, r, -r * .45); x.lineTo(0, r); x.closePath();
+    x.fillStyle = stLG(x, 0, -r * .6, 0, -r * .3, [[0, "#1f5a1f"], [.35, "#3f8f2f"], [.55, "#e8f2c8"], [1, "#ffd9d4"]]); x.fill();
+    x.beginPath(); x.moveTo(-r * .82, -r * .32); x.quadraticCurveTo(0, -r * .48, r * .82, -r * .32); x.lineTo(0, r * .88); x.closePath();
+    x.fillStyle = stLG(x, 0, -r * .4, 0, r, [[0, "#ff6b72"], [.6, "#ec3a4c"], [1, "#c81f37"]]); x.fill();
+    x.save(); x.clip(); x.fillStyle = "rgba(255,200,200,.25)"; for (let k = 0; k < 40; k++){ x.beginPath(); x.arc((R() - .5) * r * 1.4, -r * .3 + R() * r, r * .02, 0, TAU); x.fill(); }
+    for (const [a, b] of [[-.32, -.05], [.32, -.05], [0, .2], [-.15, .45], [.15, .45]]){ x.fillStyle = "#1a0f0c"; x.beginPath(); x.ellipse(a * r, b * r, r * .045, r * .075, a, 0, TAU); x.fill();
+      x.fillStyle = "rgba(255,255,255,.6)"; x.beginPath(); x.arc(a * r - r * .012, b * r - r * .025, r * .012, 0, TAU); x.fill(); }
+    stGloss(x, r, .3); x.restore();
+  },
+  ice(x, r, R){                                             // кубик льда: полупрозрачный, фаски, внутренние трещины
+    const s = r * .82;
+    x.beginPath(); if (x.roundRect) x.roundRect(-s, -s, s * 2, s * 2, s * .28); else x.rect(-s, -s, s * 2, s * 2);
+    x.fillStyle = stLG(x, -s, -s, s, s, [[0, "rgba(255,255,255,.55)"], [.45, "rgba(215,235,255,.18)"], [1, "rgba(180,210,240,.35)"]]); x.fill();
+    x.strokeStyle = "rgba(255,255,255,.85)"; x.lineWidth = r * .045; x.stroke();
+    x.save(); x.clip();
+    x.fillStyle = "rgba(255,255,255,.35)"; x.beginPath(); x.moveTo(-s, -s); x.lineTo(s, -s); x.lineTo(s * .55, -s * .55); x.lineTo(-s * .55, -s * .55); x.closePath(); x.fill();
+    x.fillStyle = "rgba(160,200,240,.18)"; x.beginPath(); x.moveTo(s, -s); x.lineTo(s, s); x.lineTo(s * .55, s * .55); x.lineTo(s * .55, -s * .55); x.closePath(); x.fill();
+    x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = r * .015; for (let k = 0; k < 4; k++){ x.beginPath(); x.moveTo((R() - .5) * s, (R() - .5) * s); x.lineTo((R() - .5) * s * 1.6, (R() - .5) * s * 1.6); x.stroke(); }
+    x.fillStyle = "rgba(255,255,255,.8)"; x.beginPath(); x.ellipse(-s * .45, -s * .55, s * .3, s * .08, -.4, 0, TAU); x.fill();
+    x.restore();
+  }
 };
+/* спрайт ингредиента: рисуется один раз (резкий и размытый — для дальнего плана), дальше только перемещается */
+const ST_SPR = {};
+function stSprite(type, blur){
+  const k = type + (blur ? "~" : "");
+  if (ST_SPR[k]) return ST_SPR[k];
+  const S = 96, pad = 12, c = document.createElement("canvas"), x = c.getContext("2d");
+  c.width = c.height = (S + pad) * 2;
+  x.translate(S + pad, S + pad);
+  if (blur && "filter" in x){ x.filter = "blur(5px)"; }
+  x.shadowColor = "rgba(0,0,0,.28)"; x.shadowBlur = blur ? 0 : 14; x.shadowOffsetY = blur ? 0 : 7;
+  /* тень — от формы целиком: рисуем на отдельном слое и переносим */
+  const l = document.createElement("canvas"), y = l.getContext("2d");
+  l.width = l.height = c.width; y.translate(S + pad, S + pad);
+  (ST_DRAW[type] || ST_DRAW.ice)(y, S, stRand(type));
+  x.drawImage(l, -(S + pad), -(S + pad));
+  return ST_SPR[k] = {c, S, pad};
+}
 let stFx = null;
-/* сцена коктейля: фон, волны, ингредиенты, пузырьки (за бокалом) и пузырьки в бокале */
+/* сцена коктейля: огни, ингредиенты, пузырьки (за бокалом и в бокале) */
 function stFxMake(id, tone){
-  const cfg = STFX[id] || {it: ["spark"], fizz: 6, glass: 0}, R = stRand(id), its = [];
-  cfg.it.forEach((type, i) => { for (let k = 0; k < 2; k++) its.push({type, x: (i * 2 + k + .5) / (cfg.it.length * 2) + (R() - .5) * .1, y: .14 + R() * .62,
-    r: .055 + R() * .035, ph: R(), ax: .015 + R() * .02, ay: .02 + R() * .03, rot: R() * TAU, sw: .25 + R() * .35, back: R() < .45}); });
+  const cfg = STFX[id] || {it: ["ice"], fizz: 6, glass: 0}, R = stRand(id), its = [], n = cfg.it.length;
+  cfg.it.forEach((type, i) => {
+    const near = i % 2 === 0;                                // ближние — крупнее и резкие, дальние — меньше и размыты
+    its.push({type, x: .08 + (i + .5) / n * .84 + (R() - .5) * .08, y: near ? .2 + R() * .55 : .1 + R() * .4, r: near ? .085 + R() * .03 : .055 + R() * .02,
+      ph: R(), ax: .01 + R() * .015, ay: .015 + R() * .02, rot: R() * TAU, sw: .15 + R() * .25, back: !near});
+  });
   const bub = n => Array.from({length: n}, () => ({x: R(), y: R(), r: .006 + R() * .012, k: R() < .5 ? 1 : 2, ph: R()}));
-  return {id, cfg, tone, its, fizz: bub(cfg.fizz), glass: bub(cfg.glass), raf: 0};
+  const bokeh = Array.from({length: 10}, () => ({x: R(), y: R() * .7, r: .04 + R() * .09, a: .16 + R() * .22, ph: R(), warm: R() < .5}));
+  return {id, cfg, tone, its, fizz: bub(cfg.fizz), glass: bub(cfg.glass), bokeh, raf: 0};
 }
 function stFxSize(c){ const d = Math.min(2, window.devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight; if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)){ c.width = Math.round(w * d); c.height = Math.round(h * d); } return {w, h, d}; }
 function stFxFrame(p){
   const f = stFx, c = $("stBg"), g = $("stFizz");
   if (!f || !c) return;
-  const {w, h, d} = stFxSize(c), x = c.getContext("2d"), H = f.tone.h, Sa = f.tone.s, m = Math.min(w, h);
+  const {w, h, d} = stFxSize(c), x = c.getContext("2d"), H = f.tone.h, Sa = f.tone.s, m = Math.min(w, h), gl = $("stGlass");
+  const floor = gl && gl.offsetHeight ? Math.min(h - 6, gl.offsetTop + gl.offsetHeight * .985) : h * .8;   // стойка — под донышком бокала
   x.setTransform(d, 0, 0, d, 0, 0);
-  /* фон: светлый центр в тон коктейля, мягкое «дыхание» света */
+  /* фон: глубокий тон коктейля, светлее за бокалом — как подсветка бара */
   const glow = .5 + .5 * Math.sin(TAU * p);
-  const bg = x.createRadialGradient(w / 2, h * .55, m * .1, w / 2, h * .55, Math.max(w, h) * .75);
-  bg.addColorStop(0, "hsl(" + H + " " + Sa * .5 + "% " + (93 - glow * 2) + "%)");
-  bg.addColorStop(.6, "hsl(" + H + " " + Sa * .8 + "% 80%)");
-  bg.addColorStop(1, "hsl(" + H + " " + Sa + "% 66%)");
-  x.fillStyle = bg; x.fillRect(0, 0, w, h);
-  /* лучи света сверху, медленно качаются */
-  x.save(); x.globalAlpha = .18; x.fillStyle = "#fff";
-  for (let k = 0; k < 3; k++){ const a = -.35 + k * .35 + .05 * Math.sin(TAU * (p + k / 3)); x.beginPath(); x.moveTo(w * (.35 + k * .15), -10); x.lineTo(w * (.35 + k * .15) + Math.tan(a) * h + 40, h); x.lineTo(w * (.35 + k * .15) + Math.tan(a) * h - 10, h); x.closePath(); x.fill(); }
+  x.fillStyle = stLG(x, 0, 0, 0, h, [[0, "hsl(" + H + " " + Sa * .9 + "% 36%)"], [.55, "hsl(" + H + " " + Sa * .85 + "% 50%)"], [1, "hsl(" + H + " " + Sa * .7 + "% 30%)"]]);
+  x.fillRect(0, 0, w, h);
+  x.fillStyle = stRG(x, w / 2, h * .45, 0, w / 2, h * .45, Math.max(w, h) * .62, [[0, "hsla(" + H + " " + Sa * .5 + "% " + (86 + glow * 3) + "% / .9)"], [.45, "hsla(" + H + " " + Sa * .7 + "% 66% / .45)"], [1, "hsla(" + H + " " + Sa + "% 40% / 0)"]]);
+  x.fillRect(0, 0, w, h);
+  /* огни бара (боке) — медленно плывут и мерцают */
+  f.bokeh.forEach(b => {
+    const X = (b.x + .02 * Math.sin(TAU * (p + b.ph))) * w, Y = (b.y + .015 * Math.cos(TAU * (p + b.ph))) * h, r = b.r * m, a = b.a * (.75 + .25 * Math.sin(TAU * (p + b.ph)));
+    const col = b.warm ? "255,226,170" : "hsl(" + H + " 80% 85%)";
+    x.fillStyle = b.warm ? stRG(x, X, Y, 0, X, Y, r, [[0, "rgba(" + col + "," + a + ")"], [.7, "rgba(" + col + "," + a * .6 + ")"], [1, "rgba(" + col + ",0)"]])
+      : stRG(x, X, Y, 0, X, Y, r, [[0, "hsla(" + H + " 80% 88% / " + a + ")"], [.7, "hsla(" + H + " 80% 85% / " + a * .6 + ")"], [1, "hsla(" + H + " 80% 85% / 0)"]]);
+    x.beginPath(); x.arc(X, Y, r, 0, TAU); x.fill();
+  });
+  /* мягкие лучи сверху */
+  x.save(); x.globalCompositeOperation = "screen";
+  for (let k = 0; k < 3; k++){ const a = -.3 + k * .3 + .05 * Math.sin(TAU * (p + k / 3)), X = w * (.3 + k * .2);
+    x.fillStyle = stLG(x, X, 0, X, floor, [[0, "rgba(255,255,255,.1)"], [1, "rgba(255,255,255,0)"]]);
+    x.beginPath(); x.moveTo(X - 6, -10); x.lineTo(X + 6, -10); x.lineTo(X + Math.tan(a) * floor + 40, floor); x.lineTo(X + Math.tan(a) * floor - 20, floor); x.closePath(); x.fill(); }
   x.restore();
   const items = back => f.its.filter(o => o.back === back).forEach(o => {
-    const r = o.r * m * (o.back ? .8 : 1);
+    const s = stSprite(o.type, back), r = o.r * m, k = r / s.S;
     x.save();
     x.translate(o.x * w + Math.sin(TAU * (p + o.ph)) * o.ax * w, o.y * h + Math.cos(TAU * (p + o.ph)) * o.ay * h);
     x.rotate(o.rot + Math.sin(TAU * (p + o.ph)) * o.sw);
-    x.globalAlpha = o.back ? .45 : .92;
-    ST_DRAW[o.type](x, r);
+    x.globalAlpha = back ? .7 : 1;
+    x.drawImage(s.c, -(s.S + s.pad) * k, -(s.S + s.pad) * k, s.c.width * k, s.c.height * k);
     x.restore();
   });
   items(true);
-  /* волны «жидкости» внизу — три слоя, бегут по кругу */
-  const amp = f.cfg.sea ? m * .035 : m * .018;
-  for (let k = 0; k < 3; k++){
-    const base = h * ((f.cfg.sea ? .62 : .74) + k * .08);
-    x.fillStyle = "hsla(" + H + " " + Sa + "% " + (62 - k * 8) + "% / " + (.32 + k * .14) + ")";
-    x.beginPath(); x.moveTo(0, h);
-    for (let X = 0; X <= w + 8; X += 8) x.lineTo(X, base + Math.sin(TAU * (X / w * (1.2 + k * .4) - p * (k % 2 ? -1 : 1)) + k) * amp);
-    x.lineTo(w, h); x.closePath(); x.fill();
-  }
-  /* пузырьки за бокалом: поднимаются 1–2 раза за петлю */
-  x.strokeStyle = "rgba(255,255,255,.7)"; x.fillStyle = "rgba(255,255,255,.22)"; x.lineWidth = 1;
+  /* пузырьки за бокалом: тонкий ободок и блик, поднимаются 1–2 раза за петлю */
   f.fizz.forEach(b => {
-    const y = h + 10 - (((b.y + p * b.k) % 1) * (h + 20)), X = b.x * w + Math.sin(TAU * (p * 2 + b.ph)) * 5, r = Math.max(1.5, b.r * m);
-    x.beginPath(); x.arc(X, y, r, 0, TAU); x.fill(); x.stroke();
+    const y = floor + 6 - (((b.y + p * b.k) % 1) * (floor + 16)), X = b.x * w + Math.sin(TAU * (p * 2 + b.ph)) * 4, r = Math.max(1.6, b.r * m);
+    x.strokeStyle = "rgba(255,255,255,.55)"; x.lineWidth = .9; x.beginPath(); x.arc(X, y, r, 0, TAU); x.stroke();
+    x.fillStyle = "rgba(255,255,255,.85)"; x.beginPath(); x.arc(X - r * .35, y - r * .35, r * .28, 0, TAU); x.fill();
   });
+  /* глянцевая стойка внизу: отражения света бегут по кругу */
+  x.fillStyle = stLG(x, 0, floor, 0, h, [[0, "hsla(" + H + " " + Sa * .6 + "% 22% / .5)"], [1, "hsla(" + H + " " + Sa * .6 + "% 12% / .85)"]]);
+  x.fillRect(0, floor, w, h - floor);
+  x.strokeStyle = "rgba(255,255,255,.22)"; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(0, floor + .5); x.lineTo(w, floor + .5); x.stroke();
+  x.save(); x.globalCompositeOperation = "screen";
+  for (let k = 0; k < 3; k++){ const Y = floor + (h - floor) * (.25 + k * .22), X = ((p + k / 3) % 1) * (w + 200) - 100;
+    x.fillStyle = stLG(x, X - 90, 0, X + 90, 0, [[0, "rgba(255,255,255,0)"], [.5, "rgba(255,255,255," + (.12 - k * .03) + ")"], [1, "rgba(255,255,255,0)"]]); x.fillRect(X - 90, Y, 180, 1.5); }
+  x.restore();
   items(false);
   /* пузырьки в бокале — холст с маской по фото */
   if (g){
     const s = stFxSize(g), y = g.getContext("2d");
     y.setTransform(s.d, 0, 0, s.d, 0, 0); y.clearRect(0, 0, s.w, s.h);
-    if (f.glass.length){
-      y.fillStyle = "rgba(255,255,255,.75)";
-      f.glass.forEach(b => {
-        const yy = s.h * .95 - (((b.y + p * b.k) % 1) * s.h * .6), X = s.w * (.3 + b.x * .4) + Math.sin(TAU * (p * 2 + b.ph)) * 2;
-        y.beginPath(); y.arc(X, yy, Math.max(1, b.r * s.w * .6), 0, TAU); y.fill();
-      });
-    }
+    f.glass.forEach(b => {
+      const yy = s.h * .95 - (((b.y + p * b.k) % 1) * s.h * .6), X = s.w * (.3 + b.x * .4) + Math.sin(TAU * (p * 2 + b.ph)) * 2, r = Math.max(1, b.r * s.w * .55);
+      y.strokeStyle = "rgba(255,255,255,.7)"; y.lineWidth = .8; y.beginPath(); y.arc(X, yy, r, 0, TAU); y.stroke();
+      y.fillStyle = "rgba(255,255,255,.9)"; y.beginPath(); y.arc(X - r * .3, yy - r * .3, r * .3, 0, TAU); y.fill();
+    });
   }
 }
 function stFxLoop(t){
@@ -247,7 +356,7 @@ function stBuild(){
   stEl = document.createElement("div");
   stEl.className = "story"; stEl.id = "story"; stEl.hidden = true;
   stEl.setAttribute("role", "dialog"); stEl.setAttribute("aria-modal", "true"); stEl.setAttribute("aria-labelledby", "stName");
-  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async">' +
+  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async"><img class="strefl" id="stRefl" alt="" aria-hidden="true" decoding="async">' +
     '<canvas class="stfizz" id="stFizz" aria-hidden="true"></canvas><span class="stshine" aria-hidden="true"></span></div></div>' +
     '<div class="stpanel"><button type="button" class="stback" id="stBack">' + ST_ICON.back + '<span></span></button>' +
     '<p class="stkick" id="stKick"></p><h2 id="stName"></h2>' +
@@ -294,8 +403,13 @@ function stDraw(it){
   const s = storyOf(it), en = EN(), m = storyMenu(it.id), tone = stTone(s.col);
   const tx = (ru, eng) => en ? eng || ru : ru;
   stEl.style.setProperty("--st-h", tone.h); stEl.style.setProperty("--st-s", tone.s + "%");
-  const img = $("stImg"), pw = PHW[String(it.img).replace(/^.*\/|\.webp$/g, "")];
-  if (img.getAttribute("src") !== it.img) img.src = it.img;
+  const img = $("stImg"), base = String(it.img).replace(/^.*\/|\.webp$/g, ""), pw = PHW[base];
+  /* фото в высоком разрешении (photos/hd/, увеличено нейросетью) — для карточки; нет его — обычное */
+  const hd = pw && /^photos\/[\w-]+\.webp$/.test(it.img) ? "photos/hd/" + base + ".webp" : it.img;
+  if (img.dataset.src !== it.img){
+    img.dataset.src = it.img; img.onerror = () => { img.onerror = null; img.src = it.img; $("stRefl").src = it.img; };
+    img.src = hd; $("stRefl").src = hd;
+  }
   $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — маска пузырьков и блика совпадает
   $("stGlass").style.setProperty("--stimg", 'url("' + it.img + '")');
   if (!stFx || stFx.id !== it.id) stFxStart(it.id, tone); else stFx.tone = tone;
