@@ -286,12 +286,13 @@ function showView(v){
 
 function route(){
   const h = decodeURIComponent(location.hash.slice(1));
-  if (h.indexOf("story-") === 0){ showView("bar"); if (typeof storyRoute === "function") storyRoute(h.slice(6)); return; }   // «Узнать больше» (QR)
+  const sid = typeof storyFor === "function" ? storyFor(h) : "";
+  if (sid){ showView("bar"); storyRoute(sid); return; }                // коктейль с фото (QR этикетки) — «Узнать больше»
   if (typeof storyShut === "function") storyShut();                    // ушли с карточки кнопкой «назад» телефона
   if (h === "bartenders") return goBt();
   showView("bar");
   if (h === "card") gPanel("card");
-  else if (h) jumpTo(h);
+  else if (h) jumpTo(h.replace(/^sostav-/, ""));                       // «Состав и аллергены» из меню — #sostav-id
   else gBack();
 }
 /* повторный клик по «Бартендерам», когда адрес уже #bartenders */

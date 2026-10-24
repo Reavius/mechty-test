@@ -48,7 +48,14 @@ function storyOf(it){
   return {h: g("h"), he: g("he"), t: g("t"), te: g("te"), a: g("a"), ae: g("ae"), col: /^#[0-9a-f]{6}$/i.test(col) ? col : d.col || "#c9a24b"};
 }
 const storyHas = it => !!(it && it.img && !it.lo);
-const storyUrl = id => location.origin + location.pathname.replace(/index\.html$/, "") + "#story-" + encodeURIComponent(id);
+/* ссылка на карточку — та же, что в QR этикеток (…/#id): наклеенные QR ведут сюда; прежняя …/#story-id тоже работает */
+const storyUrl = id => location.origin + location.pathname.replace(/index\.html$/, "") + "#" + id;
+/* адрес → id карточки «Узнать больше» (или "" — не она) */
+function storyFor(h){
+  h = String(h || "");
+  if (h.indexOf("story-") === 0) return h.slice(6);
+  return storyHas(cardItem(h)) ? h : "";
+}
 /* где позиция в меню: раздел, объём, цена */
 function storyMenu(id){
   for (const c of MENU) for (const s of c.secs) for (const x of s.items) if (x.c === id) return {sec: s[LANG] || s.ru, x};
@@ -66,29 +73,29 @@ function stTone(hex){
 let stEl = null, stId = "", stPushed = false, stFrom = null, stBack = null, stQrEl = null;
 const stReduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 /* ── живая сцена за фото: петля 3 с, как гифка ──
-   Глубокий фон в цвете коктейля, мягкие огни бара (боке), пузырьки, глянцевая стойка с отражением бокала.
+   Глубокий фон в цвете коктейля, мягкие огни бара (боке), пузырьки, глянцевая стойка.
    Всё движется по кругу ровно за 3 с, поэтому шва нет. Анимация идёт, только пока карточка открыта и видна;
    «уменьшить движение» — один неподвижный кадр. */
 const ST_LOOP = 3000;
-/* сколько пузырьков: за бокалом и в нём (игристое и тоник — больше) */
+/* сколько пузырьков за бокалом (игристое и тоник — больше) */
 const STFX = {
-  pantera: {fizz: 8, glass: 5},
-  pornstar: {fizz: 10, glass: 10},
-  tropiki: {fizz: 5, glass: 4},
-  maitai: {fizz: 4, glass: 4},
-  negroni: {fizz: 3, glass: 0},
-  hugo: {fizz: 14, glass: 14},
-  bluecolada: {fizz: 6, glass: 4},
-  summer: {fizz: 12, glass: 12},
-  chili: {fizz: 4, glass: 3},
-  grusha: {fizz: 4, glass: 0},
-  "c-fiero": {fizz: 14, glass: 14},
-  "c-bosford": {fizz: 16, glass: 16},
-  "c-watermelon": {fizz: 14, glass: 14},
-  "c-collins": {fizz: 14, glass: 14},
-  "c-aperol": {fizz: 14, glass: 14},
-  "c-campari": {fizz: 14, glass: 14},
-  "c-sarti": {fizz: 14, glass: 14}
+  pantera: {fizz: 8},
+  pornstar: {fizz: 10},
+  tropiki: {fizz: 5},
+  maitai: {fizz: 4},
+  negroni: {fizz: 3 },
+  hugo: {fizz: 14},
+  bluecolada: {fizz: 6},
+  summer: {fizz: 12},
+  chili: {fizz: 4},
+  grusha: {fizz: 4 },
+  "c-fiero": {fizz: 14},
+  "c-bosford": {fizz: 16},
+  "c-watermelon": {fizz: 14},
+  "c-collins": {fizz: 14},
+  "c-aperol": {fizz: 14},
+  "c-campari": {fizz: 14},
+  "c-sarti": {fizz: 14}
 };
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
@@ -96,16 +103,16 @@ function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + c
 const stRG = (x, x0, y0, r0, x1, y1, r1, stops) => { const g = x.createRadialGradient(x0, y0, r0, x1, y1, r1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; };
 const stLG = (x, x0, y0, x1, y1, stops) => { const g = x.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; };
 let stFx = null;
-/* сцена коктейля: огни бара, пузырьки (за бокалом и в бокале) */
+/* сцена коктейля: огни бара и пузырьки */
 function stFxMake(id, tone){
-  const cfg = STFX[id] || {fizz: 6, glass: 0}, R = stRand(id);
+  const cfg = STFX[id] || {fizz: 6}, R = stRand(id);
   const bub = n => Array.from({length: n}, () => ({x: R(), y: R(), r: .006 + R() * .012, k: R() < .5 ? 1 : 2, ph: R()}));
   const bokeh = Array.from({length: 10}, () => ({x: R(), y: R() * .7, r: .04 + R() * .09, a: .16 + R() * .22, ph: R(), warm: R() < .5}));
-  return {id, cfg, tone, fizz: bub(cfg.fizz), glass: bub(cfg.glass), bokeh, raf: 0};
+  return {id, cfg, tone, fizz: bub(cfg.fizz), bokeh, raf: 0};
 }
 function stFxSize(c){ const d = Math.min(2, window.devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight; if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)){ c.width = Math.round(w * d); c.height = Math.round(h * d); } return {w, h, d}; }
 function stFxFrame(p){
-  const f = stFx, c = $("stBg"), g = $("stFizz");
+  const f = stFx, c = $("stBg");
   if (!f || !c) return;
   const {w, h, d} = stFxSize(c), x = c.getContext("2d"), H = f.tone.h, Sa = f.tone.s, m = Math.min(w, h), gl = $("stGlass");
   const floor = gl && gl.offsetHeight ? Math.min(h - 6, gl.offsetTop + gl.offsetHeight * .985) : h * .8;   // стойка — под донышком бокала
@@ -139,16 +146,6 @@ function stFxFrame(p){
   for (let k = 0; k < 3; k++){ const Y = floor + (h - floor) * (.25 + k * .22), X = ((p + k / 3) % 1) * (w + 200) - 100;
     x.fillStyle = stLG(x, X - 90, 0, X + 90, 0, [[0, "rgba(255,255,255,0)"], [.5, "rgba(255,255,255," + (.12 - k * .03) + ")"], [1, "rgba(255,255,255,0)"]]); x.fillRect(X - 90, Y, 180, 1.5); }
   x.restore();
-  /* пузырьки в бокале — холст с маской по фото */
-  if (g){
-    const s = stFxSize(g), y = g.getContext("2d");
-    y.setTransform(s.d, 0, 0, s.d, 0, 0); y.clearRect(0, 0, s.w, s.h);
-    f.glass.forEach(b => {
-      const yy = s.h * .95 - (((b.y + p * b.k) % 1) * s.h * .6), X = s.w * (.3 + b.x * .4) + Math.sin(TAU * (p * 2 + b.ph)) * 2, r = Math.max(1, b.r * s.w * .55);
-      y.strokeStyle = "rgba(255,255,255,.7)"; y.lineWidth = .8; y.beginPath(); y.arc(X, yy, r, 0, TAU); y.stroke();
-      y.fillStyle = "rgba(255,255,255,.9)"; y.beginPath(); y.arc(X - r * .3, yy - r * .3, r * .3, 0, TAU); y.fill();
-    });
-  }
 }
 function stFxLoop(t){
   if (!stFx || !stId || document.hidden) return (stFx && (stFx.raf = 0));
@@ -168,8 +165,7 @@ function stBuild(){
   stEl = document.createElement("div");
   stEl.className = "story"; stEl.id = "story"; stEl.hidden = true;
   stEl.setAttribute("role", "dialog"); stEl.setAttribute("aria-modal", "true"); stEl.setAttribute("aria-labelledby", "stName");
-  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async"><img class="strefl" id="stRefl" alt="" aria-hidden="true" decoding="async">' +
-    '<canvas class="stfizz" id="stFizz" aria-hidden="true"></canvas><span class="stshine" aria-hidden="true"></span></div></div>' +
+  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async"></div></div>' +
     '<div class="stpanel"><button type="button" class="stback" id="stBack">' + ST_ICON.back + '<span></span></button>' +
     '<p class="stkick" id="stKick"></p><h2 id="stName"></h2>' +
     '<div class="stpages" id="stPages"></div>' +
@@ -219,11 +215,10 @@ function stDraw(it){
   /* фото в высоком разрешении (photos/hd/, увеличено нейросетью) — для карточки; нет его — обычное */
   const hd = pw && /^photos\/[\w-]+\.webp$/.test(it.img) ? "photos/hd/" + base + ".webp" : it.img;
   if (img.dataset.src !== it.img){
-    img.dataset.src = it.img; img.onerror = () => { img.onerror = null; img.src = it.img; $("stRefl").src = it.img; };
-    img.src = hd; $("stRefl").src = hd;
+    img.dataset.src = it.img; img.onerror = () => { img.onerror = null; img.src = it.img; };
+    img.src = hd;
   }
-  $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — маска пузырьков и блика совпадает
-  $("stGlass").style.setProperty("--stimg", 'url("' + it.img + '")');
+  $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — бокал стоит на стойке
   if (!stFx || stFx.id !== it.id) stFxStart(it.id, tone); else stFx.tone = tone;
   img.alt = cname(it);
   $("stBack").querySelector("span").textContent = su("back");
@@ -240,6 +235,11 @@ function stDraw(it){
   $("stTg").title = su("tg"); $("stIg").title = su("ig"); $("stQr").title = su("qr");
   stNavDraw();
 }
+/* точка, из которой карточка раскрывается и куда сворачивается: центр плитки (на экране) или центр экрана */
+function stOrigin(from){
+  const r = from && from.getBoundingClientRect(), on = r && r.bottom > 0 && r.top < innerHeight;
+  stEl.style.transformOrigin = on ? Math.round(r.left + r.width / 2) + "px " + Math.round(Math.min(innerHeight, Math.max(0, r.top + r.height / 2))) + "px" : "50% 50%";
+}
 /* открыть карточку: from — плитка меню (карточка «раскрывается» из неё) */
 function storyOpen(id, from){
   const it = cardItem(id);
@@ -253,10 +253,9 @@ function storyOpen(id, from){
   document.documentElement.classList.add("stopen");
   $("stPages").scrollLeft = 0; stNavDraw();
   stFit();
-  if (!was && !stReduce() && stEl.animate){
-    const r = from && from.getBoundingClientRect();
-    const a = r && r.bottom > 0 && r.top < innerHeight ? "inset(" + Math.max(0, r.top) + "px " + Math.max(0, innerWidth - r.right) + "px " + Math.max(0, innerHeight - r.bottom) + "px " + Math.max(0, r.left) + "px round 18px)" : "inset(8% 8% 8% 8% round 26px)";
-    stEl.animate([{clipPath: a, opacity: r ? 1 : 0}, {clipPath: "inset(0px 0px 0px 0px round 0px)", opacity: 1}], {duration: 420, easing: "cubic-bezier(.2,.8,.2,1)"});
+  if (!was && !stReduce() && stEl.animate){                           // «раскрывается» из плитки: прозрачность и масштаб — плавно и на iPhone
+    stOrigin(from);
+    stEl.animate([{opacity: 0, transform: "scale(.9)"}, {opacity: 1, transform: "scale(1)"}], {duration: 320, easing: "cubic-bezier(.2,.8,.2,1)"});
   }
   $("stBack").focus({preventScroll: true});
   return true;
@@ -266,10 +265,9 @@ function storyClose(){
   const from = stFrom, done = () => { stEl.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; };
   stId = ""; stFrom = null; stPushed = false;
   if (stQrEl) stQrEl.hidden = true;
-  const r = from && from.isConnected && from.getBoundingClientRect();
   if (!stReduce() && stEl.animate){
-    const a = r && r.bottom > 0 && r.top < innerHeight ? "inset(" + Math.max(0, r.top) + "px " + Math.max(0, innerWidth - r.right) + "px " + Math.max(0, innerHeight - r.bottom) + "px " + Math.max(0, r.left) + "px round 18px)" : "inset(8% 8% 8% 8% round 26px)";
-    stEl.animate([{clipPath: "inset(0px 0px 0px 0px round 0px)", opacity: 1}, {clipPath: a, opacity: r ? 1 : 0}], {duration: 300, easing: "cubic-bezier(.4,0,.2,1)"}).onfinish = done;
+    stOrigin(from && from.isConnected ? from : null);
+    stEl.animate([{opacity: 1, transform: "scale(1)"}, {opacity: 0, transform: "scale(.94)"}], {duration: 220, easing: "cubic-bezier(.4,0,1,1)"}).onfinish = done;
   } else done();
   if (stBack && stBack.isConnected) try { stBack.focus({preventScroll: true}); } catch (e) {}
   stBack = null;
@@ -283,10 +281,10 @@ function storyBack(){
 /* плитка меню → карточка; адрес …/#story-id — кнопка «назад» телефона закроет её */
 function storyGo(id, from){
   if (!storyOpen(id, from)) return;
-  history.pushState(null, "", "#story-" + encodeURIComponent(id));
+  history.pushState(null, "", "#" + id);
   stPushed = true;
 }
-/* из route(): адрес #story-id (QR, ссылка, «вперёд») */
+/* из route(): адрес карточки (QR этикетки, ссылка, «вперёд») */
 function storyRoute(id){
   if (stId === id) return;
   if (!storyOpen(id)) return;                                      // позиции ещё нет (меню из таблицы грузится) — откроет storyRefresh
@@ -298,7 +296,7 @@ function storyShut(){ if (stId) storyClose(); }
 function storyRefresh(){
   const h = decodeURIComponent(location.hash.slice(1));
   if (stId){ const it = cardItem(stId); if (storyHas(it)){ stDraw(it); stFit(); } else storyClose(); return; }
-  if (h.indexOf("story-") === 0 && !$("viewBar").hidden) storyRoute(h.slice(6));
+  if (storyFor(h) && !$("viewBar").hidden) storyRoute(storyFor(h));
 }
 
 /* QR этой карточки: показать и скачать картинкой (с названием) */
