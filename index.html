@@ -115,6 +115,7 @@
       <button type="button" data-s="calc" aria-pressed="false">Калькулятор</button>
       <button type="button" data-s="order" aria-pressed="false">Заявка</button>
       <button type="button" data-s="open"  aria-pressed="false">Чеклист</button>
+      <button type="button" data-s="fr"    aria-pressed="false">Холодильники</button>
       <button type="button" data-s="zone"  aria-pressed="false">Взять на бар</button>
       <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
       <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
@@ -622,6 +623,18 @@
     <div id="ckList"></div>
   </div>
 
+  <div id="secFr" hidden>
+    <p class="cktop" id="frInfo"></p>
+    <div class="frlost" id="frLost" role="alert" hidden><p id="frLostT"></p><button type="button" class="link" id="frLostX">Понятно</button></div>
+    <div class="modes zones frzones" id="frZones" role="group" aria-label="Зона"></div>
+    <div id="frList"></div>
+    <div id="frOne" hidden></div>
+    <div class="frtools" id="frTools">
+      <button type="button" class="link" id="frStick">Наклейки с QR-кодами — лист A4 (PNG)</button>
+      <p class="cknote">QR на холодильнике сразу открывает его карточку. Журнал за месяц — в таблице, лист «Холодильники ММ.ГГГГ»: по таблице на холодильник, как бумажный бланк, выход за норму подсвечен.</p>
+    </div>
+  </div>
+
   <div id="secZone" hidden>
     <div class="result tcard osum">
       <div class="tname"><em id="zcount"></em><h2 class="h3">Взять на бар</h2></div>
@@ -656,6 +669,15 @@
   </footer>
 </main>
 
+<dialog id="frQrDlg" class="frqrd" aria-labelledby="frQrT">
+  <div class="frqr">
+    <h2 class="h3" id="frQrT"></h2>
+    <div id="frQrImg"></div>
+    <p class="sub" id="frQrL"></p>
+    <div class="btns"><button type="button" id="frQrDl">Скачать PNG</button><button type="button" class="ghost" id="frQrX">Закрыть</button></div>
+  </div>
+</dialog>
+
 <dialog id="login" aria-labelledby="loginTitle">
   <form id="gform" method="dialog" autocomplete="on" novalidate>
     <h2 id="loginTitle">Бартендерам</h2>
@@ -684,6 +706,7 @@
 <script src="js/menu.js" defer></script>
 <script src="js/card.js" defer></script>
 <script src="js/story.js" defer></script>
+<script src="js/fridge.js" defer></script>
 <script src="js/auth.js" defer></script>
 <script src="js/ttk.js" defer></script>
 <script src="js/wo.js" defer></script>

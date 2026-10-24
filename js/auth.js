@@ -289,6 +289,7 @@ function route(){
   const sid = typeof storyFor === "function" ? storyFor(h) : "";
   if (sid){ showView("bar"); storyRoute(sid); return; }                // коктейль с фото (QR этикетки) — «Узнать больше»
   if (typeof storyShut === "function") storyShut();                    // ушли с карточки кнопкой «назад» телефона
+  if (/^fridge-[a-z0-9]+$/.test(h) && typeof frRoute === "function") return frRoute(h.slice(7));   // QR на холодильнике
   if (h === "bartenders") return goBt();
   showView("bar");
   if (h === "card") gPanel("card");
