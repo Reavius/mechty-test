@@ -8,24 +8,24 @@
    Названия, зоны, нормы и схемы — здесь: таблица получает этот список с каждым запросом и по нему строит лист месяца.
    Схема (parts — слева направо): door — дверь, drawers — ящики (n штук, h — доли высоты); справа блок с решёткой и табло,
    unit:"bottom" — решётка снизу во всю ширину, табло слева. Норма: lo/hi (°C), у склада ещё hlo/hhi (влажность, %);
-   нет нормы — не подсвечиваем. frz — морозильник: поле сразу с минусом. */
+   нет нормы — не подсвечиваем. frz — морозильник: поле сразу с минусом. До FR_START внести нельзя — карточка говорит, когда начало. */
 const FR_ZONES = [["cafe", "Кафе"], ["sklad", "Склад"], ["club", "Клуб"], ["mans", "Мансарда"]];
 const FR_FIO = ["Вавилин", "Иванов", "Журавлев", "Фахрутдинов"];
 const FR = [
-  {id: "caf1", z: "cafe", n: "Кафе 1 · у мойки", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.1, 1]}]},
-  {id: "caf2", z: "cafe", n: "Кафе 2 · у кофемашины", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}]},
-  {id: "caf3", z: "cafe", n: "Кафе 3 · у кассы", parts: [{t: "door"}, {t: "drawers", n: 3}]},
+  {id: "caf1", z: "cafe", n: "Холодильник Хайколд Кафе 1", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.1, 1]}]},
+  {id: "caf2", z: "cafe", n: "Холодильник Хайколд Кафе 2", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}]},
+  {id: "caf3", z: "cafe", n: "Холодильник Хайколд Кафе 3", parts: [{t: "door"}, {t: "drawers", n: 3}]},
   {id: "sklad", z: "sklad", n: "Склад", room: 1},
-  {id: "clb1", z: "club", n: "Клуб 1", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
-  {id: "clb2", z: "club", n: "Клуб 2", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
-  {id: "clb3", z: "club", n: "Клуб 3 · у кассы", parts: [{t: "door"}, {t: "drawers", n: 3}]},
-  {id: "clb4", z: "club", n: "Клуб 4", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}, {t: "drawers", n: 3}]},
-  {id: "clb5", z: "club", n: "Клуб 5", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}, {t: "drawers", n: 2, h: [1.2, 1]}]},
+  {id: "clb1", z: "club", n: "Холодильник Хайколд Клуб 1", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
+  {id: "clb2", z: "club", n: "Холодильник Хайколд Клуб 2", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
+  {id: "clb3", z: "club", n: "Холодильник Хайколд Клуб 3", parts: [{t: "door"}, {t: "drawers", n: 3}]},
+  {id: "clb4", z: "club", n: "Холодильник Хайколд Клуб 4", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}, {t: "drawers", n: 3}]},
+  {id: "clb5", z: "club", n: "Холодильник Хайколд Клуб 5", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}, {t: "drawers", n: 2, h: [1.2, 1]}]},
   {id: "man1", z: "mans", n: "Холодильник Хайколд Мансарда 1", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.6, 1]}]},
   {id: "man2", z: "mans", n: "Морозильник Хайколд Мансарда 2", frz: 1, unit: "bottom", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]},
   {id: "man3", z: "mans", n: "Холодильник Хайколд Мансарда 3", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]}
 ];
-const FR_FROM = "2026-10";                                    // первый месяц журнала — раньше листать некуда
+const FR_START = "2026-11-01", FR_FROM = FR_START.slice(0, 7);   // журнал на сайте — с 1 ноября (тот же день — в Code.gs); октябрь и раньше — бумажный архив
 const FR_MON = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const FRS = "mechty-fr", FRQ = "mechty-frq", FRZ = "mechty-fr-z", FRF = "mechty-fr-fio";
 let frSt = null, frAsk = {}, frZone = "cafe", frId = "", frM = "", frWant = "", frBusy = false, frState = "load", frLost = [], frTimer = 0, frRetry = 0;
@@ -37,6 +37,9 @@ const frMorning = () => { const h = new Date(Date.now() + 5 * 3600e3).getUTCHour
 const frWork = day => ((frSt && frSt.work) || []).indexOf(new Date(day + "T12:00:00Z").getUTCDay()) >= 0;
 /* пропуск: прошедший рабочий день, холодильник уже вели (есть записи раньше), показания нет и не «не работали» */
 const frGap = (id, day, r) => day < frDayNow() && frWork(day) && !!frSt.fst && !!frSt.fst[id] && day >= frSt.fst[id] && !r.off;
+const frEarly = () => frDayNow() < FR_START;
+const frCurM = () => frEarly() ? FR_FROM : frDayNow().slice(0, 7);          // месяц журнала, который открыт сейчас
+const frStartTx = () => Number(FR_START.slice(8, 10)) + " " + ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"][Number(FR_START.slice(5, 7)) - 1];
 const frMgr = () => typeof mgrKey === "function" && !!mgrKey();
 const frFmt = n => n == null || n === "" ? "" : (n < 0 ? "−" : "") + String(Math.abs(n)).replace(".", ",");
 const frZn = z => (FR_ZONES.find(x => x[0] === z) || [z, z])[1];
@@ -119,9 +122,9 @@ function frPut(d){
   frSt.day = d.day; frSt.m[d.m] = d.r || {};
   if (d.fst) frSt.fst = d.fst;
   if (d.work) frSt.work = d.work;
-  const keep = [d.day.slice(0, 7), frM].filter(Boolean);                // на телефоне — текущий месяц и открытый
+  const keep = [d.day.slice(0, 7), frCurM(), frM].filter(Boolean);       // на телефоне — текущий месяц и открытый
   Object.keys(frSt.m).forEach(k => { if (keep.indexOf(k) < 0 && k !== d.m) delete frSt.m[k]; });
-  cks(FRS, {day: frSt.day, fst: frSt.fst, work: frSt.work, m: {[d.day.slice(0, 7)]: frSt.m[d.day.slice(0, 7)] || {}}});
+  cks(FRS, {day: frSt.day, fst: frSt.fst, work: frSt.work, m: {[frCurM()]: frSt.m[frCurM()] || {}}});
 }
 async function frPost(body){
   try {
@@ -149,7 +152,7 @@ async function frFlush(){
       if (d.error === "action"){ frState = "old"; break; }
       cks(FRQ, ckj(FRQ, []).filter(x => x.n !== a.n));
       if (d.ok){ frPut(d); frState = "ok"; }
-      else frLost.push(Object.assign({why: d.error === "closed" ? "closed" : "bad"}, a));
+      else frLost.push(Object.assign({why: d.error === "closed" || d.error === "early" ? d.error : "bad"}, a));
     }
   } finally { frBusy = false; frDraw(); }
 }
@@ -157,7 +160,7 @@ async function frLoad(m){
   if (!TOKEN || !me) return;
   if (ckj(FRQ, []).length) await frFlush();
   if (frBusy) return;
-  const d = await frPost({fr: "get", m: m || frDayNow().slice(0, 7)});
+  const d = await frPost({fr: "get", m: m || frCurM()});
   if (d.ok){ frPut(d); frState = "ok"; }
   else frState = d.error === "action" ? "old" : "net";
   frDraw();
@@ -167,7 +170,7 @@ function frInit(){
   frEnsure(); frAsk = {};
   if (frWant){ const f = frGet(frWant); frWant = ""; if (f){ frZone = f.z; frId = f.id; frM = ""; } }
   frDraw(); frLoad();
-  if (frM && frM !== frDayNow().slice(0, 7)) frLoad(frM);
+  if (frM && frM !== frCurM()) frLoad(frM);
   if (!frTimer){
     frTimer = setInterval(() => { if (sect === "fr" && R && !document.hidden && !frBusy && !frTyping()) frLoad(); }, 60e3);
     document.addEventListener("visibilitychange", () => { if (!document.hidden && sect === "fr" && R) frLoad(); });
@@ -196,14 +199,15 @@ function frDraw(){
   frEnsure();
   const day = frDayNow(), recs = FR.map(f => frRec(f.id, day));
   const sN = recs.filter(r => r.s).length, eN = recs.filter(r => r.e).length, pend = ckj(FRQ, []).length;
-  $("frInfo").innerHTML = "День — <b>" + frWdDay(day) + "</b>, до 14:00" + (frSt.work && !frWork(day) ? " (не рабочий)" : "") +
+  $("frInfo").innerHTML = frEarly() ? "Журнал на сайте начнётся <b>" + frStartTx() + " в 14:00</b>. До этого — бумажный журнал." +
+    (frState === "old" ? " Журнал заработает после обновления Apps Script." : "") : "День — <b>" + frWdDay(day) + "</b>, до 14:00" + (frSt.work && !frWork(day) ? " (не рабочий)" : "") +
     ". Начало смены внесено у <b>" + sN + " из " + FR.length + "</b>, конец — у <b>" + eN + "</b>." +
     (frMorning() ? " <b>До 14:00 идёт ещё вчерашний день</b> — сюда конец его смены; начало новой — после 14:00." : "") +
     (pend && frState === "net" ? " Нет связи — " + pend + " " + (pend === 1 ? "показание уйдёт" : "показания уйдут") + ", когда появится." :
      pend ? " Отправляем…" : frState === "net" ? " Нет связи — показаны сохранённые данные." :
      frState === "old" ? " Журнал заработает после обновления Apps Script." : "");
   $("frLost").hidden = !frLost.length;
-  if (frLost.length) $("frLostT").innerHTML = "<b>Не записалось</b> — " + (frLost.some(x => x.why === "closed") ? "день уже закрыт в 14:00" : "таблица не приняла число") + ": " +
+  if (frLost.length) $("frLostT").innerHTML = "<b>Не записалось</b> — " + (frLost.some(x => x.why === "closed") ? "день уже закрыт в 14:00" : frLost.some(x => x.why === "early") ? "журнал ещё не начался" : "таблица не приняла число") + ": " +
     frLost.map(x => { const f = frGet(x.id); return esc(f ? f.n : x.id) + ", " + (x.k === "s" ? "начало" : "конец") + " смены " + frWdDay(x.d) + " — " + (x.t === "" ? "стереть" : frFmt(Number(x.t)) + " °C"); }).join("; ") +
     ". Исправить может бар-менеджер — с причиной.";
   $("frZones").innerHTML = FR_ZONES.map(([z, t]) => {
@@ -228,8 +232,8 @@ function frDrawOne(){
   const f = frGet(frId), box = $("frOne");
   if (!f){ frId = ""; return frDraw(); }
   const day = frDayNow(), r = frRec(f.id, day), last = r.e || r.s;
-  if (box.dataset.id !== f.id || box.dataset.day !== day || box.dataset.mg !== String(frMgr())){
-    box.dataset.id = f.id; box.dataset.day = day; box.dataset.mg = String(frMgr());
+  if (box.dataset.id !== f.id || box.dataset.day !== day || box.dataset.mg !== String(frMgr()) || box.dataset.early !== String(frEarly())){
+    box.dataset.id = f.id; box.dataset.day = day; box.dataset.mg = String(frMgr()); box.dataset.early = String(frEarly());
     const fio = frFio();
     const sh = k => {
       const lab = k === "s" ? "Начало смены" : "Конец смены";
@@ -242,24 +246,26 @@ function frDrawOne(){
     box.innerHTML = '<div class="result tcard frone"><div class="tname"><em>' + esc(frZn(f.z)) + '</em><h3>' + esc(f.n) + '</h3></div>' +
       (f.room ? "" : '<div class="frsvg" id="frSvg"></div>') +
       '<p class="frnorm">' + (frNorm(f) ? "Норма: <b>" + esc(frNorm(f)) + "</b>" : "Норма пока не задана — выход за неё не подсвечивается.") + '</p>' +
+      (frEarly() ? '<p class="frtoday frearly">Журнал на сайте начнётся <b>' + frStartTx() + ' в 14:00</b>. До этого показания — в бумажном журнале.</p>' :
       '<div class="frday"><p class="frtoday">Сегодня — <b>' + frWdDay(day) + '</b>. Вносить и править можно до 14:00.' +
         (frMorning() ? ' <b>Сейчас утро — это ещё вчерашний день:</b> сюда конец его смены, начало новой — после 14:00.' : "") + '</p>' +
         '<label class="label" for="frFio">ФИО</label><select id="frFio"><option value="">— выберите —</option>' +
         FR_FIO.map(x => '<option' + (x === fio ? " selected" : "") + '>' + x + '</option>').join("") + '</select>' +
-        sh("s") + sh("e") + '</div>' +
+        sh("s") + sh("e") + '</div>') +
       '<div class="frmh"><button type="button" class="frmb" data-mm="-1" aria-label="Предыдущий месяц">‹</button><b id="frMt"></b>' +
         '<button type="button" class="frmb" data-mm="1" aria-label="Следующий месяц">›</button></div><div id="frTab"></div>' + frFixHtml(f) +
       '<div class="otools"><button type="button" class="link" id="frBack">← Все холодильники</button><button type="button" class="link" id="frQr">QR-код для наклейки</button></div></div>';
-    ["s", "e"].forEach(k => { const x = r[k]; frSetIn(k, x); });
-  } else ["s", "e"].forEach(k => { if (!frDirty(k)) frSetIn(k, r[k]); });
+    if (!frEarly()) ["s", "e"].forEach(k => frSetIn(k, r[k]));
+  } else if (!frEarly()) ["s", "e"].forEach(k => { if (!frDirty(k)) frSetIn(k, r[k]); });
   if ($("frSvg")) $("frSvg").innerHTML = fridgeSvg(f, last ? frFmt(last.t) : "");
-  ["s", "e"].forEach(k => { const x = r[k], w = $("frW" + k);
+  if (!frEarly()) ["s", "e"].forEach(k => { const x = r[k], w = $("frW" + k);
     if (w.dataset.msg) return;
     w.innerHTML = x ? (x.pend ? '<span class="frpend">ждёт отправки</span> · ' : "") +
-      (x.p ? "внесено с бумажного журнала" : "внесено: <b>" + esc(x.w) + "</b> · " + esc(x.at)) + " · ФИО: " + esc(x.f) +
+      "внесено: <b>" + esc(x.w) + "</b> · " + esc(x.at) + " · ФИО: " + esc(x.f) +
       (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "") : "Не внесено.";
   });
-  frBtns(); frTable(f); frFixSync();
+  if (!frEarly()) frBtns();
+  frTable(f); frFixSync();
 }
 /* поле показывает внесённое; dataset.v — что было внесено (поле поменяли — не затираем при обновлении) */
 function frSetIn(k, x){
@@ -279,15 +285,15 @@ function frBtns(){
   });
 }
 function frTable(f){
-  const today = frDayNow(), m = frM || today.slice(0, 7), y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
+  const today = frDayNow(), cur = frCurM(), m = frM || cur, y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
   $("frMt").textContent = FR_MON[mo - 1] + " " + y;
-  document.querySelectorAll("#frOne .frmb").forEach(b => { b.disabled = b.dataset.mm === "1" ? m >= today.slice(0, 7) : m <= FR_FROM; });
+  document.querySelectorAll("#frOne .frmb").forEach(b => { b.disabled = b.dataset.mm === "1" ? m >= cur : m <= FR_FROM; });
   if (!frSt.m[m]){ $("frTab").innerHTML = '<p class="oempty">' + (frState === "net" ? "Нет связи — журнал месяца загрузится, когда появится." : "Загружаем журнал…") + '</p>'; return; }
   const n = new Date(Date.UTC(y, mo, 0)).getUTCDate(), rows = [];
   const mg = frMgr();
   const cell = (x, gap) => x ? '<td class="v' + (frBad(f, x) ? " bad" : "") + (x.pend ? " pend" : "") + (x.m != null ? " fix" : "") + '">' + frFmt(x.t) +
     (f.room && x.h != null ? '<small>' + frFmt(x.h) + ' %</small>' : "") + '</td>' : gap ? '<td class="v gap">пропуск</td>' : '<td class="v nil">—</td>';
-  const sig = x => x.p ? "бумажный журнал" : x.m != null ? "исправил " + x.w + " " + (x.on || "") + " " + (x.at || "") + ": " + x.m : x.w + " " + x.at;
+  const sig = x => x.m != null ? "исправил " + x.w + " " + (x.on || "") + " " + (x.at || "") + ": " + x.m : x.w + " " + x.at;
   for (let d = 1; d <= n; d++){
     const key = m + "-" + String(d).padStart(2, "0");
     if (key > today) break;
@@ -309,6 +315,7 @@ function frTable(f){
 
 /* исправление бар-менеджером: прошедший день — показание (или стереть) либо «не работали»; причина обязательна */
 function frFixHtml(f){
+  if (frEarly()) return "";
   if (!frMgr()) return '<p class="frfixno">Пропущенный или ошибочный прошлый день исправляет бар-менеджер — с причиной (вход в разделе «Менеджер»).</p>';
   const today = frDayNow(), y = new Date(Date.parse(today + "T12:00:00Z") - 864e5).toISOString().slice(0, 10);
   return '<div class="frfix" id="frFix"><p class="label">Исправление бар-менеджера</p>' +
@@ -477,9 +484,9 @@ $("frOne").addEventListener("click", e => {
     t.focus(); if (pm.dataset.pm !== "Fx") frBtns(); return;
   }
   if (mm){
-    const [y, m] = (frM || frDayNow().slice(0, 7)).split("-").map(Number), d = new Date(Date.UTC(y, m - 1 + Number(mm.dataset.mm), 1));
+    const [y, m] = (frM || frCurM()).split("-").map(Number), d = new Date(Date.UTC(y, m - 1 + Number(mm.dataset.mm), 1));
     frM = d.toISOString().slice(0, 7);
-    if (frM === frDayNow().slice(0, 7)) frM = "";
+    if (frM === frCurM()) frM = "";
     buzz(8); frTable(frGet(frId));
     if (frM && !frSt.m[frM]) frLoad(frM);
     return;

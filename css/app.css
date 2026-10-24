@@ -1027,6 +1027,7 @@ html.stopen{overflow:hidden}
 .frday{padding:4px 16px 18px}
 .frtoday{margin:10px 0 14px;font-size:13.5px;color:var(--muted)}
 .frtoday b{color:var(--fg)}
+.frtoday.frearly{margin:14px 16px 16px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px}
 .frday select{width:100%}
 .frsh{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
 .frsh .label{margin-bottom:8px}
