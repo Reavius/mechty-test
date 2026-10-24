@@ -8,23 +8,23 @@
    Названия, зоны, нормы и схемы — здесь: таблица получает этот список с каждым запросом и по нему строит лист месяца.
    Схема (parts — слева направо): door — дверь, drawers — ящики (n штук, h — доли высоты); справа блок с решёткой и табло,
    unit:"bottom" — решётка снизу во всю ширину, табло слева. Норма: lo/hi (°C), у склада ещё hlo/hhi (влажность, %);
-   нет нормы — не подсвечиваем. room — склад, как его бланк: один замер в день (время, температура, влажность), день — тот же,
+   нет нормы — не подсвечиваем. w — где стоит (в списке, карточке, на наклейке и в листе месяца). room — склад, как его бланк: один замер в день (время, температура, влажность), день — тот же,
    с 14:00 до 14:00. frz — морозильник: поле сразу с минусом. До FR_START внести нельзя — карточка говорит, когда начало. */
 const FR_ZONES = [["cafe", "Кафе"], ["sklad", "Склад"], ["club", "Клуб"], ["mans", "Мансарда"]];
 const FR_FIO = ["Вавилин", "Иванов", "Журавлев", "Фахрутдинов"];
 const FR = [
-  {id: "caf1", z: "cafe", n: "Холодильник Хайколд Кафе 1", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.1, 1]}]},
-  {id: "caf2", z: "cafe", n: "Холодильник Хайколд Кафе 2", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}]},
-  {id: "caf3", z: "cafe", n: "Холодильник Хайколд Кафе 3", parts: [{t: "door"}, {t: "drawers", n: 3}]},
+  {id: "caf1", z: "cafe", n: "Холодильник Хайколд Кафе 1", w: "у мойки", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.1, 1]}]},
+  {id: "caf2", z: "cafe", n: "Морозильник Хайколд Кафе 2", w: "у кофемашины", frz: 1, parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}]},
+  {id: "caf3", z: "cafe", n: "Холодильник Хайколд Кафе 3", w: "у кассы", parts: [{t: "door"}, {t: "drawers", n: 3}]},
   {id: "sklad", z: "sklad", n: "Склад", room: 1},
-  {id: "clb1", z: "club", n: "Холодильник Хайколд Клуб 1", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
-  {id: "clb2", z: "club", n: "Холодильник Хайколд Клуб 2", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
-  {id: "clb3", z: "club", n: "Холодильник Хайколд Клуб 3", parts: [{t: "door"}, {t: "drawers", n: 3}]},
-  {id: "clb4", z: "club", n: "Холодильник Хайколд Клуб 4", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}, {t: "drawers", n: 3}]},
-  {id: "clb5", z: "club", n: "Холодильник Хайколд Клуб 5", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}, {t: "drawers", n: 2, h: [1.2, 1]}]},
-  {id: "man1", z: "mans", n: "Холодильник Хайколд Мансарда 1", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.6, 1]}]},
-  {id: "man2", z: "mans", n: "Морозильник Хайколд Мансарда 2", frz: 1, unit: "bottom", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]},
-  {id: "man3", z: "mans", n: "Холодильник Хайколд Мансарда 3", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]}
+  {id: "clb1", z: "club", n: "Холодильник Хайколд Клуб 1", w: "дальний от входа, справа", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
+  {id: "clb2", z: "club", n: "Холодильник Хайколд Клуб 2", w: "у премиксов", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
+  {id: "clb3", z: "club", n: "Морозильник Хайколд Клуб 3", w: "у кассы", frz: 1, parts: [{t: "door"}, {t: "drawers", n: 3}]},
+  {id: "clb4", z: "club", n: "Морозильник Хайколд Клуб 4", w: "ближний ко входу, справа", frz: 1, parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}, {t: "drawers", n: 3}]},
+  {id: "clb5", z: "club", n: "Холодильник Хайколд Клуб 5", w: "у сервера", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}, {t: "drawers", n: 2, h: [1.2, 1]}]},
+  {id: "man1", z: "mans", n: "Холодильник Хайколд Мансарда 1", w: "у кассы", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.6, 1]}]},
+  {id: "man2", z: "mans", n: "Морозильник Хайколд Мансарда 2", w: "у мойки", frz: 1, unit: "bottom", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]},
+  {id: "man3", z: "mans", n: "Холодильник Хайколд Мансарда 3", w: "на нём ноутбук", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]}
 ];
 const FR_START = "2026-11-01", FR_FROM = FR_START.slice(0, 7);   // журнал на сайте — с 1 ноября (тот же день — в Code.gs); октябрь и раньше — бумажный архив
 const FR_MON = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
@@ -54,7 +54,7 @@ const frNormOne = (lo, hi, u) => lo == null && hi == null ? "" : lo != null && h
   : (lo != null ? "не ниже " + frSig(lo) : "не выше " + frSig(hi)) + " " + u;
 const frNorm = f => [frNormOne(f.lo, f.hi, "°C"), f.room ? frNormOne(f.hlo, f.hhi, "%") : ""].filter(Boolean).join(", ");
 const frNul = v => v == null ? null : v;
-const frMeta = () => FR.map(f => [f.id, f.n, frZn(f.z), frNul(f.lo), frNul(f.hi), f.room ? 1 : 0, frNul(f.hlo), frNul(f.hhi)]);
+const frMeta = () => FR.map(f => [f.id, f.n, frZn(f.z), frNul(f.lo), frNul(f.hi), f.room ? 1 : 0, frNul(f.hlo), frNul(f.hhi), f.w || ""]);
 /* «4,1» → 4.1, «−18» → −18; не число или вне пределов — null (так же проверяет таблица) */
 function frNum(v, lo, hi){
   const s = String(v).trim().replace(",", ".").replace(/^(\d.*)[-−–]$/, "-$1").replace(/^[−–]/, "-");   // «11−» — тоже минус
@@ -226,7 +226,7 @@ function frDraw(){
       (x ? frFmt(x.t) + "°" + (f.room && x.h != null ? " · " + frFmt(x.h) + "%" : "") : "—") + '</span>';
     return '<button type="button" class="frcard' + (f.room ? " room" : "") + '" data-id="' + f.id + '">' +
       (f.room ? "" : '<span class="frth" aria-hidden="true">' + fridgeSvg(f, last ? frFmt(last.t) : "") + '</span>') +
-      '<span class="frtx"><b>' + esc(f.n) + '</b><span class="frvs">' + frKs(f).map(k => cell(r[k], k)).join("") + '</span>' +
+      '<span class="frtx"><b>' + esc(f.n) + '</b>' + (f.w ? '<span class="frw">' + esc(f.w) + '</span>' : "") + '<span class="frvs">' + frKs(f).map(k => cell(r[k], k)).join("") + '</span>' +
       (frBad(f, r.s) || frBad(f, r.e) ? '<em class="frbadt">вне нормы</em>' : "") + '</span></button>';
   }).join("");
 }
@@ -247,7 +247,7 @@ function frDrawOne(){
         (f.room ? '<input id="frH' + k + '" type="text" inputmode="decimal" maxlength="5" autocomplete="off" enterkeyhint="done" placeholder="—" aria-label="' + lab + ': влажность"><span class="fru">%</span>' : "") +
         '</div><button type="button" class="wogo frgo" data-go="' + k + '" id="frGo' + k + '">Внести</button><p class="frwho" id="frW' + k + '" role="status"></p></div>';
     };
-    box.innerHTML = '<div class="result tcard frone"><div class="tname"><em>' + esc(frZn(f.z)) + '</em><h3>' + esc(f.n) + '</h3></div>' +
+    box.innerHTML = '<div class="result tcard frone"><div class="tname"><em>' + esc(frZn(f.z) + (f.w ? " · " + f.w : "")) + '</em><h3>' + esc(f.n) + '</h3></div>' +
       (f.room ? "" : '<div class="frsvg" id="frSvg"></div>') +
       '<p class="frnorm">' + (frNorm(f) ? "Норма: <b>" + esc(frNorm(f)) + "</b>" : "Норма пока не задана — выход за неё не подсвечивается.") + '</p>' +
       (early ? '<p class="frtoday frearly">Журнал на сайте начнётся <b>' + frStartTx() + ' в 14:00</b>. До этого показания — в бумажном журнале.</p>' :
@@ -423,12 +423,17 @@ function frSticker(x, f, x0, y0, W, H){
   x.fillStyle = "#0E1014"; x.font = "800 " + Math.round(W * .062) + "px Manrope, -apple-system, sans-serif";
   const lines = frWrap(x, f.n, W * .86).slice(0, 2);
   lines.forEach((l, i) => x.fillText(l, cx, y0 + H * .16 + i * W * .072));
-  const qTop = y0 + H * .16 + lines.length * W * .072 - W * .03, qSize = Math.min(W * .78, H - (qTop - y0) - H * .13);
+  let below = y0 + H * .16 + lines.length * W * .072;
+  if (f.w){                                                                 // где стоит — чтобы наклеить на нужный
+    x.fillStyle = "#6b6f76"; x.font = "600 " + Math.round(W * .044) + "px Manrope, -apple-system, sans-serif";
+    x.fillText(f.w, cx, below - W * .01); below += W * .05;
+  }
+  const qTop = below - W * .03, qSize = Math.min(W * .78, H - (qTop - y0) - H * .13);
   const qEnd = frQrDraw(x, f, cx, qTop, qSize);
   x.fillStyle = "#0E1014"; x.font = "700 " + Math.round(W * .046) + "px Manrope, -apple-system, sans-serif";
   x.fillText(f.room ? "Температура и влажность" : "Температура", cx, qEnd + H * .035);
   x.fillStyle = "#6b6f76"; x.font = "500 " + Math.round(W * .038) + "px Manrope, -apple-system, sans-serif";
-  x.fillText("в начале и в конце смены — сканируйте", cx, qEnd + H * .085);
+  x.fillText(f.room ? "один замер за смену — сканируйте" : "в начале и в конце смены — сканируйте", cx, qEnd + H * .085);
 }
 function frOneCanvas(f){
   const c = document.createElement("canvas"); c.width = 800; c.height = 1000;

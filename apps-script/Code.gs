@@ -3660,7 +3660,7 @@ function frNum(v, lo, hi) {
   return n >= lo && n <= hi ? n : null;
 }
 
-/* список с сайта: [[id, название, зона, мин, макс, комната(1), влажн. мин, влажн. макс], …] — хранится, если поменялся */
+/* список с сайта: [[id, название, зона, мин, макс, комната(1), влажн. мин, влажн. макс, где стоит], …] — хранится, если поменялся */
 function frMetaPut(a) {
   if (!Array.isArray(a) || !a.length || a.length > 40) return;
   const num = v => typeof v === "number" && isFinite(v) && Math.abs(v) <= 100 ? v : null;
@@ -3669,7 +3669,7 @@ function frMetaPut(a) {
     if (!Array.isArray(x)) return;
     const id = String(x[0] || "");
     if (!/^[a-z0-9]{2,12}$/.test(id) || list.some(y => y.id === id)) return;
-    list.push({ id: id, n: clean(x[1], 80) || id, z: clean(x[2], 30), lo: num(x[3]), hi: num(x[4]), room: x[5] ? 1 : 0, hlo: num(x[6]), hhi: num(x[7]) });
+    list.push({ id: id, n: clean(x[1], 80) || id, z: clean(x[2], 30), lo: num(x[3]), hi: num(x[4]), room: x[5] ? 1 : 0, hlo: num(x[6]), hhi: num(x[7]), w: clean(x[8], 60) });
   }
   const P = PropertiesService.getScriptProperties(), js = JSON.stringify(list);
   if (P.getProperty(FR_META) !== js) P.setProperty(FR_META, js);
@@ -3736,7 +3736,7 @@ function frMonth(ss, m, data, fst) {
   list.forEach(f => {
     const norm = [frNorm(f.lo, f.hi, "°C"), f.room ? frNorm(f.hlo, f.hhi, "%") : ""].filter(Boolean).join(", ");
     blocks.push([rows.length + 1, f.room ? 6 : 5]);
-    put([f.n + (f.z && f.z !== f.n ? " · " + f.z : "") + " · норма: " + (norm || "не задана")], FR_TOP, true);
+    put([f.n + (f.w ? " (" + f.w + ")" : "") + (f.z && f.z !== f.n ? " · " + f.z : "") + " · норма: " + (norm || "не задана")], FR_TOP, true);
     put(f.room ? ["Дата", "Время", "Температура, °C", "Влажность, %", "Ответственное лицо", "Подпись"]
                : ["Дата", "Температура в начале смены", "Температура в конце смены", "ФИО", "Подпись"], null, true);
     for (let d = 1; d <= days; d++) {
