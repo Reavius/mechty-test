@@ -836,7 +836,7 @@ function wnDraw(){
   const T = WNT[wkind], pend = wnPend().filter(x => (x.k || "wo") === wkind);
   const all = wnItems.concat(pend.filter(x => !wnItems.some(y => y.id === x.id)).map(x => ({...x, pend: true})));
   $("wnTitle").textContent = T.title; $("wnHint").textContent = T.hint; $("wnN").placeholder = T.what;
-  $("wnWhy").hidden = wkind === "pr"; $("wnForm").classList.toggle("pr", wkind === "pr");
+  $("wnWhy").hidden = wkind === "pr"; $("wnForm").classList.toggle("pr", wkind === "pr"); wnReady();
   const held = wnHeldList.slice().sort((a, b) => a.until - b.until);
   $("wnCount").textContent = all.length ? all.length + " поз." + (held.length ? " · в актах " + held.length : "") : held.length ? "в актах " + held.length : "";
   const line = x => '<li' + (x.pend ? ' class="pend"' : x.took ? ' class="held"' : "") + '><div class="wnrow"><span>' + esc(x.n) + '</span><b>' + esc(wq(x.q)) + " " + esc(x.u || "") + '</b></div>' +
@@ -962,6 +962,13 @@ $("wnForm").addEventListener("submit", e => {
   buzz(14); wnDraw(); wnSync();
 });
 $("wnN").addEventListener("change", () => { const u = woUnitOf[$("wnN").value.trim()]; if (u && !$("wnU").value) $("wnU").value = u; });
+/* «Добавить в заметку» — серая, пока не заполнены наименование, количество, единица и причина (у проработки причины нет); всё есть — жёлтая */
+function wnReady(){
+  const c = rcalc($("wnQ").value);
+  $("wnGo").classList.toggle("ready", !!$("wnN").value.trim() && isFinite(c.v) && c.v > 0 && !!$("wnU").value && (wkind === "pr" || !!$("wnWhy").value.trim()));
+}
+$("wnForm").addEventListener("input", wnReady);
+$("wnForm").addEventListener("change", wnReady);
 
 /* сколько строк уже будет в акте текущего вида, куда пойдут перенесённые */
 function wnUsed(){
