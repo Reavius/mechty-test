@@ -8,7 +8,8 @@
    Названия, зоны, нормы и схемы — здесь: таблица получает этот список с каждым запросом и по нему строит лист месяца.
    Схема (parts — слева направо): door — дверь, drawers — ящики (n штук, h — доли высоты); справа блок с решёткой и табло,
    unit:"bottom" — решётка снизу во всю ширину, табло слева. Норма: lo/hi (°C), у склада ещё hlo/hhi (влажность, %);
-   нет нормы — не подсвечиваем. frz — морозильник: поле сразу с минусом. До FR_START внести нельзя — карточка говорит, когда начало. */
+   нет нормы — не подсвечиваем. room — склад, как его бланк: один замер в день (время, температура, влажность), день — тот же,
+   с 14:00 до 14:00. frz — морозильник: поле сразу с минусом. До FR_START внести нельзя — карточка говорит, когда начало. */
 const FR_ZONES = [["cafe", "Кафе"], ["sklad", "Склад"], ["club", "Клуб"], ["mans", "Мансарда"]];
 const FR_FIO = ["Вавилин", "Иванов", "Журавлев", "Фахрутдинов"];
 const FR = [
@@ -37,6 +38,8 @@ const frMorning = () => { const h = new Date(Date.now() + 5 * 3600e3).getUTCHour
 const frWork = day => ((frSt && frSt.work) || []).indexOf(new Date(day + "T12:00:00Z").getUTCDay()) >= 0;
 /* пропуск: прошедший рабочий день, холодильник уже вели (есть записи раньше), показания нет и не «не работали» */
 const frGap = (id, day, r) => day < frDayNow() && frWork(day) && !!frSt.fst && !!frSt.fst[id] && day >= frSt.fst[id] && !r.off;
+const frKs = f => f.room ? ["s"] : ["s", "e"];                                    // у склада один замер
+const frSlot = (f, k) => f && f.room ? "замер" : k === "s" ? "начало смены" : "конец смены";
 const frEarly = () => frDayNow() < FR_START;
 const frCurM = () => frEarly() ? FR_FROM : frDayNow().slice(0, 7);          // месяц журнала, который открыт сейчас
 const frStartTx = () => Number(FR_START.slice(8, 10)) + " " + ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"][Number(FR_START.slice(5, 7)) - 1];
@@ -197,18 +200,19 @@ function frFio(){
 function frDraw(){
   if (!$("secFr")) return;
   frEnsure();
-  const day = frDayNow(), recs = FR.map(f => frRec(f.id, day));
-  const sN = recs.filter(r => r.s).length, eN = recs.filter(r => r.e).length, pend = ckj(FRQ, []).length;
+  const day = frDayNow(), recs = FR.map(f => frRec(f.id, day)), fr = FR.filter(f => !f.room), room = FR.find(f => f.room);
+  const sN = fr.filter(f => recs[FR.indexOf(f)].s).length, eN = fr.filter(f => recs[FR.indexOf(f)].e).length, pend = ckj(FRQ, []).length;
   $("frInfo").innerHTML = frEarly() ? "Журнал на сайте начнётся <b>" + frStartTx() + " в 14:00</b>. До этого — бумажный журнал." +
     (frState === "old" ? " Журнал заработает после обновления Apps Script." : "") : "День — <b>" + frWdDay(day) + "</b>, до 14:00" + (frSt.work && !frWork(day) ? " (не рабочий)" : "") +
-    ". Начало смены внесено у <b>" + sN + " из " + FR.length + "</b>, конец — у <b>" + eN + "</b>." +
+    ". Начало смены внесено у <b>" + sN + " из " + fr.length + "</b> холодильников, конец — у <b>" + eN + "</b>" +
+    (room ? "; склад — " + (recs[FR.indexOf(room)].s ? "<b>замер внесён</b>" : "замер ещё не внесён") : "") + "." +
     (frMorning() ? " <b>До 14:00 идёт ещё вчерашний день</b> — сюда конец его смены; начало новой — после 14:00." : "") +
     (pend && frState === "net" ? " Нет связи — " + pend + " " + (pend === 1 ? "показание уйдёт" : "показания уйдут") + ", когда появится." :
      pend ? " Отправляем…" : frState === "net" ? " Нет связи — показаны сохранённые данные." :
      frState === "old" ? " Журнал заработает после обновления Apps Script." : "");
   $("frLost").hidden = !frLost.length;
   if (frLost.length) $("frLostT").innerHTML = "<b>Не записалось</b> — " + (frLost.some(x => x.why === "closed") ? "день уже закрыт в 14:00" : frLost.some(x => x.why === "early") ? "журнал ещё не начался" : "таблица не приняла число") + ": " +
-    frLost.map(x => { const f = frGet(x.id); return esc(f ? f.n : x.id) + ", " + (x.k === "s" ? "начало" : "конец") + " смены " + frWdDay(x.d) + " — " + (x.t === "" ? "стереть" : frFmt(Number(x.t)) + " °C"); }).join("; ") +
+    frLost.map(x => { const f = frGet(x.id); return esc(f ? f.n : x.id) + ", " + frSlot(f, x.k) + " " + frWdDay(x.d) + " — " + (x.t === "" ? "стереть" : frFmt(Number(x.t)) + " °C"); }).join("; ") +
     ". Исправить может бар-менеджер — с причиной.";
   $("frZones").innerHTML = FR_ZONES.map(([z, t]) => {
     const list = FR.filter(f => f.z === z), n = list.filter(f => recs[FR.indexOf(f)].s).length;
@@ -218,11 +222,11 @@ function frDraw(){
   if (frId) return frDrawOne();
   $("frList").innerHTML = FR.filter(f => f.z === frZone).map(f => {
     const r = recs[FR.indexOf(f)], last = r.e || r.s;
-    const cell = (x, k) => '<span class="frv' + (frBad(f, x) ? " bad" : "") + (x && x.pend ? " pend" : "") + '"><small>' + (k === "s" ? "Начало" : "Конец") + '</small>' +
+    const cell = (x, k) => '<span class="frv' + (frBad(f, x) ? " bad" : "") + (x && x.pend ? " pend" : "") + '"><small>' + (f.room ? "Замер" + (x && x.at ? " · " + esc(x.at) : "") : k === "s" ? "Начало" : "Конец") + '</small>' +
       (x ? frFmt(x.t) + "°" + (f.room && x.h != null ? " · " + frFmt(x.h) + "%" : "") : "—") + '</span>';
     return '<button type="button" class="frcard' + (f.room ? " room" : "") + '" data-id="' + f.id + '">' +
       (f.room ? "" : '<span class="frth" aria-hidden="true">' + fridgeSvg(f, last ? frFmt(last.t) : "") + '</span>') +
-      '<span class="frtx"><b>' + esc(f.n) + '</b><span class="frvs">' + cell(r.s, "s") + cell(r.e, "e") + '</span>' +
+      '<span class="frtx"><b>' + esc(f.n) + '</b><span class="frvs">' + frKs(f).map(k => cell(r[k], k)).join("") + '</span>' +
       (frBad(f, r.s) || frBad(f, r.e) ? '<em class="frbadt">вне нормы</em>' : "") + '</span></button>';
   }).join("");
 }
@@ -231,12 +235,12 @@ function frDraw(){
 function frDrawOne(){
   const f = frGet(frId), box = $("frOne");
   if (!f){ frId = ""; return frDraw(); }
-  const day = frDayNow(), r = frRec(f.id, day), last = r.e || r.s;
-  if (box.dataset.id !== f.id || box.dataset.day !== day || box.dataset.mg !== String(frMgr()) || box.dataset.early !== String(frEarly())){
-    box.dataset.id = f.id; box.dataset.day = day; box.dataset.mg = String(frMgr()); box.dataset.early = String(frEarly());
+  const day = frDayNow(), r = frRec(f.id, day), last = r.e || r.s, ks = frKs(f), early = frEarly();
+  if (box.dataset.id !== f.id || box.dataset.day !== day || box.dataset.mg !== String(frMgr()) || box.dataset.early !== String(early)){
+    box.dataset.id = f.id; box.dataset.day = day; box.dataset.mg = String(frMgr()); box.dataset.early = String(early);
     const fio = frFio();
     const sh = k => {
-      const lab = k === "s" ? "Начало смены" : "Конец смены";
+      const lab = f.room ? "Замер — температура и влажность" : k === "s" ? "Начало смены" : "Конец смены";
       return '<div class="frsh" data-k="' + k + '"><p class="label">' + lab + '</p><div class="frin">' +
         '<button type="button" class="frpm" data-pm="' + k + '" aria-label="Плюс или минус">±</button>' +
         '<input id="frT' + k + '" type="text" inputmode="decimal" maxlength="6" autocomplete="off" enterkeyhint="done" placeholder="—" aria-label="' + lab + ': температура"><span class="fru">°C</span>' +
@@ -246,25 +250,25 @@ function frDrawOne(){
     box.innerHTML = '<div class="result tcard frone"><div class="tname"><em>' + esc(frZn(f.z)) + '</em><h3>' + esc(f.n) + '</h3></div>' +
       (f.room ? "" : '<div class="frsvg" id="frSvg"></div>') +
       '<p class="frnorm">' + (frNorm(f) ? "Норма: <b>" + esc(frNorm(f)) + "</b>" : "Норма пока не задана — выход за неё не подсвечивается.") + '</p>' +
-      (frEarly() ? '<p class="frtoday frearly">Журнал на сайте начнётся <b>' + frStartTx() + ' в 14:00</b>. До этого показания — в бумажном журнале.</p>' :
-      '<div class="frday"><p class="frtoday">Сегодня — <b>' + frWdDay(day) + '</b>. Вносить и править можно до 14:00.' +
-        (frMorning() ? ' <b>Сейчас утро — это ещё вчерашний день:</b> сюда конец его смены, начало новой — после 14:00.' : "") + '</p>' +
+      (early ? '<p class="frtoday frearly">Журнал на сайте начнётся <b>' + frStartTx() + ' в 14:00</b>. До этого показания — в бумажном журнале.</p>' :
+      '<div class="frday"><p class="frtoday">Сегодня — <b>' + frWdDay(day) + '</b>. ' + (f.room ? "Один замер за день, время запишется само. " : "") + "Вносить и править можно до 14:00." +
+        (frMorning() ? ' <b>Сейчас утро — это ещё вчерашний день</b>' + (f.room ? ": замер нового дня — после 14:00." : ": сюда конец его смены, начало новой — после 14:00.") : "") + '</p>' +
         '<label class="label" for="frFio">ФИО</label><select id="frFio"><option value="">— выберите —</option>' +
         FR_FIO.map(x => '<option' + (x === fio ? " selected" : "") + '>' + x + '</option>').join("") + '</select>' +
-        sh("s") + sh("e") + '</div>') +
+        ks.map(sh).join("") + '</div>') +
       '<div class="frmh"><button type="button" class="frmb" data-mm="-1" aria-label="Предыдущий месяц">‹</button><b id="frMt"></b>' +
         '<button type="button" class="frmb" data-mm="1" aria-label="Следующий месяц">›</button></div><div id="frTab"></div>' + frFixHtml(f) +
-      '<div class="otools"><button type="button" class="link" id="frBack">← Все холодильники</button><button type="button" class="link" id="frQr">QR-код для наклейки</button></div></div>';
-    if (!frEarly()) ["s", "e"].forEach(k => frSetIn(k, r[k]));
-  } else if (!frEarly()) ["s", "e"].forEach(k => { if (!frDirty(k)) frSetIn(k, r[k]); });
+      '<div class="otools"><button type="button" class="link" id="frBack">← ' + (f.room ? "Назад" : "Все холодильники") + '</button><button type="button" class="link" id="frQr">QR-код для наклейки</button></div></div>';
+    if (!early) ks.forEach(k => frSetIn(k, r[k]));
+  } else if (!early) ks.forEach(k => { if (!frDirty(k)) frSetIn(k, r[k]); });
   if ($("frSvg")) $("frSvg").innerHTML = fridgeSvg(f, last ? frFmt(last.t) : "");
-  if (!frEarly()) ["s", "e"].forEach(k => { const x = r[k], w = $("frW" + k);
+  if (!early) ks.forEach(k => { const x = r[k], w = $("frW" + k);
     if (w.dataset.msg) return;
     w.innerHTML = x ? (x.pend ? '<span class="frpend">ждёт отправки</span> · ' : "") +
       "внесено: <b>" + esc(x.w) + "</b> · " + esc(x.at) + " · ФИО: " + esc(x.f) +
       (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "") : "Не внесено.";
   });
-  if (!frEarly()) frBtns();
+  if (!early) frBtns();
   frTable(f); frFixSync();
 }
 /* поле показывает внесённое; dataset.v — что было внесено (поле поменяли — не затираем при обновлении) */
@@ -275,8 +279,8 @@ function frSetIn(k, x){
 }
 const frDirty = k => { const t = $("frT" + k), h = $("frH" + k); return t.value !== t.dataset.v || (!!h && h.value !== h.dataset.v); };
 function frBtns(){
-  const day = frDayNow(), r = frRec(frId, day);
-  ["s", "e"].forEach(k => {
+  const f = frGet(frId), r = frRec(frId, frDayNow());
+  frKs(f).forEach(k => {
     const b = $("frGo" + k), had = !!r[k], empty = !$("frT" + k).value.trim().replace(/^[-−]$/, ""), dirty = frDirty(k);
     b.classList.toggle("del", had && empty && dirty);
     b.classList.toggle("done", had && !dirty);
@@ -288,6 +292,7 @@ function frTable(f){
   const today = frDayNow(), cur = frCurM(), m = frM || cur, y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
   $("frMt").textContent = FR_MON[mo - 1] + " " + y;
   document.querySelectorAll("#frOne .frmb").forEach(b => { b.disabled = b.dataset.mm === "1" ? m >= cur : m <= FR_FROM; });
+  if (!frSt.m[m] && !frAsk[m]){ frAsk[m] = 1; frLoad(m); }                       // месяц ещё не загружен — один раз
   if (!frSt.m[m]){ $("frTab").innerHTML = '<p class="oempty">' + (frState === "net" ? "Нет связи — журнал месяца загрузится, когда появится." : "Загружаем журнал…") + '</p>'; return; }
   const n = new Date(Date.UTC(y, mo, 0)).getUTCDate(), rows = [];
   const mg = frMgr();
@@ -306,10 +311,11 @@ function frTable(f){
       rows.push(tr + date + '<td class="v nil">—</td><td class="v nil">—</td><td class="f">не работали<small>' + esc(r.off.why + " · " + r.off.w + " " + (r.off.on || "")) + '</small></td></tr>');
       continue;
     }
-    rows.push(tr + date + cell(r.s, gap) + cell(r.e, gap) +
+    const mid = f.room ? '<td class="v' + (r.s ? "" : " nil") + '">' + (r.s && r.s.m == null ? esc(r.s.at || "") : r.s ? "" : "—") + '</td>' + cell(r.s, gap) : cell(r.s, gap) + cell(r.e, gap);
+    rows.push(tr + date + mid +
       '<td class="f">' + (fio.length ? esc(fio.join(" / ")) + '<small>' + esc(sign.join(" · ")) + '</small>' : '<span class="nil">—</span>') + '</td></tr>');
   }
-  $("frTab").innerHTML = '<table class="frtab' + (mg ? " mg" : "") + '"><thead><tr><th>Дата</th><th>Начало</th><th>Конец</th><th>ФИО · подпись</th></tr></thead><tbody>' +
+  $("frTab").innerHTML = '<table class="frtab' + (mg ? " mg" : "") + '"><thead><tr><th>Дата</th>' + (f.room ? "<th>Время</th><th>Замер</th>" : "<th>Начало</th><th>Конец</th>") + '<th>ФИО · подпись</th></tr></thead><tbody>' +
     (rows.length ? rows.join("") : '<tr><td colspan="4" class="nil">Записей нет</td></tr>') + '</tbody></table>';
 }
 
@@ -321,7 +327,7 @@ function frFixHtml(f){
   return '<div class="frfix" id="frFix"><p class="label">Исправление бар-менеджера</p>' +
     '<p class="frfixno">Прошлый день: показание или «не работали». Причина обязательна — в журнале будет видно, кто, когда и почему исправил; прежняя запись останется в таблице. Нажмите на день в журнале — он подставится сюда.</p>' +
     '<div class="wo2"><div><label class="label" for="frFxD">День</label><input id="frFxD" type="date" min="' + FR_FROM + '-01" max="' + today + '" value="' + y + '"></div>' +
-    '<div><label class="label" for="frFxK">Что</label><select id="frFxK"><option value="s">Начало смены</option><option value="e">Конец смены</option><option value="off">Не работали</option></select></div></div>' +
+    '<div><label class="label" for="frFxK">Что</label><select id="frFxK">' + (f.room ? '<option value="s">Замер</option>' : '<option value="s">Начало смены</option><option value="e">Конец смены</option>') + '<option value="off">Не работали</option></select></div></div>' +
     '<div class="frin" id="frFxIn"><button type="button" class="frpm" data-pm="Fx" aria-label="Плюс или минус">±</button>' +
       '<input id="frTFx" type="text" inputmode="decimal" maxlength="6" autocomplete="off" placeholder="—" aria-label="Температура"><span class="fru">°C</span>' +
       (f.room ? '<input id="frHFx" type="text" inputmode="decimal" maxlength="5" autocomplete="off" placeholder="—" aria-label="Влажность"><span class="fru">%</span>' : "") + '</div>' +
@@ -381,7 +387,7 @@ function frSave(k){
   if (!t && h) return say("Сначала температура.");
   if (t && !fio){ $("frFio").focus(); return say("Выберите ФИО."); }
   if (!t && !frRec(f.id, day)[k]) return;
-  if (!t && !confirm("Стереть " + (k === "s" ? "начало" : "конец") + " смены у «" + f.n + "»?")) return;
+  if (!t && !confirm("Стереть " + frSlot(f, k) + " у «" + f.n + "»?")) return;
   if (!me) return;
   delete w.dataset.msg;
   /* прежнее неотправленное в ту же клетку — заменяем (кроме того, что уходит прямо сейчас) */

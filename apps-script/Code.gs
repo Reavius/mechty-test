@@ -3563,7 +3563,8 @@ function backupPrune(folder, prefix) {
    пустое в прошедший рабочий день — «пропуск». Каждое внесение и каждая правка — новой строкой листа
    «Холодильники · записи» (видно, что и когда меняли), в журнал идёт последняя. Из записей собирается лист месяца
    «Холодильники 10.2026» — по таблице на холодильник, как бумажный бланк; выход за норму подсвечен.
-   Склад — комната: температура и влажность. Журнал на сайте начинается с FR_START (1 ноября 2026): октябрь и раньше —
+   Склад — комната, как его бланк: один замер в день (время, температура, влажность, ответственный), день — тот же,
+   с 14:00 до 14:00. Журнал на сайте начинается с FR_START (1 ноября 2026): октябрь и раньше —
    в бумажном архиве; до старта внести нельзя, а лист первого месяца готовится сам при первом запросе.
    Список холодильников, названия и нормы — на сайте (js/fridge.js): сайт присылает его с каждым запросом (POST). */
 const FR_LOG = "Холодильники · записи";
@@ -3593,7 +3594,7 @@ function fridges(p) {
 
   const id = frId(p.id), k = p.k === "s" || p.k === "e" ? p.k : "";
   const who = clean(p.rn, 60), fio = clean(p.f, 40), f = frMeta().find(x => x.id === id);
-  if (!id || !k || !who || !f) return { error: "bad" };
+  if (!id || !k || !who || !f || (f.room && k === "e")) return { error: "bad" };     // у склада один замер в день
   if (String(p.d || "") !== day) return { error: "closed", day: day };          // день, на который вносили, уже закрыт в 14:00
   if (day < FR_START) return { error: "early", start: FR_START };
   const v = frVal(p);
@@ -3604,7 +3605,7 @@ function fridges(p) {
     sh.appendRow(["'" + day, id, f.n, f.z, k === "s" ? "начало" : "конец", v.t, v.h, v.wipe ? "" : fio, who, new Date(), v.wipe ? "сайт · стёрто" : "сайт"]);
     const fst = {}, r = frRead(sh, day.slice(0, 7), fst);
     try { frMonth(ss, day.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }   // запись уже есть
-    /* чеклист: «Заполнить бланки температуры…» — отмечается сам, когда у всех внесено начало смены */
+    /* чеклист: «Заполнить бланки температуры…» — отмечается сам, когда у всех внесено начало смены (у склада — замер) */
     if (k === "s" && !v.wipe && ckDay() === day) try {
       if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры на всех холодильниках и на складе");
     } catch (e) { console.error("frCk: " + e); }
@@ -3629,7 +3630,7 @@ function frFix(ss, sh, p, day) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   const id = frId(p.id), f = frMeta().find(x => x.id === id), d = String(p.d || ""), k = ["s", "e", "off"].indexOf(p.k) >= 0 ? p.k : "";
   const who = clean(p.rn, 60), why = clean(p.why, 140), fio = clean(p.f, 40);
-  if (!f || !k || !who || why.length < 3 || !/^\d{4}-\d{2}-\d{2}$/.test(d) || d > day || d < FR_START) return { error: "bad" };
+  if (!f || !k || (f.room && k === "e") || !who || why.length < 3 || !/^\d{4}-\d{2}-\d{2}$/.test(d) || d > day || d < FR_START) return { error: "bad" };
   let row;
   if (k === "off") {
     row = ["'" + d, id, f.n, f.z, "день", "", "", "", who + " · менеджер", new Date(),
@@ -3734,25 +3735,25 @@ function frMonth(ss, m, data, fst) {
   const sig = x => x.m != null ? x.w + " " + (x.on || "") + " " + (x.at || "") + " — исправлено: " + x.m : x.w + (x.at ? " " + x.at : "");
   list.forEach(f => {
     const norm = [frNorm(f.lo, f.hi, "°C"), f.room ? frNorm(f.hlo, f.hhi, "%") : ""].filter(Boolean).join(", ");
-    blocks.push([rows.length + 1, f.room ? 7 : 5]);
+    blocks.push([rows.length + 1, f.room ? 6 : 5]);
     put([f.n + (f.z && f.z !== f.n ? " · " + f.z : "") + " · норма: " + (norm || "не задана")], FR_TOP, true);
-    put(f.room ? ["Дата", "Температура в начале смены", "Влажность в начале смены", "Температура в конце смены", "Влажность в конце смены", "ФИО", "Подпись"]
+    put(f.room ? ["Дата", "Время", "Температура, °C", "Влажность, %", "Ответственное лицо", "Подпись"]
                : ["Дата", "Температура в начале смены", "Температура в конце смены", "ФИО", "Подпись"], null, true);
     for (let d = 1; d <= days; d++) {
       const key = m + "-" + String(d).padStart(2, "0"), e = (data[f.id] || {})[key] || {}, s = e.s, n = e.e;
       const date = "'" + String(d).padStart(2, "0") + "." + m.slice(5, 7);
       if (e.off && !s && !n) {
         const tail = [FR_OFF, e.off.why + " · " + e.off.w + " " + (e.off.on || "")];
-        put([date].concat(f.room ? ["", "", "", ""] : ["", ""], tail), FR_GREY, false);
+        put([date].concat(f.room ? ["", "", ""] : ["", ""], tail), FR_GREY, false);
         continue;
       }
-      const gap = key < today && frWork(key) && fst[f.id] && key >= fst[f.id];   // прошедший рабочий день, холодильник уже вели
+      const gap = key < today && frWork(key) && fst[f.id] && key >= fst[f.id];      // прошедший рабочий день, холодильник уже вели
       const fio = [], sign = [];
       [s, n].forEach(x => { if (!x) return; if (x.f && fio.indexOf(x.f) < 0) fio.push(x.f); const g = sig(x); if (sign.indexOf(g) < 0) sign.push(g); });
       const v = x => x ? x.t : gap ? "пропуск" : "", hv = x => x && x.h != null ? x.h : "";
       const c = (x, bad) => !x && gap ? FR_GAP : bad ? FR_BAD : null;
-      if (f.room) put([date, v(s), hv(s), v(n), hv(n), fio.join(" / "), sign.join(" · ")], null, false,
-        [null, c(s, out(s && s.t, f.lo, f.hi)), c(s, out(s && s.h, f.hlo, f.hhi)), c(n, out(n && n.t, f.lo, f.hi)), c(n, out(n && n.h, f.hlo, f.hhi))]);
+      if (f.room) put([date, s && s.m == null ? "'" + (s.at || "") : "", v(s), hv(s), fio.join(" / "), sign.join(" · ")], null, false,
+        [null, null, c(s, out(s && s.t, f.lo, f.hi)), c(s, out(s && s.h, f.hlo, f.hhi))]);
       else put([date, v(s), v(n), fio.join(" / "), sign.join(" · ")], null, false, [null, c(s, out(s && s.t, f.lo, f.hi)), c(n, out(n && n.t, f.lo, f.hi))]);
     }
     put([""]);
