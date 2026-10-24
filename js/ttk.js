@@ -53,7 +53,7 @@ function tcard(r){
     '<div class="tname' + (r.img ? ' has-ph' : '') + '"><h3>' + esc(r.n) + '</h3>' +
       (r.img ? '<img class="tph" src="' + esc(r.img) + '" alt="' + esc(r.n) + '"' + phwh(r.img) + ' loading="lazy" decoding="async">' : '') + '</div>' +
     (stats.length ? '<dl class="stats txt">' + stats.map(s => '<div><dt>' + s[0] + '</dt><dd>' + s[1] + '</dd></div>').join("") + '</dl>' : '') +
-    '<table><thead><tr><th>Ингредиент</th><th>' + (r.out ? "На замес" : "На порцию") + '</th></tr></thead><tbody>' +
+    '<table><thead><tr><th>Ингредиент</th><th>' + (r.out || r.b ? "На замес" : "На порцию") + '</th></tr></thead><tbody>' +
     r.i.map(row).join("") +
     (r.dec && r.dec.length ? '<tr class="sub"><td colspan="2">Украшение</td></tr>' + r.dec.map(row).join("") : '') +
     '</tbody></table>' +
