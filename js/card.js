@@ -6,10 +6,10 @@ let active = "all";
 const compRu = it => it.m || it.c.join(", ");
 const comp = it => EN() && CARD_EN[it.id] && CARD_EN[it.id][1] || compRu(it);
 const cname = it => EN() && CARD_EN[it.id] && CARD_EN[it.id][0] || it.n;
-const gtext = (g, i) => EN() && GROUP_EN[g.key] && GROUP_EN[g.key][i] || [g.cat, g.short, g.rule][i];
+const gtext = (g, i) => EN() && GROUP_EN[g.key] && GROUP_EN[g.key][i] || [g.cat, g.short][i];
 const compList = it => comp(it).split(/,\s*/).filter(Boolean).map(x => x.charAt(0).toUpperCase() + x.slice(1));
 
-function card(it, g){
+function card(it){
   const n = cname(it);
   return '<article id="' + esc(it.id) + '">' +
     '<div class="chead"><h3>' + esc(n) + '</h3></div>' +
@@ -17,8 +17,6 @@ function card(it, g){
     (it.img ? '<img class="cph" src="' + esc(it.img) + '" alt="' + esc(n) + '"' + phwh(it.img) + ' loading="lazy" decoding="async">' : '') +
     '</div>' +
     '<dl>' +
-      (g.serve ? '<dt>' + t("serve") + '</dt><dd>' + esc(it.vol) + ' ' + t("serveDd") + '</dd>' :
-      '<dt>' + t("srok") + '</dt><dd class="num">' + esc(EN() ? srokEn(g.srok) : g.srok) + '</dd>') +
       '<dt>' + t("al") + '</dt><dd class="' + (it.flag ? "flag" : "none") + '">' + esc(EN() ? it.alEn || alEn(it.al) : it.al) + '</dd>' +
     '</dl></article>';
 }
@@ -40,8 +38,7 @@ function drawCard(){
     html +=
       '<section><div class="sechead"><h2>' + esc(gtext(g, 0)) + '</h2>' +
       '<em>' + items.length + ' ' + t("of") + ' ' + g.items.filter(it => !it.lo).length + '</em></div>' +
-      '<p class="rule">' + esc(gtext(g, 2)) + '</p>' +
-      '<div class="grid">' + items.map(it => card(it, g)).join("") + '</div></section>';
+      '<div class="grid">' + items.map(card).join("") + '</div></section>';
   }
 
   $("out").innerHTML =

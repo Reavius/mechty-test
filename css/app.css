@@ -56,18 +56,6 @@ h1{
 .narrow h1{font-size:clamp(38px,11vw,62px)}
 .lede{color:var(--muted);font-size:15px;margin:14px 0 0;max-width:52ch}
 
-.meta{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
-  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;
-  overflow:hidden;margin:30px 0 0;
-}
-.meta div{background:var(--surface);padding:14px 16px}
-.meta dt{
-  font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--muted);font-weight:600;margin:0 0 4px;
-}
-.meta dd{margin:0;font-size:13.5px;line-height:1.4}
-
 /* ── controls ───────────────────────────── */
 .controls{
   background:var(--bg);padding-block:16px 14px;margin-top:34px;
@@ -910,6 +898,9 @@ details.perstep[open]{border-color:var(--accent)}
 .revq small{width:22px;color:var(--muted);font-size:12px}
 .reved li.chg{background:color-mix(in srgb, var(--accent) 12%, transparent)}
 .revq input.bad{border-color:#d33;outline-color:#d33}
+.povd .mgrseg{margin:10px 0 0}
+.revq input.man{border-color:var(--accent)}
+.povd .mgrwhy b{color:var(--accent)}
 
 /* ── «Узнать больше»: кнопка на плитке и карточка коктейля поверх меню ── */
 .mtx{flex:1;align-self:stretch;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
@@ -929,8 +920,9 @@ html.stopen{overflow:hidden}
 .stph::after{content:"";position:absolute;inset:auto 0 0;height:22%;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.08))}
 .stbg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .stglass{position:absolute;z-index:1;left:0;right:0;top:5%;height:76%;max-width:86%;margin:0 auto;animation:stfloat 3s ease-in-out infinite}
-.stglass img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 14px 18px rgba(0,0,0,.3))}
-@keyframes stfloat{0%,100%{transform:translateY(0) rotate(-.8deg)}50%{transform:translateY(-2.5%) rotate(.8deg)}}
+/* без CSS-фильтров и поворота: Safari рисовал тень анимированной картинки прямоугольником вокруг бокала; тень — на холсте */
+.stglass img{display:block;width:100%;height:100%;object-fit:contain}
+@keyframes stfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5%)}}
 @media (prefers-reduced-motion:reduce){.stglass{animation:none}}
 .stpanel{display:flex;flex-direction:column;min-height:0;padding:18px 20px calc(14px + env(safe-area-inset-bottom))}
 .stback{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;z-index:2;display:inline-flex;align-items:center;gap:2px;

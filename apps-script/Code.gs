@@ -1098,6 +1098,8 @@ function doPost(e) {
     if (p.mgr === "zagset") return jsonOut(mgrZagSet(p));
     if (p.mgr === "revset") return jsonOut(mgrRevSet(p));
     if (p.mgr === "revundo") return jsonOut(mgrRevUndo(p));
+    if (p.mgr === "perset") return jsonOut(mgrPerSet(p));
+    if (p.mgr === "perundo") return jsonOut(mgrPerUndo(p));
     if (p.mgr === "refauto") return jsonOut(mgrRefAuto(p));
     return jsonOut({ error: "action" });
   } catch (err) {
@@ -1761,9 +1763,17 @@ function refSync() {
 function refVals(v) {
   return v.map(r => r.map(x => typeof x === "number" ? String(Math.round(x * 1000) / 1000).replace(".", ",") : x instanceof Date ? "" : String(x)));
 }
-/* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке, название R-Keeper, коэф., ед. R-Keeper] */
+/* названия позиций ежедневной ревизии (лист «Итог») — по ним сайт отделяет то, что входит в расчёт недостачи */
+function dailyNames() {
+  if (MEMO.dn) return MEMO.dn;
+  let pos = [];
+  try { pos = revPositions(revTotal(revBook())); } catch (e) {}
+  return MEMO.dn = new Set(pos.map(x => nameKey(x.n)));
+}
+/* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке (месячной), название R-Keeper, коэф., ед. R-Keeper,
+   есть в ежедневной ревизии] */
 const refRow = (r, inBlank) => [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()),
-  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim(), String(r[11] || "").trim()]);
+  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim(), String(r[11] || "").trim(), inBlank && dailyNames().has(nameKey(r[1])) ? 1 : 0]);
 /* справочник для сайта: по порядку бланка; строки, которых в бланке уже нет, — в конце с пометкой */
 function mgrRef() {
   const lock = lockOrBusy(15000);
@@ -1907,7 +1917,7 @@ function mgrOrder() {
       keys.forEach(k => { items[k] = perItem(k, k, M.RU[k] === "литр" ? "л" : M.RU[k], stock[k].q, null); });
       const o = perCalc(M, A, { at: now, iso: new Date(now + AST).toISOString().slice(0, 10) }, items, [], { rows: [] });
       o.rows.forEach(r => { flow[r.key] = r; });
-      out.flow[src] = { miss: o.sales.miss, nodish: o.sales.nodish.length };
+      out.flow[src] = { miss: o.sales.miss, nodish: o.sales.nodish.filter(x => x.rel).length };
     } catch (e) { console.error("автозаявка: " + (e && e.stack || e)); }
   });
   const inc = inByKey(), r3 = x => Math.round(x * 1000) / 1000;
@@ -2380,6 +2390,93 @@ function mgrRevUndo(p) {
   } finally { lock.releaseLock(); }
 }
 
+/* ручные поправки периода: «Период» → шаги «Продажи», «Приход», «Списания и проработки» — по позициям ежедневной ревизии.
+   Число заменяет насчитанное по данным сайта (продажи × расход на блюдо, накладные, акты) для этой позиции за период между
+   двумя соседними ревизиями; пусто — снова по данным. Лист «Поправки периода»: строка — одна позиция, действует последняя
+   строка позиции; отмена правки убирает её строки — снова действует прежняя. Период узнаётся по датам ревизий в «Период»
+   (их момент — из ленты ревизий; ревизии уже нет — сохранённый). Поправка входит в любой расчёт, который покрывает её
+   период целиком: месячную, свои даты, автозаявку. */
+const PER_OV = "Поправки периода";
+const PER_OV_HEAD = ["Период", "С", "По", "Что", "Позиция", "Ключ", "Значение", "Ед.", "По данным", "Кто", "Когда", "id"];
+const PER_F = { sold: "продано", inc: "приход", wo: "списано", pr: "проработки" };
+function perOvSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(PER_OV);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(PER_OV);
+  n.getRange(1, 1, 1, PER_OV_HEAD.length).setValues([PER_OV_HEAD]).setFontWeight("bold");
+  n.getRange(1, 7).setNote("В единицах позиции ежедневной ревизии (л, шт, кг). Пусто — снова по данным сайта");
+  n.setFrozenRows(1);
+  n.setColumnWidth(1, 190);
+  n.setColumnWidth(5, 220);
+  return n;
+}
+/* действующие поправки: [{ad, bd, a, b — моменты, f, key, n, v, u}] (пустые — «по данным» — не входят) */
+function perOvAll() {
+  if (MEMO.pov) return MEMO.pov;
+  const sh = perOvSheet(false), last = sh ? sh.getLastRow() : 0, F = {}, cur = {};
+  if (last < 2) return MEMO.pov = [];
+  Object.keys(PER_F).forEach(k => { F[PER_F[k]] = k; });
+  sh.getRange(2, 1, last - 1, PER_OV_HEAD.length).getValues().forEach(r => {
+    const pd = String(r[0]).split("→").map(s => s.trim()), f = F[String(r[3]).trim()], key = String(r[5]).trim();
+    if (pd.length !== 2 || !f || !key) return;
+    cur[pd[0] + "|" + pd[1] + "|" + f + "|" + key] = { ad: pd[0], bd: pd[1], a: num(r[1]), b: num(r[2]), f: f, key: key, n: String(r[4]).trim(),
+      v: r[6] === "" || r[6] == null ? null : num(r[6]), u: String(r[7]).trim() };
+  });
+  const at = {};
+  try { revTimeline().revs.forEach(x => { at[x.d] = x.at; }); } catch (e) {}   // нет «Итога» — моменты, сохранённые с правкой
+  return MEMO.pov = Object.values(cur).filter(o => o.v != null).map(o => Object.assign(o, { a: at[o.ad] || o.a, b: at[o.bd] || o.b }));
+}
+/* {i — номер ревизии в ленте (конец периода), ad / bd — даты ревизий, как их видел сайт, f, vals: [[ключ, позиция, число или "", по данным]]} */
+function mgrPerSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const f = String(p.f || "");
+  if (!PER_F[f]) return { error: "bad" };
+  const R = revTimeline().revs, i = parseInt(p.i, 10);
+  if (!(i >= 1 && i < R.length)) return { error: "bad" };
+  const A = R[i - 1], B = R[i];
+  if (String(p.ad || "") !== A.d || String(p.bd || "") !== B.d) return { error: "moved" };   // пока правили, ревизии сдвинулись
+  const ref = mgrRef();
+  if (!ref.ok) return ref;
+  const M = perMaps(ref), du = dailyUnits(ref), vals = Array.isArray(p.vals) ? p.vals.slice(0, 3000) : [], add = [];
+  const who = clean(p.who, 60) || "бар-менеджер", now = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm");
+  const id = "p" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  for (const v of vals) {
+    if (!Array.isArray(v)) return { error: "bad" };
+    const key = String(v[0] || "").trim(), n = clean(v[1], 200), s = String(v[2] == null ? "" : v[2]).trim().replace(",", ".");
+    if (!(key in M.RU) || !n) return { error: "bad" };
+    if (s !== "" && !(/^-?\d+(\.\d+)?$/.test(s) && Math.abs(+s) <= 100000)) return { error: "bad" };
+    add.push([A.d + " → " + B.d, A.at, B.at, PER_F[f], n, key, s === "" ? "" : round3(+s), du(n), v[3] === "" || v[3] == null ? "" : round3(num(v[3])), who, now, id]);
+  }
+  if (!add.length) return { error: "empty" };
+  const lock = lockOrBusy(20000);
+  try {
+    const sh = perOvSheet(true), last = sh.getLastRow();
+    ensureRows(sh, last + add.length);
+    [[1, 1], [4, 3], [8, 1], [10, 3]].forEach(c => sh.getRange(last + 1, c[0], add.length, c[1]).setNumberFormat("@"));
+    sh.getRange(last + 1, 1, add.length, PER_OV_HEAD.length).setValues(add);
+    SpreadsheetApp.flush();
+    MEMO.pov = null;
+    return { ok: true, n: add.length, id: id };
+  } finally { lock.releaseLock(); }
+}
+/* отменить правку {id}: её строки убираются — снова действует прежняя правка позиции или данные */
+function mgrPerUndo(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const id = String(p.id || "");
+  if (!/^p[0-9a-z]{4,20}$/.test(id)) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    const sh = perOvSheet(false), last = sh ? sh.getLastRow() : 0, w = PER_OV_HEAD.length;
+    const old = last >= 2 ? sh.getRange(2, 1, last - 1, w).getValues() : [], rows = old.filter(r => String(r[11]) !== id);
+    if (rows.length === old.length) return { error: "gone" };
+    if (rows.length) sh.getRange(2, 1, rows.length, w).setValues(rows);
+    sh.getRange(rows.length + 2, 1, old.length - rows.length, w).setValues(Array.from({ length: old.length - rows.length }, () => Array(w).fill("")));
+    SpreadsheetApp.flush();
+    MEMO.pov = null;
+    return { ok: true, n: old.length - rows.length };
+  } finally { lock.releaseLock(); }
+}
+
 /* продажи по дням: лист «Продажи» в таблице ревизии (строка — блюдо за день); загрузка за те же дни заменяет их */
 const SALES = "Продажи";
 const SALES_HEAD = ["Дата", "Код R-Keeper", "Блюдо", "Кол-во", "Сумма", "Файл", "Загружено"];
@@ -2602,13 +2699,18 @@ function perMaps(ref) {
   M.keyOf = (sec, n) => { const k = refKey(sec || "", n); if (sec && k in M.RU) return k; const b = M.byName[nameKey(n)]; return b || ""; };
   return M;
 }
-const perItem = (n, key, u, was, now) => ({ n: n, key: key, u: u, was: was, now: now, inc: 0, sold: 0, wo: 0, pr: 0, zwas: 0, znow: 0, zin: 0 });
+const perItem = (n, key, u, was, now) => ({ n: n, key: key, u: u, was: was, now: now, inc: 0, sold: 0, wo: 0, pr: 0, zwas: 0, znow: 0, zin: 0, au: {} });
 /* движение между моментами A.at и B.at для позиций items (u — единица позиции: «л», «шт», «кг», «бут»): приход, продажи,
-   списания, проработки, заготовки в сырьё → строки {exp, diff, money}. Общий расчёт для ежедневной, месячной и автозаявки. */
+   списания, проработки, заготовки в сырьё → строки {exp, diff, money}. Общий расчёт для ежедневной, месячной и автозаявки.
+   Ручные поправки периода (лист «Поправки периода»), чей период целиком внутри, заменяют насчитанное по данным за свой период. */
 function perCalc(M, A, B, items, nokey, out) {
   const byName = M.byName, byAll = M.byAll, RU = M.RU, RT = M.RT, RP = M.RP, keyOf = M.keyOf, inP = t => t > A.at && t <= B.at;
   /* в единицы позиции ревизии; несовместимо — null */
-  const toU = (key, q, u) => items[key] ? conv(q, u, items[key].u === "л" ? "литр" : items[key].u, RT[key]) : null;
+  const toU = (key, q, u) => items[key] ? conv(q, u === "л" ? "литр" : u, items[key].u === "л" ? "литр" : items[key].u, RT[key]) : null;
+  /* поправки: ключ → поле → [{a, b, v, u}]; событие в моменте t внутри периода поправки уже учтено в ней */
+  const OV = {};
+  perOvAll().forEach(o => { if (items[o.key] && o.a >= A.at && o.b <= B.at && o.a < o.b) ((OV[o.key] = OV[o.key] || {})[o.f] = OV[o.key][o.f] || []).push(o); });
+  const ovIn = (key, f, t) => t != null && !!(OV[key] && OV[key][f] || []).some(o => t > o.a && t <= o.b);
 
   /* рецепты заготовок: ключ заготовки → [{key, q (в единице справочника сырья на 1 ед. заготовки), u}] */
   const zag = {};
@@ -2625,11 +2727,13 @@ function perCalc(M, A, B, items, nokey, out) {
     if (qz == null) return [{ key: key, q: q, u: u }];
     return [].concat.apply([], rc.map(c => expand(c.key, qz * c.q, c.u, (depth || 0) + 1)));
   };
-  const put = (field, key, q, u) => expand(key, q, u, 0).forEach(c => {
+  const put = (field, key, q, u, t) => expand(key, q, u, 0).forEach(c => {
     const x = items[c.key];
     if (!x) return;
     const v = toU(c.key, c.q, c.u);
     if (v == null) { (out.unconv = out.unconv || {})[x.n] = 1; return; }
+    x.au[field] = (x.au[field] || 0) + v;                                 // по данным — для «по данным: …» у поправки
+    if (ovIn(c.key, field, t)) return;
     x[field] += v;
     if (c.key !== key) x.zin = 1;                                         // в сырьё вошли заготовки
   });
@@ -2646,7 +2750,7 @@ function perCalc(M, A, B, items, nokey, out) {
 
   /* приход */
   const inl = inByKey();
-  Object.keys(inl).forEach(k => inl[k].forEach(y => { if (inP(incAt(y.iso, y.w))) put("inc", k, y.q, y.u); }));
+  Object.keys(inl).forEach(k => inl[k].forEach(y => { const t = incAt(y.iso, y.w); if (inP(t)) put("inc", k, y.q, y.u, t); }));
 
   /* списания и проработки — по моменту; акт, PDF которого удалили с Диска, не учитывается */
   const womiss = {}, lo = new Date(A.at + AST - 2 * 864e5).toISOString().slice(0, 10);
@@ -2661,7 +2765,7 @@ function perCalc(M, A, B, items, nokey, out) {
       if (!inP(t)) return;
       const id = String(r[9]), a = acts[id] || (acts[id] = { fid: (String(r[7]).match(/\/d\/([\w-]{10,})/) || [])[1] || "", rows: [], mark: String(r[WO_GONE_COL - 1] || "") });
       a.rows.push(ri + 2);
-      lines.push({ a: a, r: r });
+      lines.push({ a: a, r: r, t: t });
     });
     const all = Object.values(acts), gone = woGoneMap(all.map(a => a.fid).filter(Boolean), 40);
     woMarkGone(sh, all, gone);
@@ -2675,7 +2779,7 @@ function perCalc(M, A, B, items, nokey, out) {
       if (!expand(key, 1, RU[key], 0).some(c => items[c.key])) return miss("norev");   // позиции нет в ежедневной ревизии
       const q0 = woConv(num(r[4]), r[3], RU[key], RT[key]);
       if (q0 == null) return miss("unit");
-      if (q0 > 0) put(kind === "pr" ? "pr" : "wo", key, q0, RU[key]);
+      if (q0 > 0) put(kind === "pr" ? "pr" : "wo", key, q0, RU[key], L.t);
     });
   });
   out.womiss = Object.values(womiss).slice(0, 40);
@@ -2694,27 +2798,42 @@ function perCalc(M, A, B, items, nokey, out) {
   DR.forEach(r => { const n = nameKey(r[0]); if (r[1] && !dishes["n:" + n] && dcodes[n] && dcodes[n].size === 1) dishes["n:" + n] = dishes[dishKey(r[0], r[1])]; });
   const sold = {}, days = {}, nodish = {};
   salesRows().forEach(s => {
-    if (!inP(saleAt(s.iso))) return;
+    const t = saleAt(s.iso);
+    if (!inP(t)) return;
     days[s.iso] = (days[s.iso] || 0) + s.qty;
     const d = dishes[dishKey(s.name, s.code)] || dishes["n:" + nameKey(s.name)];
     if (!d || (!d.none && !d.comps.length)) { const nk = s.code || s.name; (nodish[nk] = nodish[nk] || { name: s.name, code: s.code, qty: 0 }).qty += s.qty; return; }
     if (d.none) return;
-    d.comps.forEach(c => { sold[c.key + "|" + c.u] = (sold[c.key + "|" + c.u] || 0) + c.q * s.qty; });
+    d.comps.forEach(c => { const k = c.key + "|" + c.u + "|" + t; sold[k] = (sold[k] || 0) + c.q * s.qty; });
   });
-  Object.keys(sold).forEach(k => { const j = k.lastIndexOf("|"); put("sold", k.slice(0, j), sold[k], k.slice(j + 1)); });
+  Object.keys(sold).forEach(k => { const p = k.split("|"); put("sold", p.slice(0, -2).join("|"), sold[k], p[p.length - 2], +p[p.length - 1]); });
+  /* поправки — вместо насчитанного за свой период */
+  let nman = 0;
+  Object.keys(OV).forEach(k => Object.keys(OV[k]).forEach(f => OV[k][f].forEach(o => {
+    const v = toU(k, o.v, o.u || RU[k]);
+    if (v == null) { (out.unconv = out.unconv || {})[items[k].n] = 1; return; }
+    items[k][f] += v; (items[k].man = items[k].man || {})[f] = 1; nman++;
+  })));
+  out.man = nman;
   /* за какие дни ждём продажи: рабочие дни, чья смена внутри периода */
   const W = workDays(), want = [];
   for (let t = Date.parse(A.iso + "T00:00:00Z"); t <= Date.parse(B.iso + "T00:00:00Z") + 864e5; t += 864e5) {
     const iso = new Date(t).toISOString().slice(0, 10);
     if (inP(saleAt(iso)) && W.indexOf(isoWd(iso)) >= 0) want.push(iso);
   }
+  /* блюдо без расхода похоже на бар, если в его названии есть слово из позиций ревизии («Сок апельсиновый 250 мл»);
+     кухня и прочее — нет: о них не предупреждаем (сайт ещё сверяет с техкартами) */
+  const bw = new Set();
+  Object.keys(items).forEach(k => nameKey(items[k].n).split(" ").forEach(w => { if (w.length >= 4 && !/\d/.test(w)) bw.add(w); }));
+  Object.values(nodish).forEach(x => { x.rel = nameKey(x.name).split(" ").some(w => bw.has(w)); });
   out.sales = { want: want, have: Object.keys(days).sort(), miss: want.filter(d => !days[d]), qty: Object.values(days).reduce((a, b) => a + b, 0),
-    nodish: Object.values(nodish).sort((a, b) => b.qty - a.qty).slice(0, 60) };
+    nodish: Object.values(nodish).sort((a, b) => b.rel - a.rel || b.qty - a.qty).slice(0, 80) };
 
   /* строки */
   let short = 0, over = 0;
-  Object.keys(items).forEach(k => {
-    const x = items[k], r = { n: x.n, key: k, u: x.u, inc: r3(x.inc), sold: r3(x.sold), wo: r3(x.wo), pr: r3(x.pr), zag: !!x.zag, raw: !!x.zin };
+  Object.keys(items).forEach((k, o) => {
+    const x = items[k], r = { n: x.n, key: k, o: o, u: x.u, inc: r3(x.inc), sold: r3(x.sold), wo: r3(x.wo), pr: r3(x.pr), zag: !!x.zag, raw: !!x.zin };
+    if (x.man) { r.man = {}; Object.keys(x.man).forEach(f => { r.man[f] = r3(x.au[f] || 0); }); }   // вручную; число — по данным
     /* остаток сырья вместе с заготовками из него */
     const was = x.was == null ? null : x.was + (x.zwas || 0), now = x.now == null ? null : x.now + (x.znow || 0);
     r.was = was == null ? null : r3(was); r.now = now == null ? null : r3(now);
@@ -3318,11 +3437,12 @@ function periodHtml(per) {
   const lab = x => x.wd + " " + x.d.slice(0, 5), S = per.sales, ru = iso => WD_RU[isoWd(iso)] + " " + iso.slice(8, 10) + "." + iso.slice(5, 7);
   const td = (x, l, st) => '<td style="text-align:' + (l ? "left" : "right") + ';padding:5px 6px;border-bottom:1px solid #eee;' + (st || "") + '">' + hx(x) + '</td>';
   const th = (x, l) => '<th style="text-align:' + (l ? "left" : "right") + ';padding:5px 6px;border-bottom:2px solid #ddd;color:#666;font-size:11px">' + hx(x) + '</th>';
-  const n = x => x ? fmtN(x) : "";
+  const n = x => x ? fmtN(x) : "", nd = S.nodish.filter(x => x.rel);
   const warn = [
     !S.want.length ? "В этом периоде смен не было — продаж не ждём: любое расхождение — потери или ошибка пересчёта." :
       S.miss.length ? "Нет продаж R-Keeper за " + S.miss.map(ru).join(", ") + " — загрузите их на сайте («Менеджер» → «Продажи»), придёт письмо с продажами." : "",
-    S.nodish.length ? "Блюда без расхода на блюдо (" + S.nodish.length + "): " + S.nodish.slice(0, 10).map(x => x.name).join(", ") + (S.nodish.length > 10 ? "…" : "") + " — их ингредиенты выглядят недостачей." : "",
+    nd.length ? "Блюда без расхода на блюдо (" + nd.length + "): " + nd.slice(0, 10).map(x => x.name).join(", ") + (nd.length > 10 ? "…" : "") + " — их ингредиенты выглядят недостачей." : "",
+    per.man ? "Часть цифр внесена вручную (" + per.man + ") — на сайте они отмечены «вручную»." : "",
     (per.zagno || []).length ? "Заготовки без рецепта: " + per.zagno.join(", ") + "." : "",
     (per.nokey || []).length ? "Нет в справочнике: " + per.nokey.join(", ") + "." : "",
     per.noprice ? "Без цены закупки (не в сумме ₽): " + per.noprice + " поз." : ""].filter(Boolean);

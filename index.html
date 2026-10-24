@@ -93,13 +93,6 @@
   </div>
 
   <div id="pCard" hidden>
-    <dl class="meta">
-      <div>
-        <dt id="gBatch">Даты партии</dt>
-        <dd id="gBatchDd">Указаны на ярлыке каждой ёмкости</dd>
-      </div>
-    </dl>
-
     <div class="controls">
       <input id="q" type="search" placeholder="Поиск по названию или ингредиенту" autocomplete="off" aria-label="Поиск по названию или ингредиенту">
       <div class="chips" id="chips" role="group" aria-label="Фильтр по разделам"></div>
@@ -468,6 +461,7 @@
           <p class="warn" id="salWarn" role="status"></p>
           <div id="salDays"></div>
           <div id="salCal"></div>
+          <details class="incmapd reved povd" data-s="sold"><summary>Продано по позициям ревизии — проверить, поправить или внести вручную</summary><div class="pov"></div></details>
         </div>
           </details>
           <div class="perstep" id="stepRec" hidden><span class="psn"></span><span class="pst"><b>Рецепты</b><small id="stepRecS">…</small></span><button type="button" class="link" data-go="sal">Открыть</button></div>
@@ -480,6 +474,7 @@
         <p class="warn" id="incWarn" role="status"></p>
         <div id="incImp" hidden></div>
         <datalist id="incRefs"></datalist>
+        <details class="incmapd reved povd" data-s="inc"><summary>Приход по позициям ревизии — проверить, поправить или внести вручную</summary><div class="pov"></div></details>
         <div class="quick" id="incQuick">
           <button type="button" data-r="rev" aria-pressed="true">Период ревизии</button>
           <button type="button" data-r="d30" aria-pressed="false">30 дней</button>
@@ -493,6 +488,7 @@
           </details>
           <details class="perstep" id="stepWo"><summary><span class="psn"></span><span class="pst"><b>Списания и проработки</b><small id="stepWoS">…</small></span></summary>
       <div id="mgrSum" class="perbody">
+      <details class="incmapd reved povd" data-s="wo"><summary>Списания по позициям ревизии — проверить, поправить или внести вручную</summary><div class="pov"></div></details>
       <div class="result tcard wo">
         <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
         <div class="wobody">
@@ -655,7 +651,7 @@
   </div>
 
   <footer>
-    <span>Меню для гостей — на <a class="link" href="#">главной</a>, состав, сроки и аллергены — во вкладке «<a class="link" href="#card">Состав и аллергены</a>»</span>
+    <span>Меню для гостей — на <a class="link" href="#">главной</a>, состав и аллергены — во вкладке «<a class="link" href="#card">Состав и аллергены</a>»</span>
     <span>Вход сохраняется на этом устройстве до «Выйти»</span>
   </footer>
 </main>
