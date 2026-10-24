@@ -137,6 +137,13 @@ function stFxFrame(p){
     x.strokeStyle = "rgba(255,255,255,.55)"; x.lineWidth = .9; x.beginPath(); x.arc(X, y, r, 0, TAU); x.stroke();
     x.fillStyle = "rgba(255,255,255,.85)"; x.beginPath(); x.arc(X - r * .35, y - r * .35, r * .28, 0, TAU); x.fill();
   });
+  /* тень бокала на стойке: бокал поднимается — тень меньше и светлее (в такт CSS-покачиванию: вверху на середине петли) */
+  if (gl && gl.offsetWidth){
+    const up = .5 - .5 * Math.cos(TAU * p), cx = gl.offsetLeft + gl.offsetWidth / 2, rw = gl.offsetWidth * (.42 - up * .06), rh = Math.max(3, gl.offsetWidth * .07);
+    x.save(); x.translate(cx, floor); x.scale(1, rh / rw);
+    x.fillStyle = stRG(x, 0, 0, 0, 0, 0, rw, [[0, "rgba(0,0,0," + (.42 - up * .14) + ")"], [.6, "rgba(0,0,0," + (.16 - up * .05) + ")"], [1, "rgba(0,0,0,0)"]]);
+    x.beginPath(); x.arc(0, 0, rw, 0, TAU); x.fill(); x.restore();
+  }
   /* глянцевая стойка внизу: отражения света бегут по кругу */
   x.fillStyle = stLG(x, 0, floor, 0, h, [[0, "hsla(" + H + " " + Sa * .6 + "% 22% / .5)"], [1, "hsla(" + H + " " + Sa * .6 + "% 12% / .85)"]]);
   x.fillRect(0, floor, w, h - floor);
