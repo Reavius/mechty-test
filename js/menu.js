@@ -204,20 +204,18 @@ const AL_EN = [["не выявлены", "none identified"], ["яйца (бел�
 const UI = {
   ru: {title: "Бар «Мечты» — меню", bar: "Бар «Мечты»", lang: "Язык", tabs: "Раздел", pmenu: "Меню", pcard: "Состав и аллергены",
     h1menu: "Меню", ledeMenu: "Коктейли, вино, крепкое, пиво, безалкогольные напитки, кофе и чай. У коктейлей — ссылка на состав и аллергены.",
-    h1card: "Состав<br>и аллергены", ledeCard: "Коктейли, премиксы, шоты и полуфабрикаты собственного производства: состав, аллергены и срок годности.",
+    h1card: "Состав<br>и аллергены", ledeCard: "Коктейли, премиксы, шоты и полуфабрикаты собственного производства: состав и аллергены.",
     mq: "Поиск по меню", q: "Поиск по названию или ингредиенту", chips: "Фильтр по разделам", all: "Все", of: "из",
-    batch: "Даты партии", batchDd: "Указаны на ярлыке каждой ёмкости",
     footMenu: "Не является публичной офертой и носит рекламный характер.", footCard: "Технологические карты хранятся на производстве",
     empty: "Ничего не найдено — проверьте написание или сбросьте фильтр.", link: "Состав и аллергены",
-    ml: "мл", pcs: "шт", serve: "Подача", serveDd: "мл, сразу после приготовления", srok: "Годность", al: "Аллергены", more: "Узнать больше"},
+    ml: "мл", pcs: "шт", al: "Аллергены", more: "Узнать больше"},
   en: {title: "Mechty Bar — menu", bar: "Mechty Bar", lang: "Language", tabs: "Section", pmenu: "Menu", pcard: "Ingredients & allergens",
     h1menu: "Menu", ledeMenu: "Cocktails, wine, spirits, beer, soft drinks, coffee and tea. Each cocktail links to its ingredients and allergens.",
-    h1card: "Ingredients<br>&amp; allergens", ledeCard: "Our cocktails, premixes, shots and house-made bases: ingredients, allergens and shelf life.",
+    h1card: "Ingredients<br>&amp; allergens", ledeCard: "Our cocktails, premixes, shots and house-made bases: ingredients and allergens.",
     mq: "Search the menu", q: "Search by name or ingredient", chips: "Filter by section", all: "All", of: "of",
-    batch: "Batch dates", batchDd: "Shown on the label of each container",
     footMenu: "This menu is not a public offer and is for information only.", footCard: "Recipe cards are kept on site",
     empty: "Nothing found — check the spelling or reset the filter.", link: "Ingredients & allergens",
-    ml: "ml", pcs: "shots", serve: "Serving", serveDd: "ml, served freshly made", srok: "Shelf life", al: "Allergens", more: "Learn more"}
+    ml: "ml", pcs: "shots", al: "Allergens", more: "Learn more"}
 };
 
 /* язык: выбор гостя → ?lang=en|ru → язык телефона (не русский/казахский и т. п. — английский) */
@@ -236,7 +234,6 @@ const EN = () => LANG === "en";
 const t = k => UI[LANG][k];
 const enWords = d => { const w = d.split(/,\s*/).map(x => WORDS[x]); return w.every(Boolean) ? w.join(", ") : ""; };
 const alEn = s => { let r = String(s).toLowerCase(); for (const [a, b] of AL_EN) r = r.split(a).join(b); return /[а-яё]/i.test(r) ? s : r.charAt(0).toUpperCase() + r.slice(1); };
-const srokEn = s => String(s).replace(/(\d+)\s*сут\S*/, "$1 days");
 const cardItem = id => { for (const g of data) for (const it of g.items) if (it.id === id && !it.lo) return it; return null; };
 
 /* название и описание позиции меню на текущем языке */
@@ -329,8 +326,6 @@ function applyLang(){
   for (const [id, k] of [["gq", "mq"], ["q", "q"]]){ $(id).placeholder = t(k); $(id).setAttribute("aria-label", t(k)); }
   $("mchips").setAttribute("aria-label", t("chips"));
   $("chips").setAttribute("aria-label", t("chips"));
-  $("gBatch").textContent = t("batch");
-  $("gBatchDd").textContent = t("batchDd");
   gPanel(gPane);
   drawMenuChips(); drawMenu();
   if (typeof drawCard === "function"){ drawChips(); drawCard(); }
