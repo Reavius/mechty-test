@@ -68,8 +68,13 @@ await page.fill("#q", "");
 // ссылки из QR (#id) ведут на позицию
 const ids = await page.evaluate(() => data.flatMap(g => g.items.map(i => i.id)));
 ok(new Set(ids).size === ids.length, `id позиций уникальны (${ids.length})`);
-await page.goto(BASE + "index.html#" + ids[0]); await page.waitForTimeout(600);
-ok(await page.locator("article.hit").count() === 1 && await page.locator("#pCard").isVisible(), "ссылка #id открывает «Состав и аллергены» и подсвечивает позицию");
+const plain = await page.evaluate(() => data.flatMap(g => g.items).find(i => !i.img && !i.lo).id);
+const photo = await page.evaluate(() => data.flatMap(g => g.items).find(i => i.img && !i.lo).id);
+await page.goto(BASE + "index.html#" + plain); await page.waitForTimeout(600);
+ok(await page.locator("article.hit").count() === 1 && await page.locator("#pCard").isVisible(), "ссылка #id (без фото) открывает «Состав и аллергены» и подсвечивает позицию");
+await page.goto(BASE + "index.html#" + photo); await page.waitForTimeout(800);
+ok(await page.locator("#story").isVisible(), "ссылка #id коктейля с фото (QR этикетки) открывает «Узнать больше»");
+await page.click("#stBack"); await page.waitForTimeout(500);
 // английский
 await page.click("#lang button[data-l=en]");
 const enTxt = await page.locator("#viewBar").innerText();

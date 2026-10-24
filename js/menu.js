@@ -262,14 +262,14 @@ function mTile(x){
     '<div class="chead"><h3>' + esc(n) + '</h3></div>' +
     '<div class="cbody">' + (ci && ci.img ? '<div class="mtx"><p class="mdesc">' + esc(d) + '</p><button type="button" class="mmore" data-more="' + esc(x.c) + '">' + t("more") + '<span aria-hidden="true">→</span></button></div>' +
       '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async" data-more="' + esc(x.c) + '">' : '<p class="mdesc">' + esc(d) + '</p>') + '</div>' +
-    '<div class="mfoot">' + (ci ? '<a class="mlink" href="#' + esc(x.c) + '">' + t("link") + ' →</a>' : '<span></span>') +
+    '<div class="mfoot">' + (ci ? '<a class="mlink" href="#sostav-' + esc(x.c) + '">' + t("link") + ' →</a>' : '<span></span>') +
     '<span class="mvp">' + (x.v ? '<small>' + esc(mVol(x)) + '</small>' : '') + '<b>' + esc(x.p) + '</b></span></div></article>';
 }
 function mRow(x){
   const ci = x.c ? cardItem(x.c) : null, d = mDesc(x);
   return '<li class="mrow"><div class="mn"><span class="mname">' + esc(mName(x)) + '</span>' +
     (d ? '<small>' + esc(d) + '</small>' : '') +
-    (ci ? '<a class="mlink" href="#' + esc(x.c) + '">' + t("link") + ' →</a>' : '') + '</div>' +
+    (ci ? '<a class="mlink" href="#sostav-' + esc(x.c) + '">' + t("link") + ' →</a>' : '') + '</div>' +
     '<span class="mv">' + esc(mVol(x)) + '</span><b class="mp">' + esc(x.p) + '</b></li>';
 }
 const mOk = x => x.n || cardItem(x.c);                         // позиция из карты, которой там уже нет, — не показывать
@@ -365,7 +365,7 @@ $("mout").addEventListener("click", e => {
   const a = e.target.closest("a.mlink");
   if (!a) return;
   mScroll = window.scrollY;
-  if (location.hash === a.getAttribute("href")){ e.preventDefault(); jumpTo(a.getAttribute("href").slice(1)); }
+  if (location.hash === a.getAttribute("href")){ e.preventDefault(); jumpTo(a.getAttribute("href").slice(1).replace(/^sostav-/, "")); }
 });
 
 /* ── меню и состав из таблицы («Менеджер» → «Гостям») ──
@@ -439,10 +439,11 @@ function pubRedraw(){
   }
   if (typeof labRefresh === "function") labRefresh();
   if (typeof storyRefresh === "function") storyRefresh();               // карточка «Узнать больше» — тексты из таблицы
-  const h = decodeURIComponent(location.hash.slice(1));                  // QR на позицию, которой не было в старой копии
-  if (h && h !== "bartenders" && h !== "card" && cardItem(h) && typeof jumpTo === "function" && !$("viewBar").hidden){
-    const el = document.getElementById(h);
-    if (gPane !== "card" || !el || !el.classList.contains("hit")) jumpTo(h);
+  /* QR на позицию, которой не было в старой копии: коктейль с фото — карточку открыл storyRefresh, остальное — в «Состав» */
+  const h = decodeURIComponent(location.hash.slice(1)), id = h.replace(/^sostav-/, "");
+  if (id && h !== "bartenders" && h !== "card" && !(typeof storyFor === "function" && storyFor(h)) && cardItem(id) && typeof jumpTo === "function" && !$("viewBar").hidden){
+    const el = document.getElementById(id);
+    if (gPane !== "card" || !el || !el.classList.contains("hit")) jumpTo(id);
   }
 }
 function pubFetch(){
