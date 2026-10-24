@@ -513,7 +513,7 @@ $("frOne").addEventListener("focusin", e => {
   const t = e.target;                                                     // морозильник: минус сразу в поле
   if (t.id && /^frT[se]$/.test(t.id) && !t.value && (frGet(frId) || {}).frz){
     t.value = "−";
-    setTimeout(() => { try { t.setSelectionRange(1, 1); } catch (e2) {} }, 0);   // курсор — после минуса, а не перед ним
+    setTimeout(() => { try { if (t.value === "−") t.setSelectionRange(1, 1); } catch (e2) {} }, 0);   // курсор — после минуса; уже печатают — не трогаем
   }
 });
 $("frOne").addEventListener("focusout", e => {
