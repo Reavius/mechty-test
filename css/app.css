@@ -581,7 +581,10 @@ html:has(#revMonth:not([hidden])) {scroll-padding-top:190px}
 .wnmeta{font-size:12px;color:var(--muted);margin-top:2px}
 .wnadd input,.wnadd select{width:100%;font-size:16px}
 .wnadd .worow2{margin-top:6px}
-.wnplus{width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--bg);font:700 15px var(--sans);cursor:pointer}
+/* «Добавить в заметку»: серая, пока строка не заполнена целиком; всё заполнено — жёлтая */
+.wnplus{width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font:700 15px var(--sans);cursor:pointer;
+  transition:background-color .2s,border-color .2s,color .2s}
+.wnplus.ready{border-color:var(--accent);background:var(--accent);color:var(--bg)}
 .wnmove{width:100%;margin-top:4px;padding:12px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);font:700 15px var(--sans);cursor:pointer}
 .wnmove:disabled{opacity:.45;cursor:default}
 /* последние акты — раскрываются */
