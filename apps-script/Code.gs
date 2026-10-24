@@ -593,7 +593,20 @@ const MREV_NEW = "Новые позиции";
    «Итог» открытой ревизии получает формулу при сверке. Удалили строку руками — не возвращается: вставленные помнит
    свойство MREV_PATCH. Позиция уже есть в листе (например, в «Новых позициях») — не дублируется. */
 const MREV_PATCH = [["Джин", "Джин Баристер", ""], ["Ром", "Ром Девис Айленд", ""], ["Текила", "Текила Ла Павеса", ""],
-  ["Сиропы, пюре", "Концентрат в ассортименте", ""], ["Десерты", "Паста фисташковая", "кг"]];
+  ["Сиропы, пюре", "Концентрат в ассортименте", ""], ["Десерты", "Паста фисташковая", "кг"],
+  /* новая карта 2026-11: концентраты — в «Концентрат в ассортименте», пюре, сиропы, кордиалы и заготовки — отдельными строками */
+  ["Сиропы, пюре", "Пюре мандарин", "кг"], ["Сиропы, пюре", "Пюре гранат", "кг"], ["Сиропы, пюре", "Пюре фейхоа", "кг"],
+  ["Сиропы, пюре", "Сироп миндальный", ""], ["Сиропы, пюре", "Сироп солёная карамель", ""],
+  ["Сиропы, пюре", "Кордиал пало санто манго ваниль", ""], ["Сиропы, пюре", "Кордиал сенча юдзу", ""], ["Сиропы, пюре", "Кордиал шисо", ""],
+  ["Б/алко", "Морс клюквенный", ""], ["Чай, кофе", "Чай эрл грей, кг", "кг"], ["Десерты", "Изюм", "кг"],
+  ["Консервация, заморозка", "Ананас консервированный", "кг"], ["Консервация, заморозка", "Вишня коктейльная", "кг"],
+  ["Молочные продукты", "Молоко фисташковое", ""], ["Специи, зелень", "Нити чили", "кг"], ["Специи, зелень", "Петрушка свежая", "кг"],
+  ["Фрукты, овощи", "Гранат", "кг"],
+  ["Настойки", "Штрудель", ""], ["Настойки", "Груша бергамот", ""], ["Настойки", "Фисташка пломбир", ""],
+  ["Заготовки", "Сироп чили мёд", ""], ["Заготовки", "Пюре ананас петрушка", ""], ["Заготовки", "Фисташковая база", ""], ["Заготовки", "Сироп имбирный", ""],
+  ["Заготовки", "Премикс для лимонада малина маракуйя", ""], ["Заготовки", "Премикс для лимонада фейхоа яблоко", ""],
+  ["Премиксы на коктейли", "Секс на пляже", ""], ["Премиксы на коктейли", "Гранатовый Тини", ""], ["Премиксы на коктейли", "Текила Сидр Спайс", ""],
+  ["Премиксы на коктейли", "Юдзу Персик", ""], ["Премиксы на коктейли", "Ананас Петрушка", ""], ["Премиксы на коктейли", "Вишнёвый Негрони", ""]];
 const mrevPatched = P => { try { return JSON.parse(P.MREV_PATCH || "[]"); } catch (e) { return []; } };
 const mrevPatchDue = P => { const done = mrevPatched(P); return MREV_PATCH.some(x => done.indexOf(x[1]) < 0); };
 function mrevPatch(sh) {
@@ -1084,6 +1097,7 @@ function doPost(e) {
     if (p.wo === "save") return jsonOut(woSave(p));
     if (p.wo === "rec") return jsonOut(woSave(p, true));
     if (p.order === "send") return jsonOut(orderSave(p));
+    if (p.fr) return jsonOut(fridges(p));
     if (p.mgr === "login") return jsonOut(mgrLogin(p));
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
@@ -3538,4 +3552,256 @@ function backupPrune(folder, prefix) {
   while (files.hasNext()) { const f = files.next(); if (f.getName().indexOf(prefix) === 0) list.push(f); }
   list.sort((a, b) => b.getDateCreated() - a.getDateCreated());
   list.slice(BACKUP_KEEP).forEach(f => f.setTrashed(true));
+}
+
+
+/* ═════════════ Холодильники ═════════════
+   Журнал температуры — как бумажный: у каждого холодильника температура в начале и в конце смены, ФИО и подпись.
+   Подпись — отметка входа: кто внёс с сайта и во сколько. Только ручной ввод: пустое остаётся пустым.
+   День холодильников — с 14:00 (открытие) до 14:00 по Астане: бармен вносит и поправляет только текущий день, в 14:00
+   он закрывается сам; прошедший день исправляет только бар-менеджер — с причиной (frFix). Рабочие дни — чт–сб (FR_WORK):
+   пустое в прошедший рабочий день — «пропуск». Каждое внесение и каждая правка — новой строкой листа
+   «Холодильники · записи» (видно, что и когда меняли), в журнал идёт последняя. Из записей собирается лист месяца
+   «Холодильники 10.2026» — по таблице на холодильник, как бумажный бланк; выход за норму подсвечен.
+   Склад — комната: температура и влажность.
+   Список холодильников, названия и нормы — на сайте (js/fridge.js): сайт присылает его с каждым запросом (POST). */
+const FR_LOG = "Холодильники · записи";
+const FR_HEAD = ["День", "Холодильник", "Название", "Зона", "Смена", "Температура", "Влажность", "ФИО", "Внесено", "Время", "Источник"];
+const FR_META = "FR_META", FR_PAPER_KEY = "FR_PAPER", FR_BAD = "#f4cccc", FR_TOP = "#fff2cc", FR_GAP = "#fce5cd", FR_GREY = "#eeeeee";
+const FR_WORK = [4, 5, 6];                                           // рабочие дни: чт, пт, сб (день — тот, когда открылись)
+const frDayKey = t => Utilities.formatDate(new Date((t || Date.now()) - 14 * 3600000), TZ, "yyyy-MM-dd");   // с 14:00 до 14:00
+const FR_PAPER_SRC = "бумажный журнал";
+
+/* Бумажные журналы — перенесены как записаны; пустые клетки бумаги пустыми и остались.
+   [холодильник, день, начало смены, конец смены, ФИО]. Добавили строк — поднимите FR_PAPER_V: допишутся только новые. */
+const FR_PAPER_V = "1";
+const FR_PAPER = [
+  ["man1", "2026-10-01", 4, 4, "Вавилин"], ["man1", "2026-10-02", 4.1, 4.2, "Вавилин"], ["man1", "2026-10-03", 4.4, 4.3, "Вавилин"],
+  ["man1", "2026-10-04", 3.4, null, "Вавилин"], ["man1", "2026-10-08", 3.8, 4.2, "Иванов К."], ["man1", "2026-10-09", 4, 4.3, "Иванов К."],
+  ["man1", "2026-10-10", 4.1, null, "Иванов К."], ["man1", "2026-10-16", 4, 4, "Вавилин"], ["man1", "2026-10-17", 4.2, 4.1, "Вавилин"],
+  ["man1", "2026-10-23", 4.3, 4.1, "Журавлев"], ["man1", "2026-10-24", 4.2, null, "Журавлев"],
+  ["man2", "2026-10-01", -9, -9, "Вавилин"], ["man2", "2026-10-02", -10, -11, "Вавилин"], ["man2", "2026-10-03", -11, -10, "Вавилин"],
+  ["man2", "2026-10-04", -9.9, null, "Вавилин"], ["man2", "2026-10-08", -10, -10.1, "Иванов К."], ["man2", "2026-10-09", -9.2, -10, "Иванов К."],
+  ["man2", "2026-10-10", -9.8, null, "Иванов К."], ["man2", "2026-10-16", -9, -9, "Вавилин"], ["man2", "2026-10-17", -10, -10, "Вавилин"],
+  ["man2", "2026-10-23", -11, -10.8, "Журавлев"], ["man2", "2026-10-24", -10.6, null, "Журавлев"],
+  ["man3", "2026-10-01", 4.1, 4.2, "Вавилин"], ["man3", "2026-10-02", 4, 4.2, "Вавилин"], ["man3", "2026-10-03", 4.6, 4.3, "Вавилин"],
+  ["man3", "2026-10-04", 5.3, null, "Вавилин"], ["man3", "2026-10-08", 5, 4.4, "Иванов К."], ["man3", "2026-10-09", 4.8, 4.4, "Иванов К."],
+  ["man3", "2026-10-10", 4.7, null, "Иванов К."], ["man3", "2026-10-16", 4, 4.1, "Вавилин"], ["man3", "2026-10-17", 4.8, 4.7, "Вавилин"],
+  ["man3", "2026-10-23", 4.5, 4.4, "Журавлев"], ["man3", "2026-10-24", 4.3, null, "Журавлев"]
+];
+
+function fridges(p) {
+  journalPin();
+  const act = String(p.fr), ss = SpreadsheetApp.getActiveSpreadsheet();
+  frMetaPut(p.meta);
+  const sh = frSheet(ss);
+  if (PropertiesService.getScriptProperties().getProperty(FR_PAPER_KEY) !== FR_PAPER_V) {
+    const lock = lockOrBusy(10000);
+    try { frPaper(ss, sh); } finally { lock.releaseLock(); }
+  }
+  const day = frDayKey();
+  if (act === "get") {
+    const m = /^\d{4}-\d{2}$/.test(String(p.m || "")) ? String(p.m) : day.slice(0, 7), fst = {};
+    return { ok: true, day: day, m: m, r: frRead(sh, m, fst), fst: fst, work: FR_WORK };
+  }
+  if (act === "fix") return frFix(ss, sh, p, day);
+  if (act !== "set") return { error: "action" };
+
+  const id = frId(p.id), k = p.k === "s" || p.k === "e" ? p.k : "";
+  const who = clean(p.rn, 60), fio = clean(p.f, 40), f = frMeta().find(x => x.id === id);
+  if (!id || !k || !who || !f) return { error: "bad" };
+  if (String(p.d || "") !== day) return { error: "closed", day: day };          // день, на который вносили, уже закрыт в 14:00
+  const v = frVal(p);
+  if (!v || (!v.wipe && !fio)) return { error: "bad" };
+
+  const lock = lockOrBusy(10000);
+  try {
+    sh.appendRow(["'" + day, id, f.n, f.z, k === "s" ? "начало" : "конец", v.t, v.h, v.wipe ? "" : fio, who, new Date(), v.wipe ? "сайт · стёрто" : "сайт"]);
+    const fst = {}, r = frRead(sh, day.slice(0, 7), fst);
+    try { frMonth(ss, day.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }   // запись уже есть
+    /* чеклист: «Заполнить бланки температуры…» — отмечается сам, когда у всех внесено начало смены */
+    if (k === "s" && !v.wipe && ckDay() === day) try {
+      if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры на всех холодильниках и на складе");
+    } catch (e) { console.error("frCk: " + e); }
+    return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK };
+  } finally {
+    lock.releaseLock();
+  }
+}
+const FR_CK = "d6";
+const frId = v => String(v || "").replace(/[^a-z0-9]/g, "").slice(0, 12);
+/* температура и влажность из запроса: {t, h, wipe} или null; пустая температура — стереть показание */
+function frVal(p) {
+  const wipe = String(p.t == null ? "" : p.t).trim() === "";
+  const t = frNum(p.t, -40, 40), hs = String(p.h == null ? "" : p.h).trim(), h = hs ? frNum(hs, 0, 100) : null;
+  if (!wipe && (t === null || (hs && h === null))) return null;
+  return { wipe: wipe, t: wipe ? "" : t, h: wipe || h === null ? "" : h };
+}
+
+/* Исправление бар-менеджером (по ключу менеджера): показание за прошедший день или отметка «не работали».
+   Причина обязательна; в журнале видно, кто, когда и почему исправил, прежняя запись остаётся строкой выше. */
+function frFix(ss, sh, p, day) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const id = frId(p.id), f = frMeta().find(x => x.id === id), d = String(p.d || ""), k = ["s", "e", "off"].indexOf(p.k) >= 0 ? p.k : "";
+  const who = clean(p.rn, 60), why = clean(p.why, 140), fio = clean(p.f, 40);
+  if (!f || !k || !who || why.length < 3 || !/^\d{4}-\d{2}-\d{2}$/.test(d) || d > day || d < "2020-01-01") return { error: "bad" };
+  let row;
+  if (k === "off") {
+    row = ["'" + d, id, f.n, f.z, "день", "", "", "", who + " · менеджер", new Date(),
+      (String(p.on) === "1" ? FR_OFF + ": " : FR_UNOFF + ": ") + why];
+  } else {
+    const v = frVal(p);
+    if (!v || (!v.wipe && !fio)) return { error: "bad" };
+    row = ["'" + d, id, f.n, f.z, k === "s" ? "начало" : "конец", v.t, v.h, v.wipe ? "" : fio, who + " · менеджер", new Date(), FR_FIX + ": " + why];
+  }
+  const lock = lockOrBusy(10000);
+  try {
+    sh.appendRow(row);
+    const fst = {}, r = frRead(sh, d.slice(0, 7), fst);
+    try { frMonth(ss, d.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }
+    return { ok: true, day: day, m: d.slice(0, 7), r: r, fst: fst, work: FR_WORK };
+  } finally {
+    lock.releaseLock();
+  }
+}
+const FR_FIX = "исправлено менеджером", FR_OFF = "не работали", FR_UNOFF = "снята отметка «не работали»";
+
+/* «4,1» → 4.1; «−10» → −10; вне пределов или не число — null */
+function frNum(v, lo, hi) {
+  const s = String(v == null ? "" : v).trim().replace(",", ".").replace(/^[−–]/, "-");
+  if (!/^-?\d{1,3}(\.\d{1,2})?$/.test(s)) return null;
+  const n = Math.round(Number(s) * 10) / 10;
+  return n >= lo && n <= hi ? n : null;
+}
+
+/* список с сайта: [[id, название, зона, мин, макс, комната(1), влажн. мин, влажн. макс], …] — хранится, если поменялся */
+function frMetaPut(a) {
+  if (!Array.isArray(a) || !a.length || a.length > 40) return;
+  const num = v => typeof v === "number" && isFinite(v) && Math.abs(v) <= 100 ? v : null;
+  const list = [];
+  for (const x of a) {
+    if (!Array.isArray(x)) return;
+    const id = String(x[0] || "");
+    if (!/^[a-z0-9]{2,12}$/.test(id) || list.some(y => y.id === id)) return;
+    list.push({ id: id, n: clean(x[1], 80) || id, z: clean(x[2], 30), lo: num(x[3]), hi: num(x[4]), room: x[5] ? 1 : 0, hlo: num(x[6]), hhi: num(x[7]) });
+  }
+  const P = PropertiesService.getScriptProperties(), js = JSON.stringify(list);
+  if (P.getProperty(FR_META) !== js) P.setProperty(FR_META, js);
+}
+function frMeta() {
+  try { const a = JSON.parse(PropertiesService.getScriptProperties().getProperty(FR_META) || "[]"); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+
+function frSheet(ss) {
+  let sh = ss.getSheetByName(FR_LOG);
+  if (!sh) {
+    sh = ss.insertSheet(FR_LOG);
+    sh.getRange(1, 1, 1, FR_HEAD.length).setValues([FR_HEAD]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/* записи месяца «2026-10» → {холодильник: {день: {s, e, off}}}; последняя запись побеждает, пустая температура — стёрто.
+   fst (если передан) — первый день с записью у каждого холодильника: пропуски считаются с него */
+function frRead(sh, m, fst) {
+  const last = sh.getLastRow(), out = {};
+  if (last < 2) return out;
+  sh.getRange(2, 1, last - 1, FR_HEAD.length).getValues().forEach(r => {
+    const day = r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, "yyyy-MM-dd") : String(r[0]).replace(/^'/, "").trim();
+    const id = String(r[1]), sm = String(r[4]), k = sm === "начало" ? "s" : sm === "конец" ? "e" : sm === "день" ? "off" : "";
+    if (!id || !k || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    const src = String(r[10] || ""), has = k === "off" ? src.indexOf(FR_OFF) === 0 : !(r[5] === "" || r[5] == null);
+    if (fst && has && (!fst[id] || day < fst[id])) fst[id] = day;
+    if (day.slice(0, 7) !== m) return;
+    const d = (out[id] = out[id] || {})[day] = out[id][day] || {};
+    const at = r[9] instanceof Date ? r[9] : null, w = String(r[8] || "").replace(/^'/, "");
+    const stamp = x => { if (at) { x.at = Utilities.formatDate(at, TZ, "HH:mm"); x.on = Utilities.formatDate(at, TZ, "dd.MM"); } return x; };
+    if (!has) { delete d[k]; if (!d.s && !d.e && !d.off) delete out[id][day]; return; }
+    if (k === "off") { d.off = stamp({ why: src.slice(FR_OFF.length).replace(/^:\s*/, ""), w: w }); return; }
+    const x = stamp({ t: Number(r[5]), h: r[6] === "" || r[6] == null ? null : Number(r[6]), f: String(r[7] || "").replace(/^'/, ""), w: w, p: src === FR_PAPER_SRC ? 1 : 0 });
+    if (src.indexOf(FR_FIX) === 0) x.m = src.slice(FR_FIX.length).replace(/^:\s*/, "");
+    d[k] = x;
+  });
+  return out;
+}
+
+/* перенос бумажных журналов: только то, чего ещё нет в записях этого дня и смены */
+function frPaper(ss, sh) {
+  const P = PropertiesService.getScriptProperties();
+  if (P.getProperty(FR_PAPER_KEY) === FR_PAPER_V) return;
+  const meta = frMeta(), months = {}, rows = [], now = new Date(), have = {};
+  FR_PAPER.forEach(x => { months[x[1].slice(0, 7)] = 1; });
+  Object.keys(months).forEach(m => { const r = frRead(sh, m); Object.keys(r).forEach(id => Object.keys(r[id]).forEach(d => {
+    if (r[id][d].s) have[id + d + "s"] = 1; if (r[id][d].e) have[id + d + "e"] = 1; })); });
+  FR_PAPER.forEach(x => {
+    const f = meta.find(y => y.id === x[0]) || { n: x[0], z: "" };
+    [["s", x[2], "начало"], ["e", x[3], "конец"]].forEach(v => {
+      if (v[1] === null || have[x[0] + x[1] + v[0]]) return;
+      rows.push(["'" + x[1], x[0], f.n, f.z, v[2], v[1], "", x[4], "перенесено с бумаги", now, FR_PAPER_SRC]);
+    });
+  });
+  if (rows.length) {
+    const r0 = Math.max(sh.getLastRow(), 1) + 1;
+    ensureRows(sh, r0 + rows.length - 1);
+    sh.getRange(r0, 1, rows.length, FR_HEAD.length).setValues(rows);
+  }
+  P.setProperty(FR_PAPER_KEY, FR_PAPER_V);
+  Object.keys(months).forEach(m => { try { frMonth(ss, m); } catch (e) { console.error("frMonth: " + e); } });
+}
+
+/* лист месяца — как бумажный бланк: по таблице на холодильник, все дни месяца. Выход за норму — красным;
+   пустое в прошедший рабочий день (чт–сб, с первой записи холодильника) — «пропуск»; «не работали» — серым с причиной */
+const frNorm = (lo, hi, u) => lo == null && hi == null ? "" : lo != null && hi != null ? frSig(lo) + "…" + frSig(hi) + " " + u
+  : (lo != null ? "не ниже " + frSig(lo) : "не выше " + frSig(hi)) + " " + u;
+const frSig = n => (n > 0 ? "+" : n < 0 ? "−" : "") + String(Math.abs(n)).replace(".", ",");
+const frWork = day => FR_WORK.indexOf(new Date(day + "T12:00:00Z").getUTCDay()) >= 0;
+function frMonth(ss, m, data, fst) {
+  const sh0 = frSheet(ss);
+  if (!data || !fst) { fst = {}; data = frRead(sh0, m, fst); }
+  const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7)), days = new Date(Date.UTC(y, mo, 0)).getUTCDate(), today = frDayKey();
+  const list = frMeta().slice();
+  Object.keys(data).forEach(id => { if (!list.some(f => f.id === id)) list.push({ id: id, n: id, z: "", lo: null, hi: null, room: 0 }); });
+  const W = 7, rows = [], bg = [], fw = [];
+  const put = (cells, color, bold, cc) => {
+    const r = cells.concat(Array(W - cells.length).fill("")); rows.push(r);
+    bg.push(r.map((_, i) => cc && cc[i] || color || "#ffffff")); fw.push(r.map(() => bold ? "bold" : "normal"));
+  };
+  const out = (v, lo, hi) => v != null && ((lo != null && v < lo) || (hi != null && v > hi));
+  const sig = x => x.p ? FR_PAPER_SRC : x.m != null ? x.w + " " + (x.on || "") + " " + (x.at || "") + " — исправлено: " + x.m : x.w + (x.at ? " " + x.at : "");
+  list.forEach(f => {
+    const norm = [frNorm(f.lo, f.hi, "°C"), f.room ? frNorm(f.hlo, f.hhi, "%") : ""].filter(Boolean).join(", ");
+    put([f.n + (f.z ? " · " + f.z : "") + " · норма: " + (norm || "не задана")], FR_TOP, true);
+    put(f.room ? ["Дата", "Температура в начале смены", "Влажность в начале смены", "Температура в конце смены", "Влажность в конце смены", "ФИО", "Подпись"]
+               : ["Дата", "Температура в начале смены", "Температура в конце смены", "ФИО", "Подпись"], null, true);
+    for (let d = 1; d <= days; d++) {
+      const key = m + "-" + String(d).padStart(2, "0"), e = (data[f.id] || {})[key] || {}, s = e.s, n = e.e;
+      const date = "'" + String(d).padStart(2, "0") + "." + m.slice(5, 7);
+      if (e.off && !s && !n) {
+        const tail = [FR_OFF, e.off.why + " · " + e.off.w + " " + (e.off.on || "")];
+        put([date].concat(f.room ? ["", "", "", ""] : ["", ""], tail), FR_GREY, false);
+        continue;
+      }
+      const gap = key < today && frWork(key) && fst[f.id] && key >= fst[f.id];   // прошедший рабочий день, холодильник уже вели
+      const fio = [], sign = [];
+      [s, n].forEach(x => { if (!x) return; if (x.f && fio.indexOf(x.f) < 0) fio.push(x.f); const g = sig(x); if (sign.indexOf(g) < 0) sign.push(g); });
+      const v = x => x ? x.t : gap ? "пропуск" : "", hv = x => x && x.h != null ? x.h : "";
+      const c = (x, bad) => !x && gap ? FR_GAP : bad ? FR_BAD : null;
+      if (f.room) put([date, v(s), hv(s), v(n), hv(n), fio.join(" / "), sign.join(" · ")], null, false,
+        [null, c(s, out(s && s.t, f.lo, f.hi)), c(s, out(s && s.h, f.hlo, f.hhi)), c(n, out(n && n.t, f.lo, f.hi)), c(n, out(n && n.h, f.hlo, f.hhi))]);
+      else put([date, v(s), v(n), fio.join(" / "), sign.join(" · ")], null, false, [null, c(s, out(s && s.t, f.lo, f.hi)), c(n, out(n && n.t, f.lo, f.hi))]);
+    }
+    put([""]);
+  });
+  const name = "Холодильники " + m.slice(5, 7) + "." + m.slice(0, 4);
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    [64, 120, 120, 120, 120, 150, 260].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  }
+  sh.clear();
+  if (!rows.length) return;
+  ensureRows(sh, rows.length);
+  sh.getRange(1, 1, rows.length, W).setValues(rows).setBackgrounds(bg).setFontWeights(fw);
 }

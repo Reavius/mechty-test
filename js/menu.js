@@ -6,37 +6,44 @@
 const MENU = [
  {k: "cocktails", ru: "Коктейли", en: "Cocktails", secs: [
   {ru: "Коктейли мечты", en: "Signature cocktails", tiles: 1, items: [
-   {c: "pantera", v: 200, p: 630},
-   {c: "pornstar", v: 190, p: 670},
-   {c: "chili", v: 200, p: 670},
-   {c: "c-bosford", v: 150, p: 600},
    {c: "c-fiero", v: 160, p: 630},
-   {c: "summer", v: 200, p: 630},
-   {c: "tropiki", v: 200, p: 650},
-   {c: "c-collins", v: 200, p: 670},
+   {c: "pantera", v: 200, p: 630},
+   {c: "pornstar", v: 200, p: 670},
+   {c: "c-bosford", v: 150, p: 600},
+   {c: "tropiki", v: 180, p: 650},
+   {c: "maitai", v: 200, p: 670},
+   {c: "sexbeach", v: 190, p: 650},
+   {c: "mandarin", v: 200, p: 650},
+   {c: "granat", v: 100, p: 650},
+   {c: "tequila", v: 190, p: 650},
+   {c: "yuzu", v: 150, p: 650},
+   {c: "ananas", v: 130, p: 650},
    {c: "c-watermelon", v: 200, p: 650},
-   {c: "hugo", v: 200, p: 630},
-   {c: "grusha", v: 200, p: 600},
-   {c: "negroni", v: 90, p: 600},
-   {c: "bluecolada", v: 200, p: 630},
-   {c: "maitai", v: 200, p: 670}]},
+   {c: "vnegroni", v: 90, p: 600}]},
+  {ru: "Глинтвейн", en: "Mulled wine", items: [
+   {n: "Белый", e: "White", d: "белое вино, мандарин, пряности", de: "white wine, tangerine, spices", v: 150, p: 570},
+   {n: "Красный", e: "Red", d: "красное вино, апельсин, яблоко, пряности", de: "red wine, orange, apple, spices", v: 150, p: 570},
+   {n: "Безалкогольный", e: "Alcohol-free", d: "вишнёвый сок, апельсин, яблоко, пряности", de: "cherry juice, orange, apple, spices", v: 150, p: 450}]},
   {ru: "Аперитивные коктейли", en: "Aperitif cocktails", tiles: 1, items: [
    {c: "c-aperol", v: 200, p: 650},
    {c: "c-campari", v: 200, p: 650},
    {c: "c-sarti", v: 200, p: 650},
    {n: "Сет из трёх аперитивных коктейлей", e: "Set of three aperitif cocktails", d: "подробности у официанта", de: "ask your waiter for details", p: 1600}]},
   {ru: "Beluga Cocktails", en: "Beluga Cocktails", items: [
-   {n: "Beluga 1900", d: "водка Beluga Noble, порто, сахар, кислота", de: "Beluga Noble vodka, port, sugar, acid", v: 100, p: 550},
-   {n: "Beluga Noble Espresso", d: "водка Beluga Noble, кофе, вино", de: "Beluga Noble vodka, coffee, wine", v: 100, p: 550},
+   {n: "Beluga 1900", d: "водка Beluga Noble, вино, сахар, кислота", de: "Beluga Noble vodka, wine, sugar, acid", v: 100, p: 550},
+   {n: "Beluga Noble Espresso", d: "водка Beluga Noble, кофе, сироп", de: "Beluga Noble vodka, coffee, syrup", v: 100, p: 550},
    {n: "Hunting Cola", d: "Hunting Herbal Bitter, кола", de: "Hunting Herbal Bitter, cola", v: 200, p: 550},
    {n: "Hunting Tonic", d: "Hunting Berry Bitter, тоник", de: "Hunting Berry Bitter, tonic", v: 200, p: 550},
    {n: "Beluga Botanicals Cucumber and Mint Tonic", d: "Beluga Botanicals Cucumber and Mint, тоник", de: "Beluga Botanicals Cucumber and Mint, tonic", v: 200, p: 550},
    {n: "Beluga Botanicals Rose and Lime Tonic", d: "Beluga Botanicals Rose and Lime, тоник", de: "Beluga Botanicals Rose and Lime, tonic", v: 200, p: 550}]},
   {ru: "Шоты", en: "Shots", items: [
    {n: "Малина / Лайм / Мята", e: "Raspberry / Lime / Mint", c: "malina", v: 3, u: "pcs", p: 650},
-   {n: "Лимончелло", e: "Limoncello", c: "limoncello", v: 3, u: "pcs", p: 650},
+   {n: "Вишня", e: "Cherry", c: "vishnya", v: 3, u: "pcs", p: 650},
    {n: "Маракуйя / Пломбир", e: "Passion fruit / Ice cream", c: "maracuya", v: 3, u: "pcs", p: 650},
-   {n: "Вишня", e: "Cherry", c: "vishnya", v: 3, u: "pcs", p: 650}]}]},
+   {n: "Лимончелло", e: "Limoncello", c: "limoncello", v: 3, u: "pcs", p: 650},
+   {n: "Штрудель", e: "Strudel", c: "strudel", v: 3, u: "pcs", p: 650},
+   {n: "Груша / Бергамот", e: "Pear / Bergamot", c: "grushaberg", v: 3, u: "pcs", p: 650},
+   {n: "Фисташка / Пломбир", e: "Pistachio / Ice cream", c: "fistashka", v: 3, u: "pcs", p: 650}]}]},
 
  {k: "wine", ru: "Вино", en: "Wine", secs: [
   {ru: "Белое вино по бокалам", en: "White wine by the glass", items: [
@@ -48,7 +55,7 @@ const MENU = [
    {n: "Коно Сур, Токорнал Розе", e: "Cono Sur, Tocornal Rosé", d: "полусухое, Чили", v: 125, p: 520}]},
   {ru: "Игристое вино по бокалам", en: "Sparkling wine by the glass", items: [
    {n: "Тет де Шеваль Брют", e: "Tête de Cheval Brut", d: "сухое, Россия", v: 125, p: 620},
-   {n: "Мартини Брют", e: "Martini Brut", d: "сухое, Италия", v: 125, p: 620}]},
+   {n: "Нуволе Брют", e: "Nuvole Brut", d: "сухое, Россия", v: 125, p: 490}]},
   {ru: "Белое вино", en: "White wine", items: [
    {n: "Верментино, ВиллаСолаис, Сантади", e: "Vermentino, Villa Solais, Santadi", d: "сухое, Италия", v: 750, p: 6570},
    {n: "Гави Иль Валентино, Ла Сколька", e: "Gavi Il Valentino, La Scolca", d: "сухое, Италия", v: 750, p: 5980},
@@ -66,15 +73,15 @@ const MENU = [
    {n: "Мерло, Каза Дефра", e: "Merlot, Casa Defrà", d: "полусухое, Италия", v: 750, p: 3730},
    {n: "Санджовезе, Альма Романа", e: "Sangiovese, Alma Romana", d: "полусухое, Италия", v: 750, p: 3220},
    {n: "Зинфандель, Краб энд Мо", e: "Zinfandel, Crab & Mo", d: "полусухое, США", v: 750, p: 3990},
-   {n: "Матсу Эль Пикаро", e: "Matsu El Picaro", d: "сухое, Испания", v: 750, p: 4220},
+   {n: "Матсу Эль Пикаро", e: "Matsu El Picaro", d: "сухое, Испания", v: 750, p: 4520},
    {n: "Каберне Совиньон, Поместье Голубицкое", e: "Cabernet Sauvignon, Golubitskoye Estate", d: "сухое, Россия", v: 750, p: 3200}]},
   {ru: "Розовое вино", en: "Rosé wine", items: [
    {n: "Виньо Верде Розе, Маре & Гриль", e: "Vinho Verde Rosé, Mare & Grill", d: "полусухое, Португалия", v: 750, p: 3500}]},
   {ru: "Шампанское и игристое", en: "Champagne & sparkling wine", items: [
-   {n: "Martini Prosecco DOC", d: "Италия", v: 750, p: 4400},
-   {n: "Martini Prosecco Rose DOC", d: "Италия", v: 750, p: 4400},
-   {n: "Martini Asti DOCG", d: "Италия", v: 750, p: 4400},
-   {n: "Бруни Просекко", e: "Bruni Prosecco", d: "Италия", v: 750, p: 4300},
+   {n: "Martini Prosecco DOC", d: "Италия", v: 750, p: 4500},
+   {n: "Martini Prosecco Rose DOC", d: "Италия", v: 750, p: 4500},
+   {n: "Martini Asti DOCG", d: "Италия", v: 750, p: 4500},
+   {n: "Бруни Просекко", e: "Bruni Prosecco", d: "Италия", v: 750, p: 4500},
    {n: "Вдова Клико", e: "Veuve Clicquot", d: "Франция", v: 750, p: 17200}]}]},
 
  {k: "spirits", ru: "Крепкое", en: "Spirits", secs: [
@@ -97,7 +104,7 @@ const MENU = [
   {ru: "Текила", en: "Tequila", items: [
    {n: "Jose Cuervo Especial Silver", v: 40, p: 520}, {n: "Jose Cuervo Especial Reposado", v: 40, p: 550}]},
   {ru: "Коньяк и бренди", en: "Cognac & brandy", items: [
-   {n: "Camus VS", v: 40, p: 750}, {n: "Camus VSOP", v: 40, p: 930}, {n: "Ной Араспел 5*", e: "Noy Araspel 5*", v: 40, p: 420}]},
+   {n: "Camus VS", v: 40, p: 750}, {n: "Camus VSOP", v: 40, p: 970}, {n: "Ной Араспел 5*", e: "Noy Araspel 5*", v: 40, p: 420}]},
   {ru: "Ром", en: "Rum", items: [
    {n: "OAKHEART Original Spiced Gold", v: 40, p: 450}, {n: "Matusalem Platino", v: 40, p: 490},
    {n: "Matusalem Solera 7", v: 40, p: 520}, {n: "Angostura Tamboo", v: 40, p: 590}]},
@@ -108,20 +115,18 @@ const MENU = [
 
  {k: "beer", ru: "Пиво", en: "Beer", secs: [
   {ru: "Пиво разливное", en: "Draught beer", items: [
-   {n: "Krusovice Svetle", v: "250/500", p: "300/490"}, {n: "Maison Arne Biere Blanche", v: "250/500", p: "350/590"}]},
+   {n: "Krusovice Svetle", v: "250/500", p: "300/490"}, {n: "Шихан", e: "Shikhan", v: "250/500", p: "190/290"}]},
   {ru: "Пиво бутылочное", en: "Bottled beer", items: [
    {n: "Corona Extra", v: 330, p: 520}, {n: "La Costa Fresca", v: 330, p: 390}, {n: "Augustiner", v: 500, p: 820},
-   {n: "Blue Moon", v: 330, p: 450}, {n: "Bakalar Dark", v: 500, p: 690}, {n: "Mort Subite", v: 250, p: 550},
+   {n: "Maison Arne Biere Blanche", v: 450, p: 390}, {n: "Bakalar Dark", v: 500, p: 690}, {n: "Mort Subite", v: 250, p: 550},
    {n: "Сидр №2", e: "Cider No. 2", v: 500, p: 550},
    {n: "Krusovice Svetle безалкогольное", e: "Krusovice Svetle alcohol-free", v: 330, p: 300}]}]},
 
  {k: "soft", ru: "Без алкоголя", en: "Alcohol-free", secs: [
   {ru: "Безалкогольные коктейли", en: "Alcohol-free cocktails", items: [
-   {n: "Эспрессо тоник", e: "Espresso tonic", v: 250, p: 350},
-   {n: "Колд брю вишня", e: "Cherry cold brew", c: "coldbrew", v: 200, p: 350},
-   {n: "Щавелевый лимонад", e: "Sorrel lemonade", c: "shchavel", v: "250/1000", p: "350/890"},
    {n: "Цитрус Тархун", e: "Citrus tarragon", c: "tarhun", v: "250/1000", p: "350/890"},
-   {n: "Лимонад Грейпфрут", e: "Grapefruit lemonade", c: "grapefruit", v: "250/1000", p: "350/890"}]},
+   {n: "Малина Маракуйя", e: "Raspberry & passion fruit", c: "malmar", v: "250/1000", p: "350/890"},
+   {n: "Фейхоа Яблоко", e: "Feijoa & apple", c: "feijoa", v: "250/1000", p: "350/890"}]},
   {ru: "Свежевыжатые соки", en: "Freshly squeezed juice", items: [
    {n: "Апельсин", e: "Orange", v: 250, p: 400}, {n: "Яблоко", e: "Apple", v: 250, p: 400}]},
   {ru: "Безалкогольные напитки", en: "Soft drinks", items: [
@@ -136,7 +141,8 @@ const MENU = [
    {n: "Эспрессо", e: "Espresso", v: 40, p: 170}, {n: "Американо", e: "Americano", v: 150, p: 170},
    {n: "Капучино", e: "Cappuccino", v: 150, p: 320}, {n: "Латте", e: "Latte", v: 200, p: 350},
    {n: "Раф", e: "Raf coffee", v: 150, p: 320}, {n: "Флэт уайт", e: "Flat white", v: 200, p: 350},
-   {n: "Какао", e: "Cocoa", v: 200, p: 350}, {n: "Матча", e: "Matcha", v: 200, p: 350}]},
+   {n: "Какао", e: "Cocoa", v: 200, p: 350}, {n: "Какао Фисташка", e: "Pistachio cocoa", v: 200, p: 350},
+   {n: "Матча", e: "Matcha", v: 200, p: 350}, {n: "Латте Синнабон", e: "Cinnabon latte", v: 200, p: 350}]},
   {ru: "Чай", en: "Tea", items: [
    {n: "Ассам", e: "Assam", v: 550, p: 360}, {n: "Пуэр", e: "Pu-erh", v: 550, p: 360},
    {n: "Тегуаньинь", e: "Tieguanyin", v: 550, p: 360}, {n: "Молочный улун", e: "Milk oolong", v: 550, p: 360},
@@ -145,8 +151,10 @@ const MENU = [
    {n: "Гречишный", e: "Buckwheat tea", v: 550, p: 360}]},
   {ru: "Горячие напитки", en: "Hot drinks", items: [
    {n: "Облепиха", e: "Sea buckthorn", c: "oblepiha", v: 500, p: 450},
-   {n: "Черника-маракуйя", e: "Blueberry & passion fruit", v: 500, p: 450},
-   {n: "Вишня", e: "Cherry", v: 500, p: 450}]}]}
+   {n: "Смородина маракуйя", e: "Blackcurrant & passion fruit", v: 500, p: 450},
+   {n: "Вишня", e: "Cherry", v: 500, p: 450},
+   {n: "Яблоко", e: "Apple", v: 500, p: 450},
+   {n: "Мандарин", e: "Tangerine", v: 500, p: 450}]}]}
 ];
 
 /* описания вин — по словам */
@@ -160,37 +168,40 @@ const CARD_EN = {
   pornstar: ["Pornstar", "vodka, vanilla, passion fruit, sparkling wine"],
   tropiki: ["Tropics", "OAKHEART Original Spiced Gold rum, passion fruit, pineapple, Sarti, Aperol"],
   maitai: ["Mai Tai", "OAKHEART Original Spiced Gold rum, amaretto, peach, pineapple, orange, lime"],
+  sexbeach: ["Sex on the Beach", "vodka, orange, peach, cranberry"],
+  mandarin: ["Tangerine Spritz", "orange liqueur, tangerine purée, palo santo, sparkling wine"],
+  granat: ["Pomegranate Tini", "gin, pomegranate, lime"],
+  tequila: ["Tequila Cider Spice", "tequila, Aperol, lime, honey, chili, cider"],
+  yuzu: ["Yuzu Peach", "vodka, peach soju, lime, ginger, sencha, yuzu, egg white"],
+  ananas: ["Pineapple Parsley", "pear vodka, pineapple-parsley purée"],
+  vnegroni: ["Cherry Negroni", "Campari, Martini Rosso vermouth, gin, cherry"],
   negroni: ["Negroni", "Campari, Martini Rosso vermouth, gin, orange"],
-  hugo: ["Cucumber Hugo", "Hoppers gin, cucumber cordial, elderflower, lime, sparkling wine, soda"],
-  bluecolada: ["Blue Colada", "OAKHEART Original Spiced Gold rum, coconut water, cordial, pineapple juice, ice-cream foam"],
-  summer: ["Summer Spritz", "Martini Fiero vermouth, strawberry cordial, sparkling wine"],
-  chili: ["Chili Barberry", "lemon-zest gin, Sauvignon Blanc wine, chili-barberry cordial"],
   longisland: ["Long Island", "vodka, gin, rum, tequila, triple sec, cola"],
-  grusha: ["Pear Jasmine", "pear vodka, peach-jasmine cordial, ice-cream foam"],
-  pinklady: ["Pink Lady", "Sarti, gin, lime, sugar syrup"],
-  bramble: ["Bramble", "berry vodka, blackberry-lavender cordial, lime"],
   "c-fiero": ["Martini Fiero Tonic", "Martini Fiero vermouth, tonic"],
   "c-bosford": ["Bosford Tonic", "Bosford gin, tonic"],
   "c-watermelon": ["Watermelon Gin", "Red Bull The Red Edition, Hoppers gin"],
-  "c-collins": ["Sorrel Collins", "Hoppers gin, sorrel, soda"],
   "c-aperol": ["Aperol Spritz", "Aperol, sparkling wine, soda, orange"],
   "c-campari": ["Campari Spritz", "Campari, sparkling wine, soda, orange"],
   "c-sarti": ["Sarti Spritz", "Sarti, sparkling wine, soda, lime"],
   vishnya: ["Cherry", "whisky, cherry, sugar, cinnamon"],
   malina: ["Raspberry, lime, mint", "vodka, raspberry, lime, sugar, mint"],
   limoncello: ["Limoncello", "vodka, fresh lemon juice, sugar syrup, lemon zest, fresh orange juice"],
-  maracuya: ["Passion fruit & ice cream", "rum, ice-cream foam, passion fruit, lactic acid, water"],
-  klubnika: ["Strawberry, hibiscus", "vodka, strawberry, sugar, lime, hibiscus tea"],
-  shchavel: ["Sorrel cordial", "water, sugar, sorrel, citric acid"],
+  maracuya: ["Passion fruit & ice cream", "rum, ice-cream foam, passion fruit, lactic and citric acid, water"],
+  strudel: ["Strudel", "vodka, apple, raisins, vanilla, salted caramel, cinnamon"],
+  grushaberg: ["Pear, bergamot", "vodka, pear, Earl Grey, vanilla, lime"],
+  fistashka: ["Pistachio & ice cream", "rum, pistachio, pistachio milk, ice-cream foam"],
   tarhun: ["Citrus tarragon", "citrus cordial, tarragon-lime cordial"],
-  barbaris: ["Chili-barberry cordial", "water, sugar, barberry candies, lactic acid, chili pepper"],
-  coldbrew: ["Cold brew", "cherry juice, water, coffee"],
+  malmar: ["Raspberry & passion fruit", "raspberry, passion fruit"],
+  feijoa: ["Feijoa & apple", "feijoa, apple, lime"],
   oblepiha: ["Sea buckthorn purée", "sea buckthorn, water, sugar"],
   plombir: ["Ice-cream foam", "vanilla syrup, ice cream, milk, cream, water"],
-  koritsa: ["Cinnamon-basil cordial", "basil syrup, cinnamon"],
-  grapefruit: ["Grapefruit lemonade", "cinnamon-basil cordial, alcohol-free beer, lime"],
+  fistbase: ["Pistachio base", "pistachio paste, pistachio milk, ice-cream foam"],
+  chilimed: ["Chili-honey syrup", "water, honey, chili pepper"],
+  ananaspf: ["Pineapple-parsley purée", "pineapple, parsley"],
+  imbir: ["Ginger syrup", "water, sugar, ginger"],
   sirop: ["Sugar syrup", "water, sugar"],
-  igristoe: ["Sparkling wine foam", "sparkling wine, egg white"]
+  igristoe: ["Sparkling wine foam", "sparkling wine, egg white"],
+  kisloty: ["Acid mix", "lactic acid, citric acid"]
 };
 const GROUP_EN = {
   premix: ["Premixes", "Premixes", "Shelf life 14 days from the date of production"],
@@ -365,8 +376,10 @@ $("mout").addEventListener("click", e => {
 
 /* ── меню и состав из таблицы («Менеджер» → «Гостям») ──
    Пока листов нет — показывается то, что в файлах сайта (выше). Есть — сайт берёт их из таблицы без пароля,
-   копию хранит на телефоне (открывается сразу и без интернета), свежую подтягивает при каждом открытии. */
-const PUBK = "mechty-pub", pubYes = v => /^(да|1|true|x|\+)$/i.test(String(v).trim());
+   копию хранит на телефоне (открывается сразу и без интернета), свежую подтягивает при каждом открытии.
+   PUB_FV — версия карты в файлах сайта. Листы, заполненные из другой версии (у таблицы своя метка fv, у старых листов её нет),
+   новое меню не перекрывают: новая карта видна сразу после выкладки сайта, а таблица снова главная, когда в неё перенесут эту версию. */
+const PUBK = "mechty-pub", PUB_FV = "2026-11", pubYes = v => /^(да|1|true|x|\+)$/i.test(String(v).trim());
 const PUB0 = {menu: JSON.parse(JSON.stringify(MENU)), data: JSON.parse(JSON.stringify(data)),
   en: JSON.parse(JSON.stringify(CARD_EN)), gen: JSON.parse(JSON.stringify(GROUP_EN))};
 let pubV = "", pubFrom = "files";
@@ -375,6 +388,7 @@ const pubObj = (to, from) => { Object.keys(to).forEach(k => delete to[k]); Objec
 /* строки таблицы → MENU и data (как в файлах сайта) */
 function pubApply(d){
   if (!d || !d.ok || !Array.isArray(d.menu) || !Array.isArray(d.items) || !Array.isArray(d.groups)) return false;
+  if ((d.fv || "") !== PUB_FV) return false;                             // в таблице меню прошлой карты — показываем файлы сайта
   const menu = [];
   let ch = null, sec = null;
   for (const r of d.menu){
