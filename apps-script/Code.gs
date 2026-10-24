@@ -1090,6 +1090,7 @@ function doPost(e) {
     if (p.mgr === "in") return jsonOut(mgrIn(p));
     if (p.mgr === "pubseed") return jsonOut(mgrPubSeed(p));
     if (p.mgr === "pubset") return jsonOut(mgrPubSet(p));
+    if (p.mgr === "pubstory") return jsonOut(mgrPubStory(p));
     if (p.mgr === "prices") return jsonOut(mgrPrices(p));
     if (/^report(set|send|auto)$/.test(p.mgr || "")) return jsonOut(mgrReportPost(p));
     if (p.mgr === "dishset") return jsonOut(mgrDishSet(p));
@@ -2748,7 +2749,8 @@ const PUB_M = "Меню", PUB_C = "Карта", PUB_G = "Карта раздел
 const PUB_MH = ["Глава", "Глава EN", "Раздел", "Раздел EN", "Плитки", "Название", "Название EN", "Описание", "Описание EN",
   "Объём", "Ед.", "Цена", "id в карте", "Код R-Keeper", "Скрыть", "uid"];
 const PUB_CH = ["Раздел", "id", "Название", "Название EN", "Состав для гостей", "Состав EN", "Полный состав (этикетка, через ;)",
-  "Аллергены", "Аллергены EN", "Объём подачи", "Фото", "Значок этикетки", "Название на этикетке", "Только этикетка", "Скрыть"];
+  "Аллергены", "Аллергены EN", "Объём подачи", "Фото", "Значок этикетки", "Название на этикетке", "Только этикетка", "Скрыть",
+  "История", "История EN", "Вкус", "Вкус EN", "О составе", "О составе EN", "Цвет"];   // «Узнать больше» у коктейля с фото
 const PUB_GH = ["key", "Название", "Кратко", "Правило", "Срок", "Хранение", "Подача", "Без этикеток", "Название EN", "Кратко EN", "Правило EN"];
 const PUB_NOTES = {
   "Плитки": "да — раздел показывается карточками с фото (коктейли)", "Ед.": "мл (пусто) или шт",
@@ -2756,7 +2758,11 @@ const PUB_NOTES = {
   "Код R-Keeper": "заполняется сам при загрузке цен из R-Keeper", "Скрыть": "да — не показывать гостям", "uid": "служебный, не менять",
   "id": "латиницей, не менять — на него ведут QR-коды этикеток", "Полный состав (этикетка, через ;)": "как на этикетке: через точку с запятой",
   "Аллергены": "«Не выявлены» или перечень", "Объём подачи": "мл — для разделов с подачей", "Фото": "photos/имя.webp",
-  "Значок этикетки": "имя значка, например i-pear", "Только этикетка": "да — только для этикеток, гостям не показывать"};
+  "Значок этикетки": "имя значка, например i-pear", "Только этикетка": "да — только для этикеток, гостям не показывать",
+  "История": "«Узнать больше»: история коктейля (до 300 знаков). Пусто — текст сайта, «—» — раздел не показывать",
+  "Вкус": "«Узнать больше»: вкус (до 240 знаков). Пусто — текст сайта, «—» — не показывать",
+  "О составе": "«Узнать больше»: коротко о составе (до 220 знаков). Пусто — текст сайта, «—» — не показывать",
+  "Цвет": "цвет карточки «Узнать больше», например #F07B55; пусто — по фото"};
 const yes = v => /^(да|1|true|x|\+)$/i.test(String(v).trim());
 const TRL = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o",
   п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya" };
@@ -2816,7 +2822,7 @@ function pubGet() {
     let id = r[1] || pubId(r[2]);
     while (ids[id]) id += "-2";
     ids[id] = 1; r[1] = id;
-    return r.slice(0, 14);
+    return r.slice(0, 14).concat([""], r.slice(15, PUB_CH.length));       // «Скрыть» гостям не нужно; дальше — «Узнать больше»
   });
   const groups = pubRows(gs, PUB_GH).filter(r => r[0]);
   const out = { ok: true, menu: menu, groups: groups, items: items };
@@ -2871,7 +2877,7 @@ function mgrPubSeed(p) {
   const lock = lockOrBusy(20000);
   try {
     if (pubSheet(PUB_M, PUB_MH, false) || pubSheet(PUB_C, PUB_CH, false)) return { error: "exists" };
-    const cell = (v, n) => typeof v === "number" ? v : clean(v, n || 300);
+    const cell = (v, n) => typeof v === "number" ? v : clean(v, n || 600);
     const put = (sh, rows, w) => {
       if (!rows.length) return;
       ensureRows(sh, rows.length + 1);
@@ -2895,7 +2901,7 @@ function mgrPubSeed(p) {
 function mgrPubSet(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   const isM = p.t === "m", head = isM ? PUB_MH : PUB_CH, w = head.length, kc = isM ? 15 : 1;
-  const cl = v => typeof v === "number" ? v : clean(v == null ? "" : v, 400);
+  const cl = v => typeof v === "number" ? v : clean(v == null ? "" : v, 600);
   const row = Array.isArray(p.row) ? Array.from({ length: w }, (_, i) => cl(p.row[i])) : null;
   const base = Array.isArray(p.base) ? Array.from({ length: w }, (_, i) => cl(p.base[i])) : null;
   const lock = lockOrBusy(15000);
@@ -2930,6 +2936,37 @@ function mgrPubSet(p) {
     SpreadsheetApp.flush();
     pubDrop();
     return { ok: true, key: p.act === "add" ? row[kc] : p.key };
+  } finally { lock.releaseLock(); }
+}
+/* тексты «Узнать больше» с сайта в лист «Карта»: {rows: [{id, v: [история, EN, вкус, EN, о составе, EN, цвет]}]} —
+   пишутся только в пустые ячейки (поправленное в таблице не затирается) */
+const PUB_ST = PUB_CH.indexOf("История");
+function mgrPubStory(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const list = (Array.isArray(p.rows) ? p.rows : []).slice(0, 300).filter(x => x && x.id && Array.isArray(x.v));
+  if (!list.length) return { error: "bad" };
+  const lock = lockOrBusy(20000);
+  try {
+    const sh = pubSheet(PUB_C, PUB_CH, false);
+    if (!sh) return { error: "none" };
+    const h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), PUB_CH.length)).getDisplayValues()[0].map(x => String(x).trim());
+    PUB_CH.forEach((name, i) => { if (!h[i] && h.indexOf(name) < 0) sh.getRange(1, i + 1).setValue(name).setFontWeight("bold"); });   // шапка прошлой версии
+    const rows = pubRows(sh, PUB_CH), by = {};
+    rows.forEach((r, i) => { if (r[1]) by[r[1]] = by[r[1]] == null ? i : -1; });
+    let n = 0;
+    list.forEach(x => {
+      const i = by[String(x.id)];
+      if (i == null || i < 0) return;
+      const out = rows[i].slice();
+      let ch = false;
+      for (let k = 0; k < PUB_CH.length - PUB_ST; k++) {
+        const v = clean(x.v[k] == null ? "" : x.v[k], 600);
+        if (v && !String(out[PUB_ST + k]).trim()) { out[PUB_ST + k] = v; ch = true; }
+      }
+      if (ch) { pubPut(sh, PUB_CH, i + 2, out); n++; }
+    });
+    if (n) { SpreadsheetApp.flush(); pubDrop(); }
+    return { ok: true, n: n };
   } finally { lock.releaseLock(); }
 }
 /* цены из прейскуранта R-Keeper: {rows: [{uid, price, code}]} */
