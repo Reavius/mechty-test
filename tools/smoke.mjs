@@ -101,8 +101,8 @@ if (PW) {
   }
   await page.click('[data-s="calc"]');
   ok((await page.textContent("#res")).trim().length > 0, "калькулятор считает");
-  await page.selectOption("#pos", "grapefruit").catch(() => {});
-  ok((await page.textContent("#res")).includes("Балтика"), "лимонад «Грейпфрут» в калькуляторе");
+  await page.selectOption("#pos", "malmar").catch(() => {});
+  ok((await page.textContent("#res")).includes("Концентрат малины"), "база лимонада «Малина-маракуйя» в калькуляторе");
   await page.click('[data-s="order"]');
   ok(await page.locator("#olist input[type=checkbox]").count() > 10, "заявка");
   // количество в заявке: отметить → вписать → в копии «позиция количество»
