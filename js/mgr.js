@@ -77,7 +77,7 @@ $("mgrIn").addEventListener("submit", async e => {
 /* забыть ключ на этом телефоне (и сказать таблице — без ответа) */
 function mgrLeave(){
   const k = mgrj(MGR, null);
-  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null; sal = null;
+  mgrs(MGR, null); mgrData = null; refRows = null; refOpen = -1; ordData = null; inc = null; incData = null; useData = null; pubRaw = null; repData = null; sal = null; salBg = null; povUndo = null; incRefBg = null;
   $("useList").innerHTML = ""; $("pubList").innerHTML = ""; $("repView").innerHTML = ""; $("salDish").innerHTML = ""; $("salZag").innerHTML = ""; $("salDays").innerHTML = ""; $("salCal").innerHTML = ""; perData = null; perI = null; perRange = null; perMail = null; salKnown = null;
   $("incImp").hidden = true; $("incImp").innerHTML = ""; $("incList").innerHTML = "";
   $("mgrOut").innerHTML = ""; $("mgrCopy").disabled = true; $("mgrRlist").innerHTML = ""; $("mgrOlist").innerHTML = "";
@@ -634,7 +634,12 @@ async function incLoad(){
   if (!d.ok){ $("incSum").textContent = d.error === "action" ? "Нужна новая версия Apps Script." : "Нет связи с таблицей — нажмите период ещё раз."; return; }
   incData = d; incListDraw();
 }
+/* накладные периода: позиции ежедневной ревизии — сразу, остальные (кухня и прочее, в расчёт не входят) — свёрнуто */
+let incRefBg = null;
 function incListDraw(){
+  if (!refRows && !incRefBg) incRefBg = incRefs().then(ok => { incRefBg = null; if (ok && refRows && incData) incListDraw(); });
+  const bl = refRows ? new Set(refRows.filter(r => +r[13] === 1).map(r => nmKey(r[0]) + "|" + nmKey(r[1]))) : null;
+  const inB = r => !bl || bl.has(nmKey(r[3]) + "|" + nmKey(r[4]));
   const by = {}, keys = [];
   for (const r of incData.rows){
     const k = r[0] + "|" + r[1] + "|" + r[2];
@@ -642,13 +647,18 @@ function incListDraw(){
     by[k].rows.push(r); by[k].sum += typeof r[8] === "number" ? r[8] : 0;
   }
   const inv = keys.map(k => by[k]).sort((a, b) => b.iso.localeCompare(a.iso));
-  const total = inv.reduce((a, x) => a + x.sum, 0);
+  const total = inv.reduce((a, x) => a + x.sum, 0), mine = inv.filter(x => x.rows.some(inB)), rest = inv.filter(x => !x.rows.some(inB));
   $("incSum").innerHTML = mgrRu(incData.from) + " — " + mgrRu(incData.to) + ": <b>" + mgrPl(inv.length, "накладная", "накладные", "накладных") + "</b>" +
-    (total ? " на " + mgrNum(Math.round(total)) + " ₽" : "");
-  $("incList").innerHTML = inv.slice(0, 40).map(x => '<div class="result tcard mgrt"><div class="tname"><em>' + (x.sum ? mgrNum(Math.round(x.sum)) + " ₽" : "") + '</em>' +
-    '<h3>' + esc(x.date) + (x.no ? " №" + esc(x.no) : "") + '</h3><small class="mgrwhy">' + esc(x.sup || "поставщик не указан") + '</small></div>' +
-    '<table><tbody>' + x.rows.map(r => '<tr><td class="n">' + esc(r[4]) + '</td><td class="v">' + mgrNum(r[5]) + (r[6] ? " " + esc(r[6]) : "") + '</td></tr>').join("") +
-    '</tbody></table></div>').join("") || '<p class="empty">За этот период прихода нет.</p>';
+    (total ? " на " + mgrNum(Math.round(total)) + " ₽" : "") + (bl && rest.length ? " · с позициями ревизии — " + mine.length : "");
+  const tr = r => '<tr><td class="n">' + esc(r[4]) + '</td><td class="v">' + mgrNum(r[5]) + (r[6] ? " " + esc(r[6]) : "") + '</td></tr>';
+  const card = x => { const a = x.rows.filter(inB), b = x.rows.filter(r => !inB(r));
+    return '<div class="result tcard mgrt"><div class="tname"><em>' + (x.sum ? mgrNum(Math.round(x.sum)) + " ₽" : "") + '</em>' +
+      '<h3>' + esc(x.date) + (x.no ? " №" + esc(x.no) : "") + '</h3><small class="mgrwhy">' + esc(x.sup || "поставщик не указан") + '</small></div>' +
+      (a.length ? '<table><tbody>' + a.map(tr).join("") + '</tbody></table>' : "") +
+      (b.length ? '<details class="incmapd"><summary>Не из ежедневной ревизии — ' + b.length + '</summary><table><tbody>' + b.map(tr).join("") + '</tbody></table></details>' : "") + '</div>'; };
+  $("incList").innerHTML = (mine.slice(0, 40).map(card).join("") +
+    (rest.length ? '<details class="incmapd"><summary>Накладные без позиций ежедневной ревизии — в расчёт не входят (' + rest.length + ')</summary>' + rest.slice(0, 40).map(card).join("") + '</details>' : "")) ||
+    '<p class="empty">За этот период прихода нет.</p>';
 }
 $("incQuick").addEventListener("click", e => {
   const b = e.target.closest("button[data-r]");
@@ -928,6 +938,13 @@ $("useWarn").addEventListener("click", e => { if (e.target.id === "useRetry") us
 let perData = null, perI = null, perOpen = "", perRange = null;      // perRange — свои даты {from, to}
 const perLab = (a, b) => a.wd + " " + mgrRu(a.iso).slice(0, 5) + " → " + b.wd + " " + mgrRu(b.iso).slice(0, 5);
 const perMoney = x => mgrNum(Math.round(Math.abs(x || 0)));
+/* блюда без расхода, которые касаются ревизии: похожи на бар по названию (сервер) или по техкарте и справочнику (сайт); кухня и прочее — молча */
+let salBg = null;
+function perND(S){
+  const L = S.nodish || [];
+  if (!sal && !salBg && L.some(x => !x.rel)) salBg = salLoad(true).then(() => { if (perData) perDraw(); });
+  return L.filter(x => x.rel || (sal && salRel(x)));
+}
 async function perLoad(){
   const mk = mgrKey();
   if (!mk) return mgrInit();
@@ -960,17 +977,19 @@ function perDraw(){
     perStepsDraw();
     $("useSum").textContent = "";
     $("useList").innerHTML = '<p class="empty">' + (m ? "Нужны хотя бы две месячные ревизии, посчитанные целиком." : "Нужны хотя бы две ревизии — дни, когда посчитаны все зоны и все нажали «Завершить».") + ' Расход считается между ними.</p>';
+    povDrawAll();
     return;
   }
   const S = d.sales || {want: [], miss: [], nodish: [], have: []}, rows = d.rows.filter(r => !r.info && !r.miss);
   const info = d.rows.filter(r => r.info), miss = d.rows.filter(r => r.miss);
   const dd = iso => ["вс", "пн", "вт", "ср", "чт", "пт", "сб"][new Date(iso + "T00:00:00Z").getUTCDay()] + " " + mgrRu(iso).slice(0, 5);
-  $("useSum").innerHTML = '<b>' + perLab(d.from, d.to) + '</b>' + (d.to.who ? " (" + esc(d.to.who) + ")" : "") + ' · недостача <b class="salshort">' + perMoney(d.short) + ' ₽</b> · излишек <b>' + perMoney(d.over) + ' ₽</b> · позиций ' + rows.length;
-  const wm = d.womiss || [];
+  $("useSum").innerHTML = '<b>' + perLab(d.from, d.to) + '</b>' + (d.to.who ? " (" + esc(d.to.who) + ")" : "") + ' · недостача <b class="salshort">' + perMoney(d.short) + ' ₽</b> · излишек <b>' + perMoney(d.over) + ' ₽</b> · позиций ' + rows.length +
+    (d.man ? " · вручную " + d.man : "");
+  const wm = d.womiss || [], ND = perND(S);
   const W = [
     !S.want.length ? "В этом периоде смен не было — продаж не ждём: любое расхождение — потери или ошибка пересчёта." :
       S.miss.length ? "Нет продаж R-Keeper за " + S.miss.map(dd).join(", ") + " — загрузите в шаге «Продажи R-Keeper» выше, иначе всё проданное в эти дни покажется недостачей." : "",
-    S.nodish.length ? mgrPl(S.nodish.length, "блюдо", "блюда", "блюд") + " без расхода на блюдо (" + S.nodish.slice(0, 8).map(x => x.name + " ×" + mgrNum(x.qty)).join(", ") + (S.nodish.length > 8 ? "…" : "") +
+    ND.length ? mgrPl(ND.length, "блюдо", "блюда", "блюд") + " без расхода на блюдо (" + ND.slice(0, 8).map(x => x.name + " ×" + mgrNum(x.qty)).join(", ") + (ND.length > 8 ? "…" : "") +
       ") — задайте в разделе «Рецепты», иначе их ингредиенты покажутся недостачей." : "",
     (d.zagno || []).length ? "Заготовки без рецепта (их сырьё не сойдётся — задайте рецепт в разделе «Рецепты»): " + d.zagno.join(", ") + "." : "",
     (d.skipped || []).length ? "Пересчёты не всех зон — не ревизия, период через них не режется: " + d.skipped.map(x => x.d.slice(0, 5) + (x.z ? " (" + x.z + ")" : "")).join(", ") + "." : "",
@@ -984,11 +1003,11 @@ function perDraw(){
   $("useWarn").innerHTML = W.map(esc).join("<br>");
   const n = x => mgrNum(r2(x));
   const why = r => {
-    const t = ["было " + n(r.was)];
-    if (r.inc) t.push("+ приход " + n(r.inc));
-    if (r.sold) t.push("− продано " + n(r.sold));
-    if (r.wo) t.push("− списано " + n(r.wo));
-    if (r.pr) t.push("− проработки " + n(r.pr));
+    const t = ["было " + n(r.was)], hand = f => r.man && f in r.man ? " (вручную)" : "", has = f => r[f] || hand(f);
+    if (has("inc")) t.push("+ приход " + n(r.inc) + hand("inc"));
+    if (has("sold")) t.push("− продано " + n(r.sold) + hand("sold"));
+    if (has("wo")) t.push("− списано " + n(r.wo) + hand("wo"));
+    if (has("pr")) t.push("− проработки " + n(r.pr) + hand("pr"));
     return t.join(" ") + (t.length > 1 ? " = ожидалось " + n(r.exp) : "") + " · стало " + n(r.now) + (r.raw ? " · с заготовками" : "");
   };
   const line = r => {
@@ -1006,6 +1025,7 @@ function perDraw(){
   html += '<p class="mgrfoot"><button type="button" class="link" id="perCopy">Скопировать итог</button></p></div>';
   $("useList").innerHTML = html;
   perStepsDraw();
+  povDrawAll();
   if ($("stepInc").open && incRange === "rev") incLoad();
   /* сводка списаний ниже — за тот же период (если выбран «Период ревизии») */
   if (mgrRsel === "rev" && ($("mgrFrom").value !== d.from.iso || $("mgrTo").value !== d.to.iso || !mgrData)){
@@ -1040,15 +1060,16 @@ function perStepsDraw(){
   const dd = iso => salWd(iso) + " " + mgrRu(iso).slice(0, 5), S = d.sales || {want: [], miss: [], have: [], nodish: [], qty: 0};
   st("stepRevS", "ok", dd(d.from.iso) + (d.from.who ? " (" + esc(d.from.who) + ")" : "") + " → " + dd(d.to.iso) + (d.to.who ? " (" + esc(d.to.who) + ")" : "") +
     (d.req ? " · свои даты" : "") + ((d.skipped || []).length ? " · пересчёт не всех зон — не в счёт" : "") + " · <u>изменить</u>");
-  st("stepSalS", S.want.length && S.miss.length ? "warn" : "ok", !S.want.length ? "смен в периоде не было — продажи не нужны" :
-    S.miss.length ? "нет за " + S.miss.map(dd).join(", ") + " — загрузите" : "загружены за " + S.have.map(dd).join(", ") + " · " + mgrNum(Math.round(S.qty)) + " порц.");
+  const hand = (...fs) => { const k = d.rows.filter(r => r.man && fs.some(f => f in r.man)).length; return k ? " · вручную: " + mgrPl(k, "позиция", "позиции", "позиций") : ""; };
+  st("stepSalS", S.want.length && S.miss.length ? "warn" : "ok", (!S.want.length ? "смен в периоде не было — продажи не нужны" :
+    S.miss.length ? "нет за " + S.miss.map(dd).join(", ") + " — загрузите" : "загружены за " + S.have.map(dd).join(", ") + " · " + mgrNum(Math.round(S.qty)) + " порц.") + hand("sold"));
   if (S.want.length && S.miss.length && !perInc.opened){ $("stepSal").open = true; perInc.opened = true; }
   const wo = mgrData && mgrData.from === d.from.iso && mgrData.to === d.to.iso ? mgrData : null;
   if (wo){
     const n = k => new Set(wo.rows.filter(r => r[0] === k).map(r => r[9])).size, a = n("wo"), b = n("pr");
-    st("stepWoS", "ok", a || b ? "списаний " + a + ", проработок " + b + " · по датам актов" : "актов нет");
-  } else st("stepWoS", "", "…");
-  const nd = (S.nodish || []).length, nz = (d.zagno || []).length;
+    st("stepWoS", "ok", (a || b ? "списаний " + a + ", проработок " + b + " · по датам актов" : "актов нет") + hand("wo", "pr"));
+  } else st("stepWoS", "", "…" + hand("wo", "pr"));
+  const nd = perND(S).length, nz = (d.zagno || []).length;
   $("stepRec").hidden = !(nd || nz);                                       // рецепты — только когда есть что задать
   st("stepRecS", nd || nz ? "warn" : "ok", nd || nz ? [nd ? "без расхода на блюдо: " + mgrPl(nd, "блюдо", "блюда", "блюд") : "", nz ? "заготовок без рецепта: " + nz : ""].filter(Boolean).join(", ")
     : S.qty ? "у всех проданных блюд задан расход" : "проданных блюд нет");
@@ -1060,10 +1081,10 @@ function perStepsDraw(){
       if (!x.ok || perInc.key !== key) return;
       const inv = new Set(x.rows.map(r => r[0] + "|" + r[1] + "|" + r[2])), sum = x.rows.reduce((m, r) => m + (typeof r[8] === "number" ? r[8] : 0), 0);
       perInc.text = inv.size ? mgrPl(inv.size, "накладная", "накладные", "накладных") + (sum ? " · " + mgrNum(Math.round(sum)) + " ₽" : "") + " · по датам накладных" : "накладных нет";
-      st("stepIncS", "ok", perInc.text);
+      st("stepIncS", "ok", perInc.text + hand("inc"));
     });
   }
-  st("stepIncS", "ok", perInc.text);
+  st("stepIncS", "ok", perInc.text + hand("inc"));
 }
 async function perClick(e){
   if (e.target.id !== "perCopy" || !perData) return;
@@ -1142,10 +1163,10 @@ function revEdCount(){
   $("revEdSave").disabled = !ch.length || !!bad;
   $("revEdSave").textContent = bad ? "Исправьте поля, отмеченные красным" : ch.length ? "Сохранить — " + mgrPl(ch.length, "изменение", "изменения", "изменений") : "Сохранить";
 }
-/* вставка: строки или ячейки → {i: количество}; совпадение — по названию позиции (без «ё», знаков и «, кг» в конце) */
-function revEdFill(rows){
+/* вставка: строки или ячейки → {got: {номер: количество}, dup, miss: [не нашлись]}; совпадение — по названию позиции (без «ё», знаков и «, кг» в конце) */
+function revMatch(names, rows){
   const k1 = {}, k2 = {};
-  revEd.items.forEach((it, i) => { const a = revKey(it.n), b = revKey2(it.n); if (!(a in k1)) k1[a] = i; if (!(b in k2)) k2[b] = i; });
+  names.forEach((nm, i) => { const a = revKey(nm), b = revKey2(nm); if (!(a in k1)) k1[a] = i; if (!(b in k2)) k2[b] = i; });
   const find = s => { const a = revKey(s); return a in k1 ? k1[a] : revKey2(s) in k2 ? k2[revKey2(s)] : -1; };
   const nm = v => typeof v === "number" ? v : typeof v === "string" && /^\s*-?\d+([.,]\d+)?\s*$/.test(v) ? parseFloat(v.replace(",", ".")) : null;
   const got = {}, miss = [];
@@ -1166,14 +1187,19 @@ function revEdFill(rows){
     if (i < 0 || q == null){ if (name && (i < 0 ? r.some(v => nm(v) != null) || r.length === 1 : true)) miss.push(name); return; }
     if (i in got){ got[i] += q; dup++; } else got[i] = q;
   });
+  return {got, dup, miss};
+}
+const revFillMsg = (n, dup, miss) => (n ? "Подставлено: " + mgrPl(n, "позиция", "позиции", "позиций") + " — выделены, проверьте и сохраните." : "Ни одна позиция не совпала с бланком.") +
+  (dup ? " Повторы одной позиции сложены (" + dup + ")." : "") + (miss.length ? " Не нашлись в бланке: " + miss.slice(0, 12).join(", ") + (miss.length > 12 ? "…" : "") + "." : "");
+function revEdFill(rows){
+  const {got, dup, miss} = revMatch(revEd.items.map(it => it.n), rows);
   let n = 0;
   Object.keys(got).forEach(i => {
     const inp = document.querySelector('#revEdList input[data-i="' + i + '"]');
     if (inp){ inp.value = mgrNum(got[i]); n++; }
   });
   revEdCount();
-  $("revEdPasteRes").textContent = (n ? "Подставлено: " + mgrPl(n, "позиция", "позиции", "позиций") + " — выделены, проверьте и сохраните." : "Ни одна позиция не совпала с бланком.") +
-    (dup ? " Повторы одной позиции сложены (" + dup + ")." : "") + (miss.length ? " Не нашлись в бланке: " + miss.slice(0, 12).join(", ") + (miss.length > 12 ? "…" : "") + "." : "");
+  $("revEdPasteRes").textContent = revFillMsg(n, dup, miss);
 }
 $("revEdD").addEventListener("toggle", () => { if ($("revEdD").open && !revEd) revEdLoad(perData && perData.to ? perData.to.d : ""); });
 $("revEd").addEventListener("input", e => {
@@ -1232,6 +1258,136 @@ $("revEd").addEventListener("click", async e => {
     await revEdLoad(r.gone ? "" : d);
     perLoad();
   }
+});
+
+/* ── шаги «Продажи», «Приход», «Списания» по позициям ревизии: по умолчанию — насчитанное по данным сайта (продажи × расход на блюдо,
+   накладные, акты); число за период заменяет данные у позиции, пусто — снова по данным. Только позиции ежедневной ревизии ── */
+const POV_F = {sold: "продано", inc: "пришло", wo: "списано", pr: "проработки"};
+const povF = {sold: "sold", inc: "inc", wo: "wo"};                       // в шаге «Списания» — списания или проработки
+let povUndo = null, povMsg = {};
+const povRows = () => perData.rows.filter(r => !r.info).sort((a, b) => a.o - b.o);
+const povAuto = (r, f) => r.man && f in r.man ? r.man[f] : r[f];
+const povMan = (r, f) => !!(r.man && f in r.man);
+function povDraw(box){
+  const s = box.dataset.s, f = povF[s], d = perData, el = box.querySelector(".pov");
+  if (!d || !d.from){ el.innerHTML = '<p class="wnhint">Нужны две ревизии — тогда здесь будут позиции и цифры периода.</p>'; return; }
+  if (d.kind === "m"){ el.innerHTML = '<p class="wnhint">Вручную — у периода ежедневной ревизии. Поправки, внесённые там, входят и в месячную.</p>'; return; }
+  if (d.req || d.a !== d.i - 1){ el.innerHTML = '<p class="wnhint">Вручную — за период между двумя соседними ревизиями: выберите его в шаге «Ревизии». Поправки этих периодов в расчёт уже вошли.</p>'; return; }
+  const rows = povRows(), nm = rows.filter(r => povMan(r, f)).length, u = r => useU(r.u);
+  let h = '<p class="wnhint">Позиции ежедневной ревизии за ' + perLab(d.from, d.to) + '. Серым — сколько ' + POV_F[f] + ' по данным сайта (' +
+    (f === "sold" ? "продажи R-Keeper × расход на блюдо" : f === "inc" ? "накладные" : "акты") + '). Впишите своё число — оно заменит данные у этой позиции за период; сотрите — снова по данным.</p>';
+  if (s === "wo") h += '<div class="mgrseg" role="group" aria-label="Что править"><button type="button" data-povf="wo" aria-pressed="' + (f === "wo") + '">Списания</button><button type="button" data-povf="pr" aria-pressed="' + (f === "pr") + '">Проработки</button></div>';
+  h += '<input type="search" class="refq povq" placeholder="Найти позицию" autocomplete="off">' +
+    '<ul class="olist reved povl">' + rows.map(r => {
+      const m = povMan(r, f), a = povAuto(r, f);
+      return '<li data-k="' + esc(r.key) + '"><label class="userow"><span class="usen"><span class="refn">' + esc(r.n) + '</span><small class="mgrwhy">по данным: ' + mgrNum(r2(a || 0)) + ' ' + u(r) +
+        (m ? ' · <b>вручную</b>' : "") + '</small></span><span class="revq"><input type="text" inputmode="decimal" data-k="' + esc(r.key) + '" value="' + (m ? mgrNum(r[f]) : "") + '" placeholder="' + mgrNum(r2(a || 0)) + '"' +
+        (m ? ' class="man"' : "") + '><small>' + u(r) + '</small></span></label></li>';
+    }).join("") + '</ul>' +
+    '<details class="incmapd"><summary>Вставить из Excel, текста или файла</summary>' +
+    '<p class="wnhint">Строки «Позиция — 0,7» или два столбца из таблицы (название и число), в единицах позиции. Совпавшие позиции подставятся в поля выше — проверьте и сохраните.</p>' +
+    '<textarea class="povpaste" rows="4" placeholder="Джин Хендрикс	0,35"></textarea><div class="refbtns"><button type="button" class="wogo" data-pov="paste">Подставить</button>' +
+    '<label class="wogo incfile">Файл Excel / CSV<input type="file" class="povfile" accept=".xlsx,.csv,.xls,.htm,.html,text/csv"></label></div><p class="wnhint povres" role="status"></p></details>' +
+    (povMsg[s] ? '<p class="wnhint" role="status">' + esc(povMsg[s]) + '</p>' : "") +
+    '<p class="warn povwarn" role="status"></p><div class="refbtns"><button type="button" class="wogo" data-pov="save" disabled>Сохранить</button>' +
+    (nm ? '<button type="button" class="link" data-pov="all">Вернуть всё по данным (' + nm + ')</button>' : "") + '</div>';
+  if (povUndo && povUndo.s === s && povUndo.per === d.from.d + d.to.d) h += '<p class="mgrfoot"><button type="button" class="link" data-pov="undo">Отменить последнюю правку (' + mgrPl(povUndo.n, "позиция", "позиции", "позиций") + ')</button></p>';
+  el.innerHTML = h;
+}
+/* изменённые поля: [ключ, позиция, число или "", по данным] */
+function povChanged(box){
+  const f = povF[box.dataset.s], by = {}, out = [];
+  if (!perData) return out;
+  perData.rows.forEach(r => { by[r.key] = r; });
+  box.querySelectorAll(".povl input").forEach(inp => {
+    const r = by[inp.dataset.k], s = inp.value.trim(), was = r && povMan(r, f) ? mgrNum(r[f]) : "";
+    if (!r) return;
+    const ch = s !== was && !(s !== "" && was !== "" && revNumOk(s) && Math.abs(parseFloat(s.replace(",", ".")) - r[f]) < 1e-9);
+    inp.closest("li").classList.toggle("chg", ch);
+    inp.classList.toggle("bad", !revNumOk(s));
+    if (ch) out.push([r.key, r.n, s, povAuto(r, f)]);
+  });
+  return out;
+}
+function povCount(box){
+  const ch = povChanged(box), bad = box.querySelectorAll(".povl input.bad").length, b = box.querySelector('[data-pov="save"]');
+  if (!b) return;
+  b.disabled = !ch.length || !!bad;
+  b.textContent = bad ? "Исправьте поля, отмеченные красным" : ch.length ? "Сохранить — " + mgrPl(ch.length, "изменение", "изменения", "изменений") : "Сохранить";
+}
+function povFill(box, rows){
+  const inps = [...box.querySelectorAll(".povl input")], names = inps.map(inp => inp.closest("li").querySelector(".refn").textContent);
+  const {got, dup, miss} = revMatch(names, rows);
+  let n = 0;
+  Object.keys(got).forEach(i => { inps[+i].value = mgrNum(got[i]); n++; });
+  povCount(box);
+  box.querySelector(".povres").textContent = revFillMsg(n, dup, miss);
+}
+async function povSave(box, vals){
+  const s = box.dataset.s, f = povF[s], d = perData, w = box.querySelector(".povwarn");
+  const r = await pubPost({mgr: "perset", i: d.i, ad: d.from.d, bd: d.to.d, f, vals, who: me ? me.name : ""});
+  if (!r) return false;
+  if (!r.ok){
+    w.textContent = r.error === "moved" ? "Ревизии изменились, пока вы правили, — откройте период заново." : r.error === "action" ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." :
+      r.error === "busy" ? "Таблица занята — попробуйте через минуту." : "Не сохранилось: " + (r.error || "нет связи");
+    return false;
+  }
+  povUndo = {id: r.id, n: r.n, s, per: d.from.d + d.to.d};
+  povMsg[s] = "Сохранено ✓ " + mgrPl(r.n, "позиция", "позиции", "позиций") + ". Расчёт периода обновлён.";
+  buzz(8);
+  await perLoad();
+  povDraw(box);                                                          // поля — по сохранённому, даже если перерисовка их пропустила
+  return true;
+}
+/* открытые блоки — заново по свежему расчёту (кроме тех, где набрано и не сохранено) */
+const povDrawAll = () => document.querySelectorAll("details.povd[open]").forEach(box => { if (!box.querySelector(".pov .povl") || !povChanged(box).length) povDraw(box); });
+document.querySelectorAll("details.povd").forEach(box => {
+  box.addEventListener("toggle", () => { if (box.open) povDraw(box); });
+  box.addEventListener("input", e => {
+    povMsg[box.dataset.s] = "";
+    if (e.target.closest(".povl")) return povCount(box);
+    if (e.target.classList.contains("povq")){
+      const q = revKey(e.target.value);
+      box.querySelectorAll(".povl li").forEach(li => { li.hidden = !!q && revKey(li.querySelector(".refn").textContent).indexOf(q) < 0; });
+    }
+  });
+  box.addEventListener("change", async e => {
+    const t = e.target;
+    if (!t.classList.contains("povfile") || !t.files[0]) return;
+    const fl = t.files[0];
+    t.value = "";
+    let tb;
+    try { tb = await readTable(fl); } catch (err) { box.querySelector(".povres").textContent = fl.name + ": " + xErrText(err); return; }
+    povFill(box, [].concat.apply([], tb.sheets.filter(x => !x.hidden).map(x => x.rows)));
+  });
+  box.addEventListener("click", async e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.povf){
+      if (b.dataset.povf === povF[box.dataset.s]) return;
+      if (povChanged(box).length && !confirm("Несохранённые изменения пропадут. Продолжить?")) return;
+      povF[box.dataset.s] = b.dataset.povf; buzz(8); return povDraw(box);
+    }
+    const a = b.dataset.pov;
+    if (a === "paste"){
+      const lines = box.querySelector(".povpaste").value.split(/\r?\n/).filter(x => x.trim());
+      povFill(box, lines.map(x => x.indexOf("\t") >= 0 ? x.split("\t").map(c => c.trim()) : [x]));
+    } else if (a === "save" || a === "all"){
+      const f = povF[box.dataset.s], vals = a === "save" ? povChanged(box) : povRows().filter(r => povMan(r, f)).map(r => [r.key, r.n, "", povAuto(r, f)]);
+      if (!vals.length) return;
+      if (a === "all" && !confirm("Убрать все ручные цифры «" + POV_F[f] + "» за этот период — снова по данным сайта?")) return;
+      b.disabled = true; b.textContent = "Сохраняю…";
+      if (!(await povSave(box, vals))){ b.disabled = false; b.textContent = a === "all" ? "Вернуть всё по данным" : "Сохранить"; }
+    } else if (a === "undo" && povUndo){
+      b.disabled = true;
+      const r = await pubPost({mgr: "perundo", id: povUndo.id});
+      if (!r) return;
+      if (!r.ok && r.error !== "gone"){ b.disabled = false; b.textContent = "Не отменилось: " + (r.error || "нет связи"); return; }
+      povMsg[povUndo.s] = "Правка отменена."; povUndo = null;
+      await perLoad();
+      povDraw(box);
+    }
+  });
 });
 
 /* ── гостям: меню и «Состав и аллергены» из таблицы ──
@@ -1732,12 +1888,13 @@ function salSuggest(d){
 /* период продаж: «rev» — последний период ревизии (те же смены, что во «Расходе»), иначе даты «с» / «по» */
 let salPer = {r: "rev", from: "", to: ""};
 const salPerQ = () => salPer.r === "rev" ? Object.assign({per: "rev"}, salPer.i != null ? {i: salPer.i, a: salPer.a} : {}) : {from: salPer.from, to: salPer.to};
-async function salLoad(){
+async function salLoad(quiet){
   const mk = mgrKey();
-  if (!mk) return mgrInit();
-  if (!$("salWarn").textContent) $("salWarn").textContent = "Загрузка…";
+  if (!mk) return quiet ? null : mgrInit();
+  if (!quiet && !$("salWarn").textContent) $("salWarn").textContent = "Загрузка…";
   const [r, m, sl, z] = await Promise.all([api({mgr: "ref", mk}), api({mgr: "dishes", mk}), api(Object.assign({mgr: "sales", mk}, salPerQ())), api({mgr: "zags", mk})]);
   if ([r, m, sl, z].some(x => x.error === "mgr")) return mgrExpired();
+  if (quiet && ![r, m, sl, z].every(x => x.ok)) return;
   if (![r, m, sl, z].every(x => x.ok)){
     $("salWarn").innerHTML = [r, m, sl, z].some(x => x.error === "action") ? "Нужна новая версия Apps Script (см. README → «Бар-менеджер»)." : 'Нет связи с таблицей. <button type="button" class="link" id="salRetry">Повторить</button>';
     return;
@@ -1958,13 +2115,27 @@ function salHead(rows){
   return null;
 }
 const salMapOf = d => sal.map[salKey(d)] || sal.map["n:" + nmKey(d.name)] || null;
+/* касается ежедневной ревизии: её позиция (r[13]) или заготовка из них; блюдо — если такая есть в его расходе (заданном или предложенном)
+   или слово из позиций бланка есть в названии («Сок апельсиновый 250 мл»). Остальное (кухня, кальяны) в расчёт не входит — не спрашиваем */
+const salBlank = ri => ri >= 0 && !!sal.ref[ri] && (+sal.ref[ri][13] === 1 || !!(sal.zag[ri] && sal.zag[ri].comps.some(c => sal.ref[c.ri] && +sal.ref[c.ri][13] === 1)));
+const salRelM = m => !!m && !m.none && m.comps.some(c => salBlank(c.ri));
+function salWord(name){
+  if (!sal.bw){ sal.bw = new Set(); sal.ref.forEach(r => { if (+r[13] === 1) nmKey(r[1]).replace(/[-–—,«»"'()]+/g, " ").split(" ").forEach(w => { if (w.length >= 4 && !/\d/.test(w)) sal.bw.add(w); }); }); }
+  return nmKey(name).replace(/[-–—,«»"'()]+/g, " ").split(" ").some(w => sal.bw.has(w));
+}
+function salRel(d){
+  const m = salMapOf(d);
+  if (m) return salRelM(m);
+  const sg = salSuggest(d);
+  return !!sg && sg.comps.some(c => salBlank(c.ri)) || salWord(d.name);
+}
 const salCompTxt = comps => comps.map(c => { const r = sal.ref[c.ri]; return mgrNum(Math.round(c.q * 10000) / 10000) + " " + useU(r[2]) + " " + r[1]; }).join(" + ");
 function salDraw(){
   if (!sal) return;
   if (!sal.sales.length){ $("salDish").innerHTML = '<p class="empty">За этот период продаж нет — загрузите отчёт R-Keeper или выберите другой период.</p>'; return; }
   const ds = sal.sales.map(d => Object.assign({}, d, {m: salMapOf(d)}));
-  ds.forEach(d => { if (!d.m) d.sug = salSuggest(d); });
-  const ok = ds.filter(d => d.m), sug = ds.filter(d => !d.m && d.sug), no = ds.filter(d => !d.m && !d.sug);
+  ds.forEach(d => { if (!d.m) d.sug = salSuggest(d); d.rel = d.m ? salRelM(d.m) : !!d.sug && d.sug.comps.some(c => salBlank(c.ri)) || salWord(d.name); });
+  const ok = ds.filter(d => d.m && d.rel), sug = ds.filter(d => !d.m && d.sug && d.rel), no = ds.filter(d => !d.m && !d.sug && d.rel), other = ds.filter(d => !d.rel);
   const line = d => {
     const key = salKey(d), open = sal.open === key, st = d.m ? (d.m.none ? "не учитывается" : salCompTxt(d.m.comps)) : d.sug ? salCompTxt(d.sug.comps) : "";
     return '<li class="' + (d.m ? "inc-code" : d.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(d.name) + (d.code ? ' <small>код ' + esc(d.code) + '</small>' : "") + '</span>' +
@@ -1975,12 +2146,15 @@ function salDraw(){
         (!d.m || !d.m.none ? '<button type="button" class="link" data-no="' + esc(key) + '">Не учитывать</button>' : "") + '</div>') + '</div></li>';
   };
   const full = sug.filter(d => !d.sug.miss.length);
+  const otherOpen = other.some(d => salKey(d) === sal.open) ? " open" : "";
   $("salDish").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + esc($("salPerLab").textContent.split(" · ")[0]) + '</em><h3>Расход на блюдо</h3></div>' +
-    '<p class="mgrsum salsum">Блюд: <b>' + ds.length + '</b> · продано порций ' + mgrNum(Math.round(ds.reduce((a, d) => a + d.qty, 0))) + ' · расход задан у ' + ok.length +
+    '<p class="mgrsum salsum">Блюд с позициями ревизии: <b>' + (ds.length - other.length) + '</b> · продано порций ' + mgrNum(Math.round(ds.filter(d => d.rel).reduce((a, d) => a + d.qty, 0))) + ' · расход задан у ' + ok.length +
       (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · не задан у ' + no.length : "") + '</p>' +
     (full.length ? '<div class="refbtns salall"><button type="button" class="wogo" id="salOkAll">Подтвердить все предложенные (' + full.length + ')</button></div>' : "") +
     (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
     (ok.length ? '<details class="incmapd salok"' + (sal.okOpen || ok.some(d => salKey(d) === sal.open) ? " open" : "") + '><summary>Расход задан (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
+    (other.length ? '<details class="incmapd salok"' + otherOpen + '><summary>Не касаются ежедневной ревизии — кухня и прочее (' + other.length + ')</summary><p class="wnhint">В расчёт недостачи не входят: ' +
+      'в их расходе нет позиций бланка ревизии. Если это бар — задайте расход.</p><ul class="olist incl">' + other.map(line).join("") + '</ul></details>' : "") +
     '<p class="warn" id="salMsg" role="status"></p></div>';
 }
 function salForm(d, zag){

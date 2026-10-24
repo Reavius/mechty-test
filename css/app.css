@@ -898,6 +898,9 @@ details.perstep[open]{border-color:var(--accent)}
 .revq small{width:22px;color:var(--muted);font-size:12px}
 .reved li.chg{background:color-mix(in srgb, var(--accent) 12%, transparent)}
 .revq input.bad{border-color:#d33;outline-color:#d33}
+.povd .mgrseg{margin:10px 0 0}
+.revq input.man{border-color:var(--accent)}
+.povd .mgrwhy b{color:var(--accent)}
 
 /* ── «Узнать больше»: кнопка на плитке и карточка коктейля поверх меню ── */
 .mtx{flex:1;align-self:stretch;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
