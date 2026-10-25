@@ -164,16 +164,16 @@ const WORDS = {"сухое": "dry", "полусухое": "off-dry", "полус
 
 /* карта «Состав и аллергены» по-английски: id → [название, состав]. Новая позиция без перевода — по-русски. */
 const CARD_EN = {
-  pantera: ["Pink Panther", "pear, Sarti, soda"],
-  pornstar: ["Pornstar", "vodka, vanilla, passion fruit, sparkling wine"],
-  tropiki: ["Tropics", "OAKHEART Original Spiced Gold rum, passion fruit, pineapple, Sarti, Aperol"],
-  maitai: ["Mai Tai", "OAKHEART Original Spiced Gold rum, amaretto, peach, pineapple, orange, lime"],
+  pantera: ["Pink Panther", "pear vodka, Sarti, lime, soda"],
+  pornstar: ["Pornstar", "vodka, vanilla, passion fruit, sparkling wine, egg white"],
+  tropiki: ["Tropics", "OAKHEART Original Spiced Gold rum, passion fruit, pineapple, lime, vanilla, Sarti, Aperol, Angostura"],
+  maitai: ["Mai Tai", "OAKHEART Original Spiced Gold rum, amaretto, almond syrup, peach, pineapple, orange, lime"],
   sexbeach: ["Sex on the Beach", "vodka, orange, peach, cranberry"],
-  mandarin: ["Tangerine Spritz", "orange liqueur, tangerine purée, palo santo, sparkling wine"],
-  granat: ["Pomegranate Tini", "gin, pomegranate, lime"],
-  tequila: ["Tequila Cider Spice", "tequila, Aperol, lime, honey, chili, cider"],
+  mandarin: ["Tangerine Spritz", "orange liqueur, tangerine purée, palo santo — mango — vanilla cordial, sparkling wine"],
+  granat: ["Pomegranate Tini", "gin, pomegranate, lime, sugar syrup"],
+  tequila: ["Tequila Cider Spice", "tequila, Aperol, triple sec, lime, honey, chili, cider"],
   yuzu: ["Yuzu Peach", "vodka, peach soju, lime, ginger, sencha, yuzu, egg white"],
-  ananas: ["Pineapple Parsley", "pear vodka, pineapple-parsley purée"],
+  ananas: ["Pineapple Parsley", "pear vodka, shiso cordial, pineapple-parsley purée"],
   vnegroni: ["Cherry Negroni", "Campari, Martini Rosso vermouth, gin, cherry"],
   negroni: ["Negroni", "Campari, Martini Rosso vermouth, gin, orange"],
   longisland: ["Long Island", "vodka, gin, rum, tequila, triple sec, cola"],
@@ -408,6 +408,8 @@ function pubApply(d){
     by[o.key] = o;
     return o;
   });
+  const abv = {};                                                       // крепости в таблице нет — она считается по техкартам, из файлов сайта
+  PUB0.data.forEach(g => g.items.forEach(x => { if (x.abv) abv[x.id] = x.abv; }));
   for (const r of d.items){
     const g = by[r[0]];
     if (!g) continue;
@@ -415,6 +417,7 @@ function pubApply(d){
     if (!/не выявлен/i.test(al)) it.flag = true;
     if (r[8]) it.alEn = String(r[8]);
     if (r[9] !== "" && r[9] != null) it.vol = r[9];
+    if (abv[it.id]) it.abv = abv[it.id];
     if (r[10]) it.img = String(r[10]);
     if (r[11]) it.icon = String(r[11]);
     if (r[12]) it.ln = String(r[12]);

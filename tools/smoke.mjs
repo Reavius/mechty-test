@@ -58,7 +58,7 @@ ok(cards >= 30, `открытая карта: ${cards} позиций`);
 ok(await page.locator("#out img.cph").count() >= 10, "фото в карте");
 ok(await page.locator("#out .abv").count() === 0, "в карте нет крепости");
 const pantera = (await page.locator("#pantera .mcomp li").allTextContents().catch(() => [])).join(" · ");
-ok(pantera === "Груша · Сарти · Содовая", "состав как в меню, столбиком: " + pantera);
+ok(pantera === "Грушевая водка · Сарти · Лайм · Содовая", "состав по техкарте подачи, столбиком: " + pantera);
 const leaks = await page.evaluate(() => [...document.querySelectorAll("#out .mcomp")].map(p => p.textContent).filter(t => /«|п\/ф|с\/м|Беленьк|Барристер|Девис/.test(t)));
 ok(!leaks.length, "в составах карты нет внутренних названий" + (leaks.length ? ": " + leaks.slice(0, 5).join(", ") : ""));
 await page.fill("#q", "негрони");
