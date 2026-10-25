@@ -2867,7 +2867,7 @@ function perCalc(M, A, B, items, nokey, out) {
   out.nokey = nokey;
   out.noprice = out.rows.filter(r => !r.info && !r.miss && r.diff && !r.price).length;
   out.unconv = Object.keys(out.unconv || {});
-  out.zagno = Object.keys(items).filter(k => /^(заготовки|премиксы на коктейли)\|/.test(k) && !zag[k]).map(k => items[k].n);
+  out.zagno = Object.keys(items).filter(k => /^(заготовки|премиксы на коктейли|настойки)\|/.test(k) && !zag[k]).map(k => items[k].n);
   return out;
 }
 

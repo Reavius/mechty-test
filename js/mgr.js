@@ -1814,36 +1814,108 @@ const LAT1 = {a: "а", b: "б", c: "к", d: "д", e: "е", f: "ф", g: "г", h: 
 const toCyr = s => { let t = String(s).toLowerCase(); for (const [a, b] of LAT) t = t.split(a).join(b); return t.replace(/[a-z]/g, c => LAT1[c]).replace(/(.)\1+/g, "$1"); };
 const salU = u => { const s = String(u || "").trim().toLowerCase(); return s === "литр" || s === "л" || !s ? "л" : s === "кг" ? "кг" : s === "шт" ? "шт" : ""; };   // "" — бутылки («бут»)
 
+/* слова похожи: окончание («лимон» — «лимоны», но не «кола» — «колада»), двойные буквы («Барристер» — «Баристер»,
+   «Булл» — «Бул»), опечатка в длинном слове («Ориджинал» — «Оригинал», «Спритс» — «Спритц»), другое окончание
+   у той же основы («ягодный» — «ягодная») */
+const salDbl = w => w.replace(/(.)\1+/g, "$1");
+const SAL_END = /^([аяыиуюеоёйь]{1,2}|ов|ев|ей|ам|ям|ах|ях|ом|ем|ой|ий|ый)$/, SAL_END2 = /^(ый|ий|ой|ая|яя|ое|ее|ые|ие|ую|юю)$/;
+function salLev(a, b){
+  let prev = Array.from({length: b.length + 1}, (_, j) => j);
+  for (let i = 1; i <= a.length; i++){
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function salSame(x, y){
+  if (x === y) return true;
+  const a = salDbl(x), b = salDbl(y), m = Math.min(a.length, b.length);
+  if (a === b) return m >= 3;
+  if (m >= 4){ const [sh, lo] = a.length <= b.length ? [a, b] : [b, a]; if (lo.startsWith(sh) && SAL_END.test(lo.slice(sh.length))) return true; }
+  if (x.length === y.length && x.length >= 6 && x.slice(0, -2) === y.slice(0, -2) && SAL_END2.test(x.slice(-2)) && SAL_END2.test(y.slice(-2))) return true;
+  if (m < 6 || Math.abs(a.length - b.length) > 2) return false;
+  const d = salLev(a, b);
+  return d <= 1 || (d <= 2 && m >= 8);                                      // «лимонад» — не «лимонный»
+}
+/* служебные слова в названиях заготовок и премиксов — не различают позиции */
+const SAL_STOP = ["пф", "для", "премикс", "база"];
+const salTok = s => incTok(s).filter(w => SAL_STOP.indexOf(w) < 0);
+/* категория в начале названия: «Сироп ванильный» — это сироп, а не «Сахар ванильный»; и наоборот — «Смородина с/м»
+   не «Ликер Смородина» */
+const SAL_CAT = ["сироп", "пюре", "сок", "кордиал", "фреш", "морс"], SAL_RCAT = SAL_CAT.concat(["ликер"]);
+/* общие строки бланка (решение бар-менеджера): Нуволе — «Игристое розлив», концентраты — «Концентрат в ассортименте»,
+   пюре и сиропы без своей строки — «… в ассортименте» */
+const SAL_ALIAS = [[/нуволе/i, "игристое розлив"], [/концентр/i, "концентрат в ассортименте"], [/лимонн\S*\s+фреш|фреш\s+лимонн/i, "лимонный сок пф"]];
+const SAL_GEN = [[/^пюре(\s|$)/i, "пюре в ассортименте"], [/^сироп(\s|$)/i, "сироп в ассортименте"]];   // \b в JS не видит кириллицу
+const salByName = n => sal.ref.findIndex(r => incNorm(r[1]) === n);
+
 /* лучшая позиция справочника для названия: однозначно лучшая и не ниже порога. Редкое слово весит больше частого:
-   «Спиртной напиток «Сарти Роза»» — это «Сарти», а не чай «Роза» («роза» встречается в нескольких позициях) */
+   «Спиртной напиток «Сарти Роза»» — это «Сарти», а не чай «Роза» («роза» встречается в нескольких позициях).
+   ing — ингредиент техкарты: ещё общие строки, категория и «главное слово» */
 function salScore(a, b){
   if (!a.length || !b.length) return 0;
-  const w = x => 1 / (1 + (sal.df[x] != null ? sal.df[x] : (sal.df[x] = sal.refTok.filter(t => t.some(y => incSame(x, y))).length)));
-  const hits = a.filter(x => b.some(y => incSame(x, y)));
+  const w = x => 1 / (1 + (sal.df[x] != null ? sal.df[x] : (sal.df[x] = sal.refTok.filter(t => t.some(y => salSame(x, y))).length)));
+  const hits = a.filter(x => b.some(y => salSame(x, y)));
   return (hits.reduce((m, x) => m + w(x), 0) / a.reduce((m, x) => m + w(x), 0) + hits.length / b.length) / 2;
 }
-function salFind(name, thr){
-  const tries = [incTok(name)];
-  if (/[a-z]/i.test(name)) tries.push(incTok(toCyr(name)));
+function salFind(name, thr, ing){
+  if (ing) for (const [re, n] of SAL_ALIAS) if (re.test(name)){ const i = salByName(n); if (i >= 0) return i; }
+  const tries = [salTok(name)];
+  if (/[a-z]/i.test(name)) tries.push(salTok(toCyr(name)));
+  const cat = ing ? SAL_CAT.find(c => salSame(tries[0][0] || "", c)) : "";
+  const ok = i => {                                                         // «Сироп …» — только позиции, где есть «сироп»
+    const t = sal.refTok[i];
+    if (cat && !t.some(y => salSame(y, cat))) return false;
+    return !ing || !t.length || !SAL_RCAT.some(c => salSame(t[0], c)) || tries.some(q => q.some(x => salSame(x, t[0])));
+  };
   let b1 = 0, b2 = 0, bi = -1;
   sal.refTok.forEach((t, i) => {
+    if (!ok(i)) return;
     const sc = Math.max(...tries.map(x => salScore(x, t)));
     if (sc > b1){ b2 = b1; b1 = sc; bi = i; } else if (sc > b2) b2 = sc;
   });
-  return b1 >= thr && b1 > b2 ? bi : -1;
+  if (b1 >= thr && b1 > b2) return bi;
+  if (!ing) return -1;
+  /* главное слово: самое редкое слово названия (есть в 1–3 позициях); из них — где совпало больше слов, считая раздел */
+  let cand = null;
+  for (const x of tries.flat()) if (x.length >= 5){
+    const c = []; sal.refTok.forEach((t, i) => { if (ok(i) && t.some(y => salSame(x, y))) c.push(i); });
+    if (c.length && c.length <= 3 && (!cand || c.length < cand.length)) cand = c;
+  }
+  if (cand){
+    const q = tries.flat(), sc = cand.map(i => {
+      const rt = salTok(sal.ref[i][1]), st = incTok(sal.ref[i][0]);
+      return q.filter(x => rt.concat(st).some(y => salSame(x, y))).length - rt.filter(y => !q.some(x => salSame(x, y))).length / 10;
+    });
+    const top = Math.max(...sc);
+    if (sc.filter(v => v === top).length === 1) return cand[sc.indexOf(top)];
+  }
+  for (const [re, n] of SAL_GEN) if (re.test(name)){ const i = salByName(n); if (i >= 0) return i; }
+  return -1;
 }
-/* количество из техкарты (мл, гр, шт) — в единицах позиции */
+/* количество из техкарты (мл, гр, шт) — в единицах позиции. Пюре и сиропы: 1 мл = 1 г (решение бар-менеджера);
+   штучная позиция с объёмом («Ред Булл 250мл» или тара) — мл в штуки */
+const salLiq = r => /^(пюре|сироп|кордиал|концентрат|сок|фреш|морс)/i.test(String(r[1]).trim()) || /сироп|пюре|заготов/i.test(String(r[0]));
 function salConv(q, u, r){
-  const iu = String(u || "").trim().toLowerCase(), pu = salU(r[2]), tara = mgrN(r[4]);
-  if (pu === "л") return iu === "мл" ? q / 1000 : iu === "л" ? q : null;
-  if (pu === "кг") return /^(г|гр)$/.test(iu) ? q / 1000 : iu === "кг" ? q : null;
-  if (pu === "шт") return iu === "шт" ? q : null;
-  return iu === "мл" && tara > 0 ? q / 1000 / tara : iu === "шт" ? q : null;   // бутылки
+  const iu = String(u || "").trim().toLowerCase(), pu = salU(r[2]), tara = mgrN(r[4]), liq = salLiq(r);   // мл ≈ г — только пюре, сиропы, заготовки
+  const ml = iu === "мл" ? q : iu === "л" ? q * 1000 : null, g = /^(г|гр)$/.test(iu) ? q : iu === "кг" ? q * 1000 : null;
+  if (pu === "л") return ml != null ? ml / 1000 : g != null && liq ? g / 1000 : null;
+  if (pu === "кг") return g != null ? g / 1000 : ml != null && liq ? ml / 1000 : null;
+  if (pu === "шт"){
+    if (iu === "шт") return q;
+    const v = salVol(r[1], true) || (tara > 0 ? tara * 1000 : 0);
+    return ml != null && v > 0 ? ml / v : null;
+  }
+  return ml != null && tara > 0 ? ml / 1000 / tara : iu === "шт" ? q : null;   // бутылки
 }
+const salApx = (u, r) => { const iu = String(u || "").trim().toLowerCase(), pu = salU(r[2]);
+  return salLiq(r) && ((pu === "кг" && /^(мл|л)$/.test(iu)) || (pu === "л" && /^(г|гр|кг)$/.test(iu))); };
 /* объём порции, мл: из названия блюда («… 0,5 л», «… 40 мл») или из меню */
-function salVol(name){
+function salVol(name, own){
   const m = String(name).match(/(\d+(?:[.,]\d+)?)\s*(мл|ml|л|l)(?![a-zа-яё])/i);   // \b в JS не видит кириллицу
   if (m){ const v = parseFloat(m[1].replace(",", ".")); return /^(мл|ml)$/i.test(m[2]) ? v : v * 1000; }
+  if (own) return 0;                                                        // только из названия (позиция справочника)
   const k = incNorm(name);
   for (const c of MENU) for (const sc of c.secs) for (const x of sc.items){
     const n = x.n || (x.c && cardItem(x.c) ? cardItem(x.c).n : "");
@@ -1865,13 +1937,15 @@ function salSuggest(d){
   }
   if (best && b1 >= 0.75 && b1 > b2){
     const comps = [], miss = [];
+    let apx = false;
     for (const [ing, q, u] of best.i){
-      const ri = salFind(ing, 0.4), qq = ri >= 0 ? salConv(mgrN(q), u, sal.ref[ri]) : null;
+      const ri = salFind(ing, 0.4, true), qq = ri >= 0 ? salConv(mgrN(q), u, sal.ref[ri]) : null;
       if (ri < 0 || !(qq > 0)){ miss.push(ing); continue; }
+      if (salApx(u, sal.ref[ri])) apx = true;
       const same = comps.find(c => c.ri === ri);
       if (same) same.q += qq; else comps.push({ri, q: qq});
     }
-    if (comps.length) return {comps, miss, src: "техкарта «" + best.n + "»"};
+    if (comps.length) return {comps, miss, src: "техкарта «" + best.n + "»" + (apx ? " · мл ≈ г" : "")};
   }
   const ri = salFind(d.name, 0.6);
   if (ri >= 0){
@@ -1901,7 +1975,7 @@ async function salLoad(quiet){
   }
   const typing = !!document.querySelector("#salDish form.salf, #salZag form.salf");
   salPerDraw(sl);
-  sal = {ref: r.rows, refTok: r.rows.map(x => incTok(x[1])), df: {}, map: {}, zag: {}, sales: sl.dishes, days: sl.days, since: sl.since, per: sl,
+  sal = {ref: r.rows, refTok: r.rows.map(x => salTok(x[1])), df: {}, map: {}, zag: {}, sales: sl.dishes, days: sl.days, since: sl.since, per: sl,
     open: typing && sal ? sal.open : "", zopen: typing && sal ? sal.zopen : "", okOpen: sal && sal.okOpen, zokOpen: sal && sal.zokOpen};
   /* «Расход на блюдо»: позиция — по разделу и названию, а без раздела — по одному названию, если оно в справочнике одно.
      Строку, позиция которой не нашлась, не считаем заданной — блюдо останется «расход не задан», а менеджер увидит, что поправить. */
@@ -2227,29 +2301,43 @@ $("salDish").addEventListener("submit", async e => {
   if (await salSave([salPack(d, comps, "вручную")])){ sal.open = ""; salDraw(); }
 });
 
-/* ── рецепты заготовок: на 1 единицу заготовки (1 л) — сколько сырья. Подсказка — техкарта «на замес» с выходом ── */
-const ZAG_SEC = /^(заготовки|премиксы на коктейли)$/i;
+/* ── рецепты заготовок: на 1 единицу заготовки (1 л) — сколько сырья. Подсказка — замес с выходом: техкарта «на замес»
+   или рецепт калькулятора. Только из своей группы: настойка — из настоек, премикс — из премиксов, заготовка — из
+   заготовок и полуфабрикатов («Пюре вишня» не получит рецепт настойки «Вишня»). Настойки тоже раскладываются на сырьё
+   (решение бар-менеджера): водка, ушедшая в настойку, — не недостача ── */
+const ZAG_SEC = /^(заготовки|премиксы на коктейли|настойки)$/i;
+const ZAG_GRP = {"заготовки": /заготов|полуфабрикат/i, "премиксы на коктейли": /премикс/i, "настойки": /настойк/i};
+function zagCands(sec){
+  const re = ZAG_GRP[String(sec).trim().toLowerCase()], out = [], seen = new Set();
+  const add = (g, x, ml) => { const k = incNorm(x.n); if (!re || !re.test(g) || seen.has(k) || !Array.isArray(x.i)) return; seen.add(k); out.push({n: x.n, i: x.i, ml}); };
+  /* выход: у техкарты «на замес» — [число, ед.], у рецепта калькулятора — мл */
+  (typeof K !== "undefined" ? K : []).forEach(G => G.items.forEach(x => { if (x.out) add(G.g, x, x.out); }));
+  (R || []).forEach(G => G.items.forEach(x => { if (x.out > 0) add(G.g, x, [x.out, "мл"]); }));
+  return out;
+}
 function zagSuggest(zi){
-  const z = sal.ref[zi], zt = incTok(z[1]), zu = salU(z[2]);
+  const z = sal.ref[zi], zt = salTok(z[1]), zu = salU(z[2]);
   let best = null, b1 = 0, b2 = 0;
-  for (const k of (typeof KALL !== "undefined" ? KALL : [])){
-    if (!k.out || !Array.isArray(k.i)) continue;
-    const kt = incTok(k.n), hit = kt.filter(x => zt.some(y => incSame(x, y))).length, sc = kt.length && zt.length ? (hit / kt.length + hit / zt.length) / 2 : 0;
+  for (const k of zagCands(z[0])){
+    const kt = salTok(k.n), hit = kt.filter(x => zt.some(y => salSame(x, y))).length;
+    const sc = kt.length && zt.length ? 0.6 * hit / kt.length + 0.4 * hit / zt.length : 0;   // всё название замеса — в названии заготовки
     if (sc > b1){ b2 = b1; b1 = sc; best = k; } else if (sc > b2) b2 = sc;
   }
   if (!best || b1 < 0.6 || !(b1 > b2)) return null;
-  /* выход замеса — в единицах заготовки: мл и л — литры; г и кг считаем как литры только у литровой заготовки нельзя — пропуск */
-  const oq = mgrN(best.out[0]), ou = String(best.out[1] || "").trim().toLowerCase();
+  /* выход замеса — в единицах заготовки: мл и л — литры, г и кг — килограммы */
+  const oq = mgrN(best.ml[0]), ou = String(best.ml[1] || "").trim().toLowerCase();
   const out = zu === "л" ? (ou === "мл" ? oq / 1000 : ou === "л" ? oq : 0) : zu === "кг" ? (/^(г|гр)$/.test(ou) ? oq / 1000 : ou === "кг" ? oq : 0) : 0;
   if (!(out > 0)) return null;
   const comps = [], miss = [];
+  let apx = false;
   for (const [ing, q, u] of best.i){
-    const ri = salFind(ing, 0.4), qq = ri >= 0 && ri !== zi ? salConv(mgrN(q), u, sal.ref[ri]) : null;
+    const ri = salFind(ing, 0.4, true), qq = ri >= 0 && ri !== zi ? salConv(mgrN(q), u, sal.ref[ri]) : null;
     if (ri < 0 || !(qq > 0)){ if (!/^вода/i.test(ing)) miss.push(ing); continue; }   // воду не считаем
+    if (salApx(u, sal.ref[ri])) apx = true;
     const same = comps.find(c => c.ri === ri);
     if (same) same.q += qq / out; else comps.push({ri, q: qq / out});
   }
-  return comps.length ? {comps, miss, src: "техкарта «" + best.n + "»"} : null;
+  return comps.length ? {comps, miss, src: "рецепт «" + best.n + "»" + (apx ? " · мл ≈ г" : "")} : null;
 }
 function zagDraw(){
   if (!sal) return;
