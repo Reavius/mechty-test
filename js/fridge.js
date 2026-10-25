@@ -7,16 +7,17 @@
    QR на холодильнике — ссылка #fridge-<id>: после входа в «Бартендерам» сразу открывается этот холодильник.
    Названия, зоны, нормы и схемы — здесь: таблица получает этот список с каждым запросом и по нему строит лист месяца.
    Схема (parts — слева направо): door — дверь, drawers — ящики (n штук, h — доли высоты); справа блок с решёткой и табло,
-   unit:"bottom" — решётка снизу во всю ширину, табло слева. Норма: lo/hi (°C), у склада ещё hlo/hhi (влажность, %);
-   нет нормы — не подсвечиваем. w — где стоит (в списке, карточке, на наклейке и в листе месяца). room — склад, как его бланк: один замер в день (время, температура, влажность), день — тот же,
-   с 14:00 до 14:00. frz — морозильник: поле сразу с минусом. До FR_START внести нельзя — карточка говорит, когда начало. */
-const FR_ZONES = [["cafe", "Кафе"], ["sklad", "Склад"], ["club", "Клуб"], ["mans", "Мансарда"]];
+   unit:"bottom" — решётка снизу во всю ширину, табло слева; tall — винный: высокий шкаф со стеклянной дверью и полками. Норма: lo/hi (°C), у склада ещё hlo/hhi (влажность, %);
+   нет нормы — не подсвечиваем. w — где стоит (в списке, карточке, на наклейке и в листе месяца). room — помещение (склад, зал клуба), как бланк склада: один замер в день (время, температура,
+   влажность), день — тот же, с 14:00 до 14:00. frz — морозильник: поле сразу с минусом. До FR_START внести нельзя — карточка говорит, когда начало. */
+const FR_ZONES = [["cafe", "Кафе"], ["vip", "VIP"], ["club", "Клуб"], ["mans", "Мансарда"], ["room", "Склад и клуб"]];
 const FR_FIO = ["Вавилин", "Иванов", "Журавлев", "Фахрутдинов"];
 const FR = [
   {id: "caf1", z: "cafe", n: "Холодильник Хайколд Кафе 1", w: "у мойки", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.1, 1]}]},
   {id: "caf2", z: "cafe", n: "Морозильник Хайколд Кафе 2", w: "у кофемашины", frz: 1, parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 3}]},
   {id: "caf3", z: "cafe", n: "Холодильник Хайколд Кафе 3", w: "у кассы", parts: [{t: "door"}, {t: "drawers", n: 3}]},
-  {id: "sklad", z: "sklad", n: "Склад", room: 1},
+  {id: "wcaf", z: "cafe", n: "Винный холодильник Касо Кафе", w: "у окна, рядом с пальмой", tall: 1},
+  {id: "wvip", z: "vip", n: "Винный холодильник Касо VIP", w: "рядом с раковиной", tall: 1},
   {id: "clb1", z: "club", n: "Холодильник Хайколд Клуб 1", w: "дальний от входа, справа", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
   {id: "clb2", z: "club", n: "Холодильник Хайколд Клуб 2", w: "у премиксов", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.5, 1]}, {t: "drawers", n: 2, h: [1.5, 1]}]},
   {id: "clb3", z: "club", n: "Морозильник Хайколд Клуб 3", w: "у кассы", frz: 1, parts: [{t: "door"}, {t: "drawers", n: 3}]},
@@ -24,7 +25,11 @@ const FR = [
   {id: "clb5", z: "club", n: "Холодильник Хайколд Клуб 5", w: "у сервера", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}, {t: "drawers", n: 2, h: [1.2, 1]}]},
   {id: "man1", z: "mans", n: "Холодильник Хайколд Мансарда 1", w: "у кассы", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.6, 1]}]},
   {id: "man2", z: "mans", n: "Морозильник Хайколд Мансарда 2", w: "у мойки", frz: 1, unit: "bottom", parts: [{t: "door"}, {t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]},
-  {id: "man3", z: "mans", n: "Холодильник Хайколд Мансарда 3", w: "на нём ноутбук", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]}
+  {id: "man3", z: "mans", n: "Холодильник Хайколд Мансарда 3", w: "на нём ноутбук", unit: "bottom", parts: [{t: "door"}, {t: "drawers", n: 2, h: [1.2, 1]}]},
+  {id: "wman", z: "mans", n: "Винный холодильник Касо Мансарда", w: "у шторы, рядом с усилителем", tall: 1},
+  /* температура и влажность — два места в заведении */
+  {id: "sklad", z: "room", n: "Склад", room: 1},
+  {id: "zal", z: "room", n: "Зал клуба", room: 1}
 ];
 const FR_START = "2026-11-01", FR_FROM = FR_START.slice(0, 7);   // журнал на сайте — с 1 ноября (тот же день — в Code.gs); октябрь и раньше — бумажный архив
 const FR_MON = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
@@ -66,6 +71,7 @@ const frWdDay = day => CK_WD[new Date(day + "T12:00:00Z").getUTCDay()] + ", " + 
 
 /* схема: силуэт с дверями, ящиками, решёткой радиатора и табло (на табло — последнее показание) */
 function fridgeSvg(f, txt){
+  if (f.tall) return fridgeTallSvg(f, txt);
   const W = 360, H = 190, top = 14, base = 172, x0 = 10, x1 = W - 10, gap = 4;
   const low = f.unit === "bottom", plinth = low ? 34 : 0;
   const parts = f.parts.concat(low ? [] : [{t: "unit"}]);
@@ -110,6 +116,21 @@ function fridgeSvg(f, txt){
     s += grill(x0 + 52, py + 3, inner - 56, plinth - gap - 4, 12);
   }
   s += '<line x1="' + (x0 + 6) + '" y1="' + base + '" x2="' + (x0 + 6) + '" y2="' + (base + 8) + '" class="fs-leg"/><line x1="' + (x1 - 6) + '" y1="' + base + '" x2="' + (x1 - 6) + '" y2="' + (base + 8) + '" class="fs-leg"/>';
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Схема: ' + esc(f.n) + '">' + s + '</svg>';
+}
+
+/* винный: высокий шкаф, сверху панель с табло, стеклянная дверь с полками, ручка слева, посередине — панель второй камеры */
+function fridgeTallSvg(f, txt){
+  const W = 360, H = 190, cw = 100, x0 = (W - cw) / 2, top = 6, base = 178, gx = x0 + 7, gw = cw - 14, gy = top + 24, gh = base - gy - 6;
+  let s = '<rect x="' + x0 + '" y="' + top + '" width="' + cw + '" height="' + (base - top) + '" rx="4" class="fs-body"/>';
+  s += '<rect x="' + (x0 + 5) + '" y="' + (top + 4) + '" width="' + (cw - 10) + '" height="15" rx="2" class="fs-unit"/>' +
+    '<rect x="' + (x0 + cw / 2 - 16) + '" y="' + (top + 5.5) + '" width="32" height="12" rx="2" class="fs-disp"/><text x="' + (x0 + cw / 2) + '" y="' + (top + 14.5) + '" class="fs-num">' + esc(txt || "--") + '</text>';
+  s += '<rect x="' + gx + '" y="' + gy + '" width="' + gw + '" height="' + gh + '" rx="3" class="fs-glass"/>';
+  const mid = gy + gh * 0.55;
+  for (const k of [0.16, 0.32, 0.46, 0.68, 0.84]) s += '<line x1="' + (gx + 4) + '" y1="' + (gy + gh * k) + '" x2="' + (gx + gw - 4) + '" y2="' + (gy + gh * k) + '" class="fs-shelf"/>';
+  s += '<rect x="' + (gx + 3) + '" y="' + (mid - 3) + '" width="' + (gw - 6) + '" height="6" rx="1.5" class="fs-unit"/>';
+  s += '<rect x="' + (gx - 4) + '" y="' + (gy + 22) + '" width="4" height="46" rx="2" class="fs-handle"/>';
+  s += '<line x1="' + (x0 + 6) + '" y1="' + base + '" x2="' + (x0 + 6) + '" y2="' + (base + 6) + '" class="fs-leg"/><line x1="' + (x0 + cw - 6) + '" y1="' + base + '" x2="' + (x0 + cw - 6) + '" y2="' + (base + 6) + '" class="fs-leg"/>';
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Схема: ' + esc(f.n) + '">' + s + '</svg>';
 }
 
@@ -200,12 +221,12 @@ function frFio(){
 function frDraw(){
   if (!$("secFr")) return;
   frEnsure();
-  const day = frDayNow(), recs = FR.map(f => frRec(f.id, day)), fr = FR.filter(f => !f.room), room = FR.find(f => f.room);
+  const day = frDayNow(), recs = FR.map(f => frRec(f.id, day)), fr = FR.filter(f => !f.room), rooms = FR.filter(f => f.room);
   const sN = fr.filter(f => recs[FR.indexOf(f)].s).length, eN = fr.filter(f => recs[FR.indexOf(f)].e).length, pend = ckj(FRQ, []).length;
   $("frInfo").innerHTML = frEarly() ? "Журнал на сайте начнётся <b>" + frStartTx() + " в 14:00</b>. До этого — бумажный журнал." +
     (frState === "old" ? " Журнал заработает после обновления Apps Script." : "") : "День — <b>" + frWdDay(day) + "</b>, до 14:00" + (frSt.work && !frWork(day) ? " (не рабочий)" : "") +
     ". Начало смены внесено у <b>" + sN + " из " + fr.length + "</b> холодильников, конец — у <b>" + eN + "</b>" +
-    (room ? "; склад — " + (recs[FR.indexOf(room)].s ? "<b>замер внесён</b>" : "замер ещё не внесён") : "") + "." +
+    (rooms.length ? "; температура и влажность (" + rooms.map(f => f.n.toLowerCase()).join(", ") + ") — <b>" + rooms.filter(f => recs[FR.indexOf(f)].s).length + " из " + rooms.length + "</b>" : "") + "." +
     (frMorning() ? " <b>До 14:00 идёт ещё вчерашний день</b> — сюда конец его смены; начало новой — после 14:00." : "") +
     (pend && frState === "net" ? " Нет связи — " + pend + " " + (pend === 1 ? "показание уйдёт" : "показания уйдут") + ", когда появится." :
      pend ? " Отправляем…" : frState === "net" ? " Нет связи — показаны сохранённые данные." :
@@ -421,7 +442,7 @@ function frSticker(x, f, x0, y0, W, H){
   x.fillStyle = "#6b6f76"; x.font = "700 " + Math.round(W * .042) + "px Manrope, -apple-system, sans-serif";
   x.fillText(("Бар «Мечты» · " + frZn(f.z)).toUpperCase(), cx, y0 + H * .085);
   x.fillStyle = "#0E1014"; x.font = "800 " + Math.round(W * .062) + "px Manrope, -apple-system, sans-serif";
-  const lines = frWrap(x, f.n, W * .86).slice(0, 2);
+  const lines = frWrap(x, f.n.replace(/ (\S{1,3})$/, "\u00a0$1"), W * .86).slice(0, 2);   // номер не отрывается от слова
   lines.forEach((l, i) => x.fillText(l, cx, y0 + H * .16 + i * W * .072));
   let below = y0 + H * .16 + lines.length * W * .072;
   if (f.w){                                                                 // где стоит — чтобы наклеить на нужный
@@ -440,9 +461,9 @@ function frOneCanvas(f){
   frSticker(c.getContext("2d"), f, 0, 0, 800, 1000);
   return c;
 }
-/* все 12 наклеек на лист A4 (3 × 4, 200 точек на дюйм), с пунктиром для резки */
+/* все наклейки на лист A4 (до 12 — 3 в ряд, больше — 4; 200 точек на дюйм), с пунктиром для резки */
 function frSheetCanvas(){
-  const c = document.createElement("canvas"), W = 1654, H = 2339, m = 70, cols = 3, rows = Math.ceil(FR.length / cols);
+  const c = document.createElement("canvas"), W = 1654, H = 2339, m = 70, cols = FR.length > 12 ? 4 : 3, rows = Math.ceil(FR.length / cols);
   c.width = W; c.height = H;
   const x = c.getContext("2d"), cw = (W - m * 2) / cols, ch = (H - m * 2) / rows;
   x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);

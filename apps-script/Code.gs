@@ -3607,7 +3607,7 @@ function fridges(p) {
     try { frMonth(ss, day.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }   // запись уже есть
     /* чеклист: «Заполнить бланки температуры…» — отмечается сам, когда у всех внесено начало смены (у склада — замер) */
     if (k === "s" && !v.wipe && ckDay() === day) try {
-      if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры на всех холодильниках и на складе");
+      if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры: все холодильники, склад и зал клуба");
     } catch (e) { console.error("frCk: " + e); }
     return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK };
   } finally {
