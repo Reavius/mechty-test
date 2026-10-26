@@ -21,14 +21,45 @@ import { fileURLToPath } from "node:url";
 
 const ITER = 600000;
 const MENU = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "menu.json"), "utf8"));
+const ABV = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "abv.json"), "utf8"));
 const PAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "js", "data.js");
 const LINE = /^const BLOB = .*;$/m;
 const PUB = /\/\* PUB:BEGIN \*\/\n[\s\S]*?\n\/\* PUB:END \*\//;
 
+/* Крепость — из крепости сырья (tools/abv.json). Рецептура (премикс, настойка, п/ф): спирт / вся жидкость,
+   вместе с соком ягод и растворённым сахаром. Коктейль при подаче: спирт / жидкость в бокале по техкарте подачи —
+   с содовой, игристым, сидром, белком (талый лёд не считается). П/ф и премиксы внутри — по их рецептурам. */
+const low = s => String(s).toLowerCase().replace(/ё/g, "е");
+const ALC = /водк|джин|(^|[\s«])ром([\s»]|$)|ромом|текил|виски|вермут|ликер|(^|\s)вин[оа]|биттер|настойка горькая|сидр|соджу|спиртн|коньяк|бренди|пиво|мартини/;
+function abvKit(rec){
+  const byName = {}, key = s => low(s).replace(/\s*(п\/ф|\(премикс\))\s*/g, " ").replace(/\s+/g, " ").trim();
+  for (const id in rec) byName[key(rec[id].n)] = rec[id];
+  const one = (n, seen) => {
+    const r = byName[key(n)];
+    if (r && !seen.includes(r.id)) return mix(r, seen.concat(r.id));
+    const a = ABV.abv.find(x => low(n).includes(x[0]));
+    if (a) return a[1];
+    if (ALC.test(low(n))) throw new Error("Нет крепости в tools/abv.json: " + n);
+    return 0;
+  };
+  const mix = (r, seen = [r.id]) => {
+    let al = 0, vol = 0;
+    for (const [n, q, u] of r.i){
+      if (u === "мл"){ al += q * one(n, seen); vol += q; continue; }
+      const w = ABV.water.find(x => low(n).includes(x[0]));
+      if (w) vol += q * w[1];
+    }
+    return vol ? al / vol : 0;
+  };
+  return mix;
+}
+
 /* Один источник: состав открытой карты и замесы в техкартах берутся из рецептур. */
 function fromRecipes(body){
-  const rec = {};
-  for (const g of body.r || []) for (const it of g.items) rec[it.id] = it;
+  const rec = {}, premix = {};
+  for (const g of body.r || []) for (const it of g.items){ rec[it.id] = it; if (/^премикс/i.test(g.g)) premix[it.id] = 1; }
+  const mix = abvKit(rec), pct = x => Math.round(x);
+  for (const id in rec){ const a = pct(mix(rec[id])); if (a) rec[id].abv = a; else delete rec[id].abv; }
   for (const g of body.k || []) for (const it of g.items){
     const r = it.c && rec[it.c];
     if (r && r.basis === "batch"){
@@ -43,6 +74,11 @@ function fromRecipes(body){
     const r = it.rid && rec[it.rid], t = it.kid && tk[it.kid];
     if (r) it.c = r.i.map(x => x[0]);
     else if (t) it.c = t.i.map(x => x[0]);                 // коктейли при подаче — состав из техкарты, без граммовок
+    /* крепость в карточке — как в бокале: по техкарте подачи (у премикса — коктейль с тем же id);
+       нет её — по рецептуре, но не у премикса: его доливают при подаче (Лонг Айленд — колой) */
+    const sv = t || tk[it.id], sr = sv && sv.out ? rec[sv.c] : null;
+    const a = sr ? mix(sr) : sv ? mix({ id: "@" + sv.id, i: sv.i.filter(x => x[2] === "мл") }) : r && !premix[r.id] ? mix(r) : 0;
+    if (pct(a)) it.abv = pct(a); else delete it.abv;
     /* m — состав для гостей, как в меню бара (tools/menu.json); c — полный, для этикеток */
     if (!MENU[it.id]) throw new Error("Нет состава для гостей в tools/menu.json: " + it.id + " (" + it.n + ")");
     it.m = MENU[it.id];

@@ -157,16 +157,22 @@ function lwrap(ctx, rows, width, height, maxS, gap){
   return {s, ind: s * 1.15, lines: rows.map((r, i) => ({t: r[1], y: i * s * gap, w: r[2], glyph: r[0]})), h: rows.length * s * gap};
 }
 
-/* принтер бара сдвигает печать вправо — рисунок прижимаем влево: узорчатый уголок касается левого края */
+/* принтер бара сдвигает печать вправо — рисунок сдвигаем влево: слева остаётся четверть свободного места
+   (по центру было бы половина), остальное — справа. Возвращает, на сколько сдвинули. */
 function lshift(ctx, W, H){
   const d = ctx.getImageData(0, 0, W, H).data;
-  let x0 = W;
-  for (let y = 0; y < H; y++) for (let x = 0; x < x0; x++) if (d[(y * W + x) * 4] < 160){ x0 = x; break; }
-  x0 -= x0 & 1;                                              // на чётное: QR остаётся ровно по точкам принтера (2 пикселя = 1 точка)
-  if (x0 <= 0 || x0 >= W) return 0;
-  const img = ctx.getImageData(x0, 0, W - x0, H);
+  let x0 = W, x1 = -1;
+  for (let y = 0; y < H; y++){
+    for (let x = 0; x < x0; x++) if (d[(y * W + x) * 4] < 160){ x0 = x; break; }
+    for (let x = W - 1; x > x1; x--) if (d[(y * W + x) * 4] < 160){ x1 = x; break; }
+  }
+  if (x1 < x0) return 0;
+  let dx = x0 - Math.round((x0 + W - 1 - x1) / 4);
+  dx -= dx & 1;                                              // на чётное: QR остаётся ровно по точкам принтера (2 пикселя = 1 точка)
+  if (dx <= 0) return 0;
+  const img = ctx.getImageData(dx, 0, W - dx, H);
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.putImageData(img, 0, 0); ctx.fillStyle = "#000";
-  return x0;
+  return dx;
 }
 function lcanvas(id, W, H){
   const c = $(id); c.width = W; c.height = H;
