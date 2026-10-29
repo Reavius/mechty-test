@@ -86,7 +86,10 @@ const STFX = {
   "c-sarti": {fizz: 14}
 };
 /* живое видео вместо сцены: проигрывается вперёд и назад по кругу — так оно и собрано в файле (без стыка), без звука */
-const STVID = { pantera: { mp4: "video/pantera.mp4", webm: "video/pantera.webm", poster: "video/pantera.jpg" } };
+const STVID = {
+  pantera: { mp4: "video/pantera.mp4", webm: "video/pantera.webm", poster: "video/pantera.jpg" },
+  pornstar: { mp4: "video/pornstar.mp4", webm: "video/pornstar.webm", poster: "video/pornstar.jpg" }
+};
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
 function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; s = s || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
