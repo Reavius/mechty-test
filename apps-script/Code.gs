@@ -56,6 +56,8 @@ function doGet(e) {
     try { out = checklist(p); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.mgr) {
     try { out = manager(p); } catch (err) { out = { error: String(err && err.message || err) }; }
+  } else if (p.tk) {
+    try { out = tkList(); } catch (err) { out = { error: String(err && err.message || err) }; }
   } else if (p.mem) {
     try { out = { ok: true, mem: members() }; } catch (err) { console.error("mem: " + err); out = { error: "net" }; }
   } else {
@@ -350,12 +352,15 @@ function dailyUnits(ref) {
 }
 
 /* Позиции — из столбца A итогового листа, с 3-й строки. */
+/* позиции ежедневной ревизии — столбец A «Итога» с 3-й строки до разделителя «— не считаем —» (REV_OFF): ниже — убранные из бланка
+   менеджером; их строки (и числа прошлых дней) остаются в листе */
+const REV_OFF = "— не считаем —";
 function revPositions(ts) {
   const last = ts.getLastRow();
   if (last < 3) return [];
-  return ts.getRange(3, 1, last - 2, 1).getValues()
-    .map((r, i) => ({ n: String(r[0]).trim(), row: i + 3 }))
-    .filter(x => x.n);
+  const all = ts.getRange(3, 1, last - 2, 1).getValues().map((r, i) => ({ n: String(r[0]).trim(), row: i + 3 }));
+  const k = all.findIndex(x => x.n === REV_OFF);
+  return (k < 0 ? all : all.slice(0, k)).filter(x => x.n);
 }
 
 const unitOf = n => PCS.some(w => n.toLowerCase().indexOf(w) >= 0) ? "шт" : "л";
@@ -929,7 +934,13 @@ function mrevIds(sh) {
 }
 
 /* строки листа: разделы (h), подразделы (s) и позиции (i) — по порядку */
+/* бланк месячной — до раздела «Не считаем» (MREV_OFF): ниже — убранные из бланка менеджером, их прошлые числа остаются в листе */
+const MREV_OFF = "Не считаем (убрано из бланка)";
 function mrevRows(sh) {
+  const all = mrevRowsAll(sh), k = all.findIndex(x => x.t === "h" && x.n === MREV_OFF);
+  return k < 0 ? all : all.slice(0, k);
+}
+function mrevRowsAll(sh) {
   const last = sh.getLastRow();
   if (last < 7) return [];
   const v = sh.getRange(7, 1, last - 6, 3).getDisplayValues();
@@ -1377,6 +1388,9 @@ function doPost(e) {
     if (p.mgr === "zagset") return jsonOut(mgrZagSet(p));
     if (p.mgr === "revset") return jsonOut(mgrRevSet(p));
     if (p.mgr === "revundo") return jsonOut(mgrRevUndo(p));
+    if (p.mgr === "blankset") return jsonOut(mgrBlankSet(p));
+    if (p.mgr === "tkset") return jsonOut(mgrTkSet(p));
+    if (p.mgr === "tkphoto") return jsonOut(mgrTkPhoto(p));
     if (p.mgr === "perset") return jsonOut(mgrPerSet(p));
     if (p.mgr === "perundo") return jsonOut(mgrPerUndo(p));
     if (p.mgr === "refauto") return jsonOut(mgrRefAuto(p));
@@ -1956,6 +1970,9 @@ function manager(p) {
   if (p.mgr === "sales") return mgrSales(p);
   if (p.mgr === "zags") return mgrZags();
   if (p.mgr === "revget") return mgrRevGet(p);
+  if (p.mgr === "cksum") return mgrCkSum(p);
+  if (p.mgr === "rvsum") return mgrRvSum();
+  if (p.mgr === "blank") return mgrBlank();
   if (p.mgr === "refauto") return mgrRefAuto(p);
   if (p.mgr === "reportto") return { ok: true, emails: reportTo(), auto: reportOn() };
   return { error: "action" };
@@ -2023,6 +2040,8 @@ function refBlank() {
   if (ms && ms.getLastRow() >= 7) rows = ms.getRange(7, 1, ms.getLastRow() - 6, 3).getDisplayValues();
   else rows = MREV_ROWS.map(x => x[1] === "h" ? [x[2], "", ""] : [x[2], x[3], x[4]]);
   let sec = "";
+  const off = rows.findIndex(r => String(r[0]).trim() === MREV_OFF && !String(r[1]).trim());
+  if (off >= 0) rows = rows.slice(0, off);                             // убранные из бланка — не в справочник
   rows.forEach(r => {
     const a = String(r[0]).trim(), b = String(r[1]).trim(), c = String(r[2]).trim();
     if (b && !a && !c && /^(Заготовки|Премиксы на коктейли)$/.test(b)) sec = b;
@@ -2673,6 +2692,275 @@ function mgrRevUndo(p) {
   } finally { lock.releaseLock(); }
 }
 
+/* ── технологичка: правки менеджера поверх техкарт из шифровки ──
+   Лист «Техкарты» (закрытая таблица ревизии): строка — техкарта: id (как в шифровке — правка или скрытие её, новый — «u…»),
+   группа, название, карта JSON {n, i: [[ингредиент, кол-во, ед.]], dec, gar, glass, m, out, img}, «скрыта», кто и когда.
+   Сайт после входа в «Бартендерам» (по токену) берёт список и накладывает на техкарты шифровки: бармены видят правки сразу.
+   Фото — в папку Диска «Бар Мечты — фото техкарт», доступ по ссылке (граммовок на фото нет). Пусто в «Карта» — только скрытие. */
+const TK_SHEET = "Техкарты", TK_HEAD = ["id", "Группа", "Название", "Карта (JSON)", "Скрыта", "Кто", "Когда"], TK_PHOTOS = "Бар Мечты — фото техкарт";
+function tkSheet(create) {
+  const ss = revBook(), sh = ss.getSheetByName(TK_SHEET);
+  if (sh || !create) return sh;
+  const n = ss.insertSheet(TK_SHEET);
+  n.getRange(1, 1, 1, TK_HEAD.length).setValues([TK_HEAD]).setFontWeight("bold");
+  n.setFrozenRows(1); n.setColumnWidth(4, 420);
+  return n;
+}
+function tkList() {
+  const cache = CacheService.getScriptCache(), hit = cache.get("tk");
+  if (hit) return JSON.parse(hit);
+  const sh = tkSheet(false), last = sh ? sh.getLastRow() : 0, cards = [];
+  if (last >= 2) sh.getRange(2, 1, last - 1, 5).getValues().forEach(r => {
+    const id = String(r[0]).trim();
+    if (!id) return;
+    let card = null;
+    try { card = String(r[3]).trim() ? JSON.parse(String(r[3])) : null; } catch (e) { card = null; }
+    cards.push({ id: id, g: String(r[1]).trim(), card: card, hid: /^(да|1|true|x|\+)$/i.test(String(r[4]).trim()) });
+  });
+  const out = { ok: true, cards: cards };
+  try { cache.put("tk", JSON.stringify(out), 300); } catch (e) {}
+  return out;
+}
+/* карта с сайта — проверка и обрезка: строки и числа, не больше разумного */
+function tkCard(c) {
+  if (!c || typeof c !== "object") return null;
+  const txt = (v, n) => clean(v, n).replace(/^'/, "");
+  const rows = (a, n) => (Array.isArray(a) ? a : []).slice(0, n).map(x => Array.isArray(x) ? [txt(x[0], 80), String(x[1] == null ? "" : x[1]).trim().replace(",", ".").slice(0, 12), txt(x[2], 12)] : null)
+    .filter(x => x && x[0]).map(x => [x[0], /^-?\d+(\.\d+)?$/.test(x[1]) ? round3(+x[1]) : x[1], x[2]]);
+  const out = { n: txt(c.n, 80), i: rows(c.i, 40) };
+  if (!out.n) return null;
+  const dec = rows(c.dec, 20); if (dec.length) out.dec = dec;
+  ["gar", "glass"].forEach(k => { const v = txt(c[k], 200); if (v) out[k] = v; });
+  const m = String(c.m == null ? "" : c.m).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim().slice(0, 3000); if (m) out.m = m;
+  if (Array.isArray(c.out) && num(c.out[0]) > 0) out.out = [round3(num(c.out[0])), txt(c.out[1], 10) || "мл"];
+  const img = String(c.img || "").trim();
+  if (/^https:\/\/lh3\.googleusercontent\.com\/d\/[\w-]{10,}$/.test(img) || /^photos\/[\w-]+\.(webp|jpg|png)$/.test(img)) out.img = img;
+  return out;
+}
+/* {id — пусто для новой, op: "set" | "hide" | "show" | "reset", g, card} */
+function mgrTkSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const op = String(p.op || "set"), who = clean(p.who, 60) || "бар-менеджер";
+  let id = String(p.id || "").replace(/[^\w-]/g, "").slice(0, 40);
+  const card = op === "set" ? tkCard(p.card) : null, g = clean(p.g, 60).replace(/^'/, "");
+  if (op === "set" && (!card || !g)) return { error: "bad" };
+  if (op !== "set" && !id) return { error: "bad" };
+  if (!id) id = "u" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  const lock = lockOrBusy(20000);
+  try {
+    const sh = tkSheet(true), last = sh.getLastRow(), ids = last >= 2 ? sh.getRange(2, 1, last - 1, 1).getDisplayValues().map(r => String(r[0]).trim()) : [];
+    let row = ids.indexOf(id) + 2;
+    if (op === "reset") { if (row >= 2) sh.deleteRow(row); }
+    else {
+      if (row < 2) { row = Math.max(last, 1) + 1; ensureRows(sh, row); sh.getRange(row, 1).setNumberFormat("@").setValue(id); }
+      const now = Utilities.formatDate(new Date(), TZ, "dd.MM.yyyy HH:mm");
+      if (op === "set") sh.getRange(row, 2, 1, 3).setNumberFormat("@").setValues([[g, card.n, JSON.stringify(card)]]);
+      else sh.getRange(row, 5).setValue(op === "hide" ? "да" : "");
+      sh.getRange(row, 6, 1, 2).setNumberFormat("@").setValues([[who, now]]);
+    }
+    SpreadsheetApp.flush();
+    try { CacheService.getScriptCache().remove("tk"); } catch (e) {}
+    return Object.assign(tkList(), { id: id });
+  } finally { lock.releaseLock(); }
+}
+/* фото техкарты: {id, data — base64 JPEG/WebP до 2 МБ} → файл в папке Диска с доступом по ссылке → {url} */
+function mgrTkPhoto(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const type = /^image\/(jpeg|webp|png)$/.test(String(p.type || "")) ? String(p.type) : "image/jpeg";
+  let bytes;
+  try { bytes = Utilities.base64Decode(String(p.data || "").replace(/^data:[^,]*,/, "")); } catch (e) { return { error: "bad" }; }
+  if (!bytes.length || bytes.length > 2 * 1024 * 1024) return { error: "size" };
+  const name = String(p.id || "tk").replace(/[^\w-]/g, "").slice(0, 40) + "-" + Date.now().toString(36) + (type === "image/webp" ? ".webp" : type === "image/png" ? ".png" : ".jpg");
+  const folder = woAlive(DriveApp.getFoldersByName(TK_PHOTOS)) || DriveApp.createFolder(TK_PHOTOS);
+  const file = folder.createFile(Utilities.newBlob(bytes, type, name));
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+  catch (e) { file.setTrashed(true); return { error: "share" }; }   // домен запрещает «по ссылке»
+  return { ok: true, url: "https://lh3.googleusercontent.com/d/" + file.getId() };
+}
+
+/* ── бланки ревизий (правка менеджером) ──
+   Ежедневная — столбец A листа «Итог»: строка — позиция, столбцы — дни. Месячная — текущий лист «Месячная ревизия»: разделы (A),
+   позиции (B), ед. изм. (C), столбцы ревизий справа. Убрать позицию — перенести строку вниз, под «— не считаем —» («Итог») или в раздел
+   «Не считаем» (месячная): строка с прошлыми числами остаётся, в бланке и расчётах её больше нет; вернуть — обратно. Переименовать или
+   перенести в другой раздел месячной — справочник, приход, рецепты, расход на блюдо и поправки периода переходят следом (mrevRekey).
+   Ревизия может идти — бармены добавляют по названию позиции, а не по номеру строки. */
+function mgrBlank() {
+  const ss = revBook(), ts = revTotal(ss), last = ts.getLastRow(), daily = [];
+  let off = false;
+  (last >= 3 ? ts.getRange(3, 1, last - 2, 1).getDisplayValues() : []).forEach((r, i) => {
+    const n = String(r[0]).trim();
+    if (!n) return;
+    if (n === REV_OFF) { off = true; return; }
+    daily.push({ r: i + 3, n: n, off: off });
+  });
+  const sh = mrevSheet(true), monthly = [];
+  if (sh) {
+    let sec = "", offm = false;
+    mrevRowsAll(sh).forEach(x => {
+      if (x.t === "h" && x.n === MREV_OFF) { offm = true; sec = ""; return; }
+      if (x.t !== "i") { sec = x.n; monthly.push({ r: x.r, t: x.t, n: x.n, off: offm }); return; }
+      monthly.push({ r: x.r, t: "i", n: x.n, u: x.u, sec: sec, off: offm });
+    });
+  }
+  const st = revDay(false), b = mrevBlock();
+  return { ok: true, daily: daily, monthly: monthly, dopen: !!(st && !revDone(st)), mopen: !!(b && b.open && !b.done), sheet: sh ? sh.getName() : "" };
+}
+/* {kind: "d"|"m", op, r — строка, n — её название (проверка: строку не сдвинули), …} */
+function mgrBlankSet(p) {
+  if (!mgrOk(p.mk)) return { error: "mgr" };
+  const kind = p.kind === "m" ? "m" : "d", op = String(p.op || ""), r = parseInt(p.r, 10), n = String(p.n || "").trim();
+  const name = clean(p.to != null ? p.to : p.n, 80).replace(/^'/, ""), unit = mrevUCanon(clean(p.u, 12));
+  const lock = lockOrBusy(20000);
+  try {
+    const out = kind === "d" ? blankDaily(op, r, n, name, p) : blankMonthly(op, r, n, name, unit, p);
+    if (out.ok) { SpreadsheetApp.flush(); MEMO = {}; try { const c = CacheService.getScriptCache(); c.remove("munits"); c.remove("dunits"); } catch (e) {} }
+    return out.ok ? Object.assign(mgrBlank(), { done: op }) : out;
+  } finally { lock.releaseLock(); }
+}
+function blankDaily(op, r, n, name, p) {
+  const ss = revBook(), ts = revTotal(ss), last = ts.getLastRow();
+  const col = last >= 3 ? ts.getRange(3, 1, last - 2, 1).getDisplayValues().map(x => String(x[0]).trim()) : [];
+  const sep = col.indexOf(REV_OFF), end = sep < 0 ? last : sep + 2;      // end — последняя строка до разделителя (или последняя строка листа)
+  const act = col.slice(0, sep < 0 ? col.length : sep).map((x, i) => ({ n: x, r: i + 3 })).filter(x => x.n);
+  const at = r >= 3 ? col[r - 3] : null;
+  if (op !== "add" && at !== n) return { error: "moved" };
+  if (op === "add") {
+    if (!name) return { error: "bad" };
+    if (act.some(x => mnorm(x.n) === mnorm(name))) return { error: "dup" };
+    const after = r >= 3 && r <= (sep < 0 ? last : sep + 2) ? r : act.length ? act[act.length - 1].r : 2;
+    ts.insertRowAfter(after);
+    ts.getRange(after + 1, 1).setNumberFormat("@").setValue(name);
+    return { ok: true };
+  }
+  if (op === "off") {
+    if (sep >= 0 && r > sep + 3) return { error: "moved" };
+    let s = sep < 0 ? 0 : sep + 3;
+    if (!s) { s = Math.max(last, 2) + 1; ensureRows(ts, s); ts.getRange(s, 1).setNumberFormat("@").setValue(REV_OFF).setFontWeight("bold"); }
+    ts.moveRows(ts.getRange(r, 1), Math.max(ts.getLastRow(), s) + 1);   // вниз, под разделитель
+    return { ok: true };
+  }
+  if (op === "on") {
+    if (sep < 0 || r < sep + 3) return { error: "moved" };
+    ts.moveRows(ts.getRange(r, 1), sep + 3);                             // сразу над разделителем — в конец бланка
+    return { ok: true };
+  }
+  if (op === "up" || op === "down") {
+    const i = act.findIndex(x => x.r === r), j = op === "up" ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= act.length) return { error: "bad" };
+    ts.moveRows(ts.getRange(r, 1), op === "up" ? act[j].r : act[j].r + 1);
+    return { ok: true };
+  }
+  if (op === "ren") {
+    if (!name || act.some(x => x.r !== r && mnorm(x.n) === mnorm(name))) return { error: name ? "dup" : "bad" };
+    ts.getRange(r, 1).setNumberFormat("@").setValue(name);
+    const zs = revZones(ss), zl = zs.getLastRow();                       // строка в «По зонам» — тоже (по названию)
+    if (zl >= 4) zs.getRange(4, 1, zl - 3, 1).getValues().forEach((x, i) => { if (String(x[0]).trim() === n) zs.getRange(i + 4, 1).setValue(name); });
+    return { ok: true };
+  }
+  return { error: "bad" };
+}
+function blankMonthly(op, r, n, name, unit, p) {
+  const sh = mrevSheet(true);
+  if (!sh) return { error: "nosheet" };
+  const all = mrevRowsAll(sh), offH = all.find(x => x.t === "h" && x.n === MREV_OFF);
+  const act = offH ? all.filter(x => x.r < offH.r) : all, row = all.find(x => x.r === r);
+  let sec = "";
+  act.forEach(x => { if (x.t !== "i") sec = x.n; else x.sec = sec; });
+  const secItems = s => act.filter(x => x.t === "i" && x.sec === s);
+  const secHead = s => act.find(x => x.t !== "i" && x.n === s);
+  const endOf = s => { const it = secItems(s); return it.length ? it[it.length - 1].r : secHead(s) ? secHead(s).r : 0; };
+  if (op === "secadd") {
+    if (!name || act.some(x => x.t !== "i" && mnorm(x.n) === mnorm(name))) return { error: name ? "dup" : "bad" };
+    const after = offH ? offH.r - 1 : Math.max(sh.getLastRow(), 6);
+    sh.insertRowAfter(after);
+    sh.getRange(after + 1, 1, 1, 3).breakApart().setNumberFormat("@").setValues([[name, "", ""]]);
+    sh.getRange(after + 1, 1, 1, 3).merge().setFontWeight("bold");
+    return { ok: true };
+  }
+  if (op === "add") {
+    const s = String(p.sec || "");
+    if (!name || !secHead(s)) return { error: "bad" };
+    if (secItems(s).some(x => mnorm(x.n) === mnorm(name))) return { error: "dup" };
+    const after = endOf(s);
+    sh.insertRowAfter(after);
+    sh.getRange(after + 1, 1, 1, 3).breakApart().setFontWeight("normal").setNumberFormat("@").setValues([["", name, unit || ""]]);
+    return { ok: true };
+  }
+  if (!row || row.t !== "i" || row.n !== n) return { error: "moved" };
+  const offNow = offH && r > offH.r;
+  if (op === "off") {
+    if (offNow) return { error: "moved" };
+    let h = offH ? offH.r : 0;
+    if (!h) { h = Math.max(sh.getLastRow(), 6) + 1; ensureRows(sh, h); sh.getRange(h, 1, 1, 3).setNumberFormat("@").setValues([[MREV_OFF, "", ""]]); sh.getRange(h, 1, 1, 3).merge().setFontWeight("bold"); }
+    sh.moveRows(sh.getRange(r, 1), Math.max(sh.getLastRow(), h) + 1);
+    return { ok: true };
+  }
+  if (op === "on" || op === "move") {
+    const s = String(p.sec || "");
+    if (!secHead(s) || (op === "on" && !offNow)) return { error: "bad" };
+    if (op === "move" && offNow) return { error: "moved" };
+    const from = row.sec;
+    if (secItems(s).some(x => x.r !== r && mnorm(x.n) === mnorm(n))) return { error: "dup" };
+    sh.moveRows(sh.getRange(r, 1), endOf(s) + 1);
+    if (op === "move" && from !== s) { const m = {}; m[refKey(from, n)] = [s, n]; mrevRekey(m); }
+    return { ok: true };
+  }
+  if (op === "up" || op === "down") {
+    if (offNow) return { error: "moved" };
+    const it = secItems(row.sec), i = it.findIndex(x => x.r === r), j = op === "up" ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= it.length) return { error: "bad" };
+    sh.moveRows(sh.getRange(r, 1), op === "up" ? it[j].r : it[j].r + 1);
+    return { ok: true };
+  }
+  if (op === "ren") {
+    if (!name || secItems(row.sec).some(x => x.r !== r && mnorm(x.n) === mnorm(name))) return { error: name ? "dup" : "bad" };
+    sh.getRange(r, 2).setNumberFormat("@").setValue(name);
+    if (!offNow) { const m = {}; m[refKey(row.sec, n)] = [row.sec, name]; mrevRekey(m); }
+    return { ok: true };
+  }
+  if (op === "unit") {
+    sh.getRange(r, 3).setNumberFormat("@").setValue(unit);
+    const rs = refSheet(false), rl = rs ? rs.getLastRow() : 0;              // справочник — та же единица
+    if (rl >= 2) rs.getRange(2, 1, rl - 1, 2).getDisplayValues().forEach((x, i) => { if (refKey(x[0], x[1]) === refKey(row.sec, n)) rs.getRange(i + 2, 3).setNumberFormat("@").setValue(unit); });
+    return { ok: true };
+  }
+  return { error: "bad" };
+}
+
+/* сводка чеклиста за даты: строки дня из «Открытий смен» и отметки из «Чеклист журнал» (таблица журнала).
+   Что пропустили — считает сайт: он знает пункты чеклиста и в какие дни недели они нужны. p.from / p.to — ГГГГ-ММ-ДД */
+function mgrCkSum(p) {
+  const isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
+  if (!isoOk(p.from) || !isoOk(p.to) || p.from > p.to) return { error: "bad" };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), inR = d => { const iso = dmy(String(d).replace(/^'/, "").trim()); return iso && iso >= p.from && iso <= p.to ? iso : ""; };
+  const days = [], log = [];
+  const sh = ss.getSheetByName(OPEN_SHEET), last = sh ? sh.getLastRow() : 0;
+  if (last >= 2) sh.getRange(2, 1, last - 1, OPEN_HEAD.length).getDisplayValues().forEach(r => {
+    const iso = inR(r[0]);
+    if (iso) days.push({ iso: iso, ready: String(r[1]).replace(/^'/, "").trim(), by: String(r[2]).trim(), left: String(r[3]).trim(), done: String(r[4]).trim(),
+      first: String(r[5]).replace(/^'/, "").trim(), lastm: String(r[6]).replace(/^'/, "").trim(), who: String(r[7]).trim() });
+  });
+  const lg = ss.getSheetByName(CK_LOG), ll = lg ? lg.getLastRow() : 0;
+  if (ll >= 2) {
+    const from = Math.max(2, ll - 20000 + 1);                             // последние 20 000 отметок — с запасом на год
+    lg.getRange(from, 1, ll - from + 1, 6).getDisplayValues().forEach(r => {
+      const iso = inR(r[1]);
+      if (iso) log.push([iso, String(r[0]).slice(-5), String(r[2]).trim(), String(r[4]).trim(), /^снял/.test(String(r[5])) ? 0 : 1]);
+    });
+  }
+  days.sort((a, b) => a.iso.localeCompare(b.iso));
+  return { ok: true, from: p.from, to: p.to, days: days, log: log.slice(-8000) };
+}
+/* сводка ревизий: дни ежедневной (кто, зоны, полная или нет) и месячные (лист, кто, когда закончили) */
+function mgrRvSum() {
+  const tl = revTimeline(), st = revDay(false), open = st && !revDone(st) ? st.date : "";
+  const daily = tl.all.map(x => ({ d: x.d, iso: x.iso, wd: WD_RU[isoWd(x.iso)], who: x.who, z: x.z, nz: x.nz, full: x.full, at: x.at, man: x.who.indexOf(" · " + REV_MAN) >= 0 }));
+  let monthly = [];
+  try { monthly = mrevTimeline().map(x => ({ d: x.d, iso: x.iso, wd: WD_RU[isoWd(x.iso)], who: x.who, sheet: x.sh ? x.sh.getName() : "", at: x.at })); } catch (e) {}
+  const b = mrevBlock();
+  return { ok: true, daily: daily, monthly: monthly, open: open, zones: ZONES, mopen: b && b.open && !b.done ? { title: b.title || "", zones: (b.cols || []).length } : null };
+}
+
 /* ручные поправки периода: «Период» → шаги «Продажи», «Приход», «Списания и проработки» — по позициям ежедневной ревизии.
    Число заменяет насчитанное по данным сайта (продажи × расход на блюдо, накладные, акты) для этой позиции за период между
    двумя соседними ревизиями; пусто — снова по данным. Лист «Поправки периода»: строка — одна позиция, действует последняя
@@ -2706,7 +2994,7 @@ function perOvAll() {
       v: r[6] === "" || r[6] == null ? null : num(r[6]), u: String(r[7]).trim() };
   });
   const at = {};
-  try { revTimeline().revs.forEach(x => { at[x.d] = x.at; }); } catch (e) {}   // нет «Итога» — моменты, сохранённые с правкой
+  try { revTimeline().all.forEach(x => { at[x.d] = x.at; }); } catch (e) {}   // нет «Итога» — моменты, сохранённые с правкой
   return MEMO.pov = Object.values(cur).filter(o => o.v != null).map(o => Object.assign(o, { a: at[o.ad] || o.a, b: at[o.bd] || o.b }));
 }
 /* {i — номер ревизии в ленте (конец периода), ad / bd — даты ревизий, как их видел сайт, f, vals: [[ключ, позиция, число или "", по данным]]} */
@@ -2714,10 +3002,12 @@ function mgrPerSet(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
   const f = String(p.f || "");
   if (!PER_F[f]) return { error: "bad" };
-  const R = revTimeline().revs, i = parseInt(p.i, 10);
-  if (!(i >= 1 && i < R.length)) return { error: "bad" };
-  const A = R[i - 1], B = R[i];
-  if (String(p.ad || "") !== A.d || String(p.bd || "") !== B.d) return { error: "moved" };   // пока правили, ревизии сдвинулись
+  /* период — соседние ревизии (i) или любые два дня ежедневной ревизии (ad / bd), выбранные в «Расходе» */
+  const tl = revTimeline(), R = tl.revs, i = parseInt(p.i, 10);
+  let A = null, B = null;
+  if (i >= 1 && i < R.length && String(p.ad || "") === R[i - 1].d && String(p.bd || "") === R[i].d) { A = R[i - 1]; B = R[i]; }
+  else { A = tl.all.find(x => x.d === String(p.ad || "")); B = tl.all.find(x => x.d === String(p.bd || "")); }
+  if (!A || !B || !(A.iso < B.iso)) return { error: "moved" };          // пока правили, ревизии сдвинулись
   const ref = mgrRef();
   if (!ref.ok) return ref;
   const M = perMaps(ref), du = dailyUnits(ref), vals = Array.isArray(p.vals) ? p.vals.slice(0, 3000) : [], add = [];

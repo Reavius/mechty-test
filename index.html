@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://script.google.com https://script.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; media-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Бар «Мечты» — меню</title>
 <meta name="description" content="Меню бара «Мечты» на русском и английском: коктейли, вино, крепкое, пиво, кофе и чай; состав и аллергены коктейлей. Для команды — техкарты, калькулятор, заявки и ревизия.">
 <!-- превью ссылки в Telegram, WhatsApp, ВКонтакте -->
@@ -421,37 +421,35 @@
     <div id="mgrBox" hidden>
       <nav class="mgrnav" id="mgrNav" aria-label="Разделы бар-менеджера">
         <div class="mgrtabs" id="mgrTabs" role="group" aria-label="Раздел">
-          <button type="button" data-g="per" aria-pressed="true"><b>Период</b><small>всё в одном месте</small></button>
+          <button type="button" data-g="per" aria-pressed="true"><b>Расход</b><small>ревизия · продажи</small></button>
+          <button type="button" data-g="wo" aria-pressed="false"><b>Списания</b><small>и проработки</small></button>
+          <button type="button" data-g="ck" aria-pressed="false"><b>Чеклист</b><small>открытия смен</small></button>
+          <button type="button" data-g="fr" aria-pressed="false"><b>Холодильники</b><small>журнал</small></button>
+          <button type="button" data-g="rv" aria-pressed="false"><b>Ревизии</b><small>ежедн. · месячн.</small></button>
+          <button type="button" data-g="bl" aria-pressed="false"><b>Бланки</b><small>ревизий</small></button>
+          <button type="button" data-g="tk" aria-pressed="false"><b>Техкарты</b><small>технологичка</small></button>
           <button type="button" data-g="buy" aria-pressed="false"><b>Закупка</b><small>автозаявка</small></button>
-          <button type="button" data-g="sal" aria-pressed="false"><b>Рецепты</b><small>блюда · заготовки</small></button>
-          <button type="button" data-g="dir" aria-pressed="false"><b>Справочник</b><small>и меню</small></button>
+          <button type="button" data-g="dir" aria-pressed="false"><b>Справочник</b><small>меню · письма</small></button>
         </div>
-        <div class="mgrsub" id="mgrSubDir" role="group" aria-label="Справочник и меню" hidden>
+        <div class="mgrsub" id="mgrSubDir" role="group" aria-label="Справочник, меню и письма" hidden>
           <button type="button" data-t="ref" aria-pressed="true">Справочник</button>
           <button type="button" data-t="pub" aria-pressed="false">Меню для гостей</button>
+          <button type="button" data-t="rep" aria-pressed="false">Письма</button>
         </div>
       </nav>
       <div id="mgrUse" hidden>
-        <details class="mgrhelp" id="useHintD"><summary>Как это работает</summary><p class="wnhint">Период — от прошлой ревизии до последней (ревизия — день, когда посчитаны все зоны: чт перед открытием, вс после закрытия;
-          готова, как только все нажали «Завершить»). <b>Ожидалось = было + приход − продано − списания − проработки</b>; продано — по продажам R-Keeper
-          и расходу на блюдо (раздел «Рецепты»), заготовки разложены на сырьё по рецептам. Расхождение = стало − ожидалось: минус — недостача, плюс — излишек,
-          в рублях — по цене закупки. Показаны все позиции, самые дорогие расхождения — первыми.</p></details>
-        <details class="mgrhelp" id="useHintM" hidden><summary>Как это работает</summary><p class="wnhint">Месячная считается так же, как период ревизии, только между двумя месячными
-          (посчитанными целиком; момент — когда сдали последнюю зону). <b>Ожидалось = было + приход − продано − списания − проработки</b>, расхождение = стало − ожидалось,
-          в рублях — по цене закупки. Числа месячной — в единицах справочника. Продажи нужны за все смены между ними.</p></details>
-        <div class="mgrseg" id="useKind" role="group" aria-label="Какая ревизия">
-          <button type="button" data-k="d" aria-pressed="true">Период ревизии</button>
-          <button type="button" data-k="m" aria-pressed="false">Месячная</button>
-        </div>
+        <details class="mgrhelp" id="useHintD"><summary>Как это работает</summary><p class="wnhint">Расход считается между двумя днями ежедневной ревизии —
+          выберите день начала и день конца. <b>Ушло = было + приход − списания − проработки − стало</b>; по продажам — сколько должно было уйти
+          по продажам R-Keeper и рецептам (заготовки разложены на сырьё). Разница — недостача или излишек, в рублях — по цене закупки.
+          Мелочь (фрукты, зелень, специи, сладости) — только расход: по продажам её не посчитать. Прочерк в ревизии можно вписать вручную.</p></details>
         <div class="persteps" id="perSteps">
           <p class="label">Что входит в расчёт периода</p>
-          <details class="perstep" id="stepRev"><summary><span class="psn"></span><span class="pst"><b>Ревизии · период</b><small id="stepRevS">…</small></span></summary>
+          <details class="perstep" id="stepRev"><summary><span class="psn"></span><span class="pst"><b>Ревизия · дни начала и конца</b><small id="stepRevS">…</small></span></summary>
             <div class="perbody">
-              <div class="wo2 mgrd" id="usePerBox"><div><label class="label" for="usePer" id="usePerL">Между ревизиями</label><select id="usePer"></select></div></div>
-              <p class="label perl" id="perOwn">Или свои даты — остатки берутся из ближайших ревизий</p>
-              <div class="wo2 mgrd" id="perOwnBox"><div><label class="label" for="perFrom">С</label><input id="perFrom" type="date"></div><div><label class="label" for="perTo">По</label><input id="perTo" type="date"></div></div>
-              <p class="wnhint" id="perRangeHint"></p>
-              <details class="incmapd reved" id="revEdD"><summary>Цифры ревизии — проверить, поправить или внести вручную</summary><div id="revEd"></div></details>
+              <div class="wo2 mgrd" id="perPick"><div><label class="label" for="perA">Начало</label><select id="perA"></select></div><div><label class="label" for="perB">Конец</label><select id="perB"></select></div></div>
+              <p class="wnhint" id="perHint"></p>
+              <div id="perDays"></div>
+              <details class="incmapd reved" id="revEdD"><summary>Внести день, которого нет в списке, — посчитали на бумаге</summary><div id="revEd"></div></details>
             </div>
           </details>
           <details class="perstep" id="stepSal"><summary><span class="psn"></span><span class="pst"><b>Продажи R-Keeper</b><small id="stepSalS">…</small></span></summary>
@@ -465,7 +463,7 @@
           <details class="incmapd reved povd" data-s="sold"><summary>Продано по позициям ревизии — проверить, поправить или внести вручную</summary><div class="pov"></div></details>
         </div>
           </details>
-          <div class="perstep" id="stepRec" hidden><span class="psn"></span><span class="pst"><b>Рецепты</b><small id="stepRecS">…</small></span><button type="button" class="link" data-go="sal">Открыть</button></div>
+          <div class="perstep" id="stepRec"><span class="psn"></span><span class="pst"><b>Рецепты</b><small id="stepRecS">…</small></span><button type="button" class="link" data-go="sal">Открыть</button></div>
           <details class="perstep" id="stepInc"><summary><span class="psn"></span><span class="pst"><b>Приход</b><small id="stepIncS">…</small></span></summary>
       <div id="mgrInc" class="perbody">
         <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Выгрузите приходные накладные из R-Keeper в Excel (.xlsx) или CSV и загрузите сюда. Сайт сам найдёт столбцы
@@ -488,8 +486,19 @@
 
           </details>
           <details class="perstep" id="stepWo"><summary><span class="psn"></span><span class="pst"><b>Списания и проработки</b><small id="stepWoS">…</small></span></summary>
-      <div id="mgrSum" class="perbody">
+      <div class="perbody">
       <details class="incmapd reved povd" data-s="wo"><summary>Списания по позициям ревизии — проверить, поправить или внести вручную</summary><div class="pov"></div></details>
+      <p class="wnhint perl">Акты за эти дни — во вкладке <button type="button" class="link" data-go="sum">«Списания»</button>.</p>
+      </div>
+          </details>
+        </div>
+        <p class="mgrsum" id="useSum"></p>
+        <p class="warn" id="useWarn" role="status"></p>
+        <div id="useList"></div>
+      </div>
+
+
+      <div id="mgrSum" hidden>
       <div class="result tcard wo">
         <div class="tname"><em id="mgrSub"></em><h2 class="h3">Списания и проработки</h2></div>
         <div class="wobody">
@@ -516,9 +525,7 @@
       <p class="mgrfoot"><button type="button" class="link" id="mgrCopy" disabled>Скопировать сводку</button></p>
       </div>
 
-          </details>
-          <details class="perstep" id="mgrRepD"><summary><span class="psn"></span><span class="pst"><b>Письма с отчётом</b><small id="stepMailS">…</small></span></summary>
-            <div id="mgrRep" class="perbody">
+            <div id="mgrRep" hidden>
         <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">После каждой ревизии — письмо с итогом её периода: ревизия против продаж, недостача и излишек в ₽ (если продажи
           ещё не загружены — второе письмо, когда их загрузят). Каждый понедельник в 9:00 — письмо за прошлую неделю: последняя ревизия против продаж,
           списания и проработки, приход, что ниже нормы, ревизии, открытия смен («Бар готов» в чеклисте) и входы. Ниже — недельное письмо.</p></details>
@@ -535,16 +542,16 @@
         <div class="repview" id="repView"></div>
         <p class="mgrfoot"><button type="button" class="link" id="repSend" disabled>Отправить это письмо сейчас</button></p>
       </div>
-          </details>
-        </div>
-        <p class="mgrsum" id="useSum"></p>
-        <p class="warn" id="useWarn" role="status"></p>
-        <div id="useList"></div>
-      </div>
 
+      <div id="mgrCk" hidden></div>
+      <div id="mgrFrs" hidden></div>
+      <div id="mgrRvs" hidden></div>
+      <div id="mgrBl" hidden></div>
+      <div id="mgrTk" hidden></div>
 
       <div id="mgrSal" hidden>
-        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Продажи R-Keeper загружаются в разделе «Период» (шаг «Продажи»).
+        <p class="mgrback"><button type="button" class="link" data-go="use">← Расход</button></p>
+        <details class="mgrhelp"><summary>Как это работает</summary><p class="wnhint">Продажи R-Keeper загружаются во вкладке «Расход» (шаг «Продажи»).
           Здесь — <b>расход на блюдо</b> (сколько каждой позиции уходит на одно блюдо) и <b>рецепты заготовок</b> (сырьё на 1 л): сайт предлагает их сам
           по техкартам и меню — подтвердите один раз. Период — какие продажи показать в списке блюд.</p></details>
         <div class="result tcard wo"><div class="tname"><em id="salPerLab"></em><h3>Период продаж</h3></div><div class="wobody">
@@ -718,6 +725,7 @@
 <script src="js/open.js" defer></script>
 <script src="js/xlsx.js" defer></script>
 <script src="js/mgr.js" defer></script>
+<script src="js/mgr2.js" defer></script>
 <script src="js/calc.js" defer></script>
 <script src="js/swipe.js" defer></script>
 
