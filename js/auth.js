@@ -292,7 +292,8 @@ function route(){
   if (/^fridge-[a-z0-9]+$/.test(h) && typeof frRoute === "function") return frRoute(h.slice(7));   // QR на холодильнике
   if (h === "bartenders") return goBt();
   showView("bar");
-  if (h === "card") gPanel("card");
+  if (/^menu-/.test(h)) menuJump(h.slice(5));                           // QR этикетки — позиция в меню
+  else if (h === "card") gPanel("card");
   else if (h) jumpTo(h.replace(/^sostav-/, ""));                       // «Состав и аллергены» из меню — #sostav-id
   else gBack();
 }

@@ -199,6 +199,7 @@ const CARD_EN = {
   chilimed: ["Chili-honey syrup", "water, honey, chili pepper"],
   ananaspf: ["Pineapple-parsley purée", "pineapple, parsley"],
   imbir: ["Ginger syrup", "water, sugar, ginger"],
+  kcitrus: ["Citrus cordial", "orange, lime, lemon, water, sugar"],
   sirop: ["Sugar syrup", "water, sugar"],
   igristoe: ["Sparkling wine foam", "sparkling wine, egg white"],
   kisloty: ["Acid mix", "lactic acid, citric acid"]
@@ -266,7 +267,7 @@ let mActive = "all", gPane = "menu", mScroll = null;
 
 function mTile(x){
   const ci = x.c ? cardItem(x.c) : null, n = mName(x), d = mDesc(x);
-  return '<article class="mtile">' +
+  return '<article class="mtile"' + (x.c ? ' data-c="' + esc(x.c) + '"' : '') + '>' +
     '<div class="chead"><h3>' + esc(n) + '</h3></div>' +
     '<div class="cbody">' + (ci && ci.img ? '<div class="mtx"><p class="mdesc">' + esc(d) + '</p><button type="button" class="mmore" data-more="' + esc(x.c) + '">' + t("more") + '<span aria-hidden="true">→</span></button></div>' +
       '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async" data-more="' + esc(x.c) + '">' : '<p class="mdesc">' + esc(d) + '</p>') + '</div>' +
@@ -275,7 +276,7 @@ function mTile(x){
 }
 function mRow(x){
   const ci = x.c ? cardItem(x.c) : null, d = mDesc(x);
-  return '<li class="mrow"><div class="mn"><span class="mname">' + esc(mName(x)) + '</span>' +
+  return '<li class="mrow"' + (x.c ? ' data-c="' + esc(x.c) + '"' : '') + '><div class="mn"><span class="mname">' + esc(mName(x)) + '</span>' +
     (d ? '<small>' + esc(d) + '</small>' : '') +
     (ci ? '<a class="mlink" href="#sostav-' + esc(x.c) + '">' + t("link") + ' →</a>' : '') + '</div>' +
     '<span class="mv">' + esc(mVol(x)) + '</span><b class="mp">' + esc(x.p) + '</b></li>';
@@ -443,6 +444,17 @@ function pubReset(){
   pubObj(CARD_EN, JSON.parse(JSON.stringify(PUB0.en))); pubObj(GROUP_EN, JSON.parse(JSON.stringify(PUB0.gen)));
   pubV = ""; pubFrom = "files"; mActive = "all";
 }
+/* QR этикетки — #menu-id: меню на месте этой позиции (плитка или строка), она подсвечена */
+function menuJump(id){
+  gPanel("menu");
+  mActive = "all"; $("gq").value = "";
+  drawMenuChips(); drawMenu();
+  const el = [...$("mout").querySelectorAll("[data-c]")].find(x => x.dataset.c === id);
+  if (!el) return;                                                    // позиции ещё нет (меню из таблицы грузится) — найдёт pubRedraw
+  document.querySelectorAll(".mtile.hit, .mrow.hit").forEach(x => x.classList.remove("hit"));
+  el.classList.add("hit");
+  if (typeof jumpKeep === "function") jumpKeep(el); else el.scrollIntoView({block: "start"});
+}
 function pubRedraw(){
   drawMenuChips(); drawMenu();
   if (typeof drawCard === "function"){
@@ -453,6 +465,7 @@ function pubRedraw(){
   if (typeof storyRefresh === "function") storyRefresh();               // карточка «Узнать больше» — тексты из таблицы
   /* QR на позицию, которой не было в старой копии: коктейль с фото — карточку открыл storyRefresh, остальное — в «Состав» */
   const h = decodeURIComponent(location.hash.slice(1)), id = h.replace(/^sostav-/, "");
+  if (/^menu-/.test(h) && !$("viewBar").hidden) return menuJump(h.slice(5));
   if (id && h !== "bartenders" && h !== "card" && !(typeof storyFor === "function" && storyFor(h)) && cardItem(id) && typeof jumpTo === "function" && !$("viewBar").hidden){
     const el = document.getElementById(id);
     if (gPane !== "card" || !el || !el.classList.contains("hit")) jumpTo(id);
