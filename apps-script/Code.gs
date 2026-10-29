@@ -672,7 +672,15 @@ const MREV_PLACE = [
   ["Молочная кислота", "Специи, зелень", "литр"], ["Лимонная кислота", "Специи, зелень", "кг"], ["Анис", "Специи, зелень", "г"],
   ["Корица молотая", "Специи, зелень", "кг"], ["Гвоздика", "Специи, зелень", "кг"],
   ["Цветы на украшение", "Фрукты, овощи", "кг"], ["Листья бамбука", "Фрукты, овощи", "кг"], ["Свежая мята", "Фрукты, овощи", "г"]];
-const MREV_ALIAS = [["Бартендерс", "Бартендерс джин"]];      // повтор → основная позиция: строки нет, числа складываются
+const MREV_ALIAS = [["Бартендерс", "Бартендерс джин"], ["Шабли пти", "Шабли Жан Марк"], ["Виньо Верде Белое", "Маре Гриль Белое"]];   // повтор → основная позиция: строки нет, числа складываются
+/* в новый бланк не переносятся (решение бар-менеджера, интервью 10.2026): старая карта, сняты с продажи. [раздел, позиция] */
+const MREV_DROP = [["Премиксы на коктейли", "Сигма бой"], ["Премиксы на коктейли", "Вишневый Пирог"], ["Премиксы на коктейли", "Брекфест Тини"],
+  ["Премиксы на коктейли", "Саммер Спритц"], ["Премиксы на коктейли", "Огуречный хьюго"],
+  ["Заготовки", "Кордиал Гибискус"], ["Заготовки", "Колд брю"], ["Заготовки", "Сироп Щавель пф"], ["Заготовки", "Сироп Базилик п/ф"],
+  ["Заготовки", "Премикс для лимонада вишня персик"], ["Заготовки", "Лимонад грейпфрут"], ["Заготовки", "Пюре вишня п/ф"],
+  ["Настойки", "Айриш"], ["Настойки", "Мандарин"], ["Настойки", "Клубника каркаде"],
+  ["Пиво в бутылках", "Балтика нулевка грейпфрут"], ["Пиво разлив", "Мейзон"], ["Б/алко", "милкис"], ["Б/алко", "Лимонад Шихан"]];
+const mrevDropped = (sec, n) => MREV_DROP.some(x => mnorm(x[1]) === mnorm(n) && (!sec || mnorm(x[0]) === mnorm(sec)));
 const mrevNewBlank = () => mprops().getProperty("MREV_BLANK") === MREV_BLANK_V;
 const mrevUCanon = u => { const t = String(u || "").trim(), k = t.toLowerCase().replace(/\.$/, "");
   return /^(л|литр|литры)$/.test(k) ? "литр" : /^(г|гр)$/.test(k) ? "г" : k === "кг" || k === "шт" ? k : t; };
@@ -727,12 +735,15 @@ function mrevRotate() {
   MREV_PLACE.forEach(x => { place[mnorm(x[0])] = x; });
   MREV_ALIAS.forEach(x => { alias[mnorm(x[0])] = x[1]; });
   let cur = null;
+  const dupAt = {};                                         // повтор → раздел, где он стоял (для переноса ключей)
   rows.forEach(x => {
     const r = vals[x.r - 7], w = fw[x.r - 7];
     if (x.t !== "i") { cur = { t: x.t, n: x.n, a: String(r[0]).trim(), items: [] }; secs.push(cur); return; }
     const it = { a: String(r[0]).trim(), n: x.n, u: mrevUCanon(r[2]), bold: w[1] === "bold" };
-    if (cur && cur.t === "h" && cur.n === MREV_NEW) {
-      if (alias[mnorm(x.n)]) return;                        // повтор — его числа сложатся с основной (mrevColMap)
+    const inNew = cur && cur.t === "h" && cur.n === MREV_NEW;
+    if (mrevDropped(inNew ? "" : cur ? cur.n : "", x.n)) return;   // снято с продажи — в новый бланк не идёт
+    if (alias[mnorm(x.n)]) { dupAt[mnorm(x.n)] = cur ? cur.n : ""; return; }   // повтор — его числа сложатся с основной (mrevColMap)
+    if (inNew) {
       const p = place[mnorm(x.n)];
       if (p) pend.push([p[1], Object.assign(it, { u: p[2] || it.u, bold: false })]); else extra.push(it);
       return;
@@ -749,9 +760,16 @@ function mrevRotate() {
     if (!z.items.some(y => mnorm(y.n) === mnorm(it.n))) z.items.push(it);
     moved[refKey(MREV_NEW, it.n)] = [z.n, it.n];
   });
-  MREV_ALIAS.forEach(a => { const p = place[mnorm(a[1])]; if (p && secOf(p[1])) moved[refKey(MREV_NEW, a[0])] = [secOf(p[1]).n, a[1]]; });
+  /* повтор → основная: её раздел в новом бланке (основная уже стоит в разделе или переносится туда из «Новых позиций») */
+  const owner = n => secs.find(z => z.n !== MREV_NEW && z.items.some(y => mnorm(y.n) === mnorm(n)));
+  MREV_ALIAS.forEach(a => {
+    const z = owner(a[1]);
+    if (!z) return;
+    moved[refKey(MREV_NEW, a[0])] = [z.n, a[1]];
+    if (dupAt[mnorm(a[0])] && dupAt[mnorm(a[0])] !== MREV_NEW) moved[refKey(dupAt[mnorm(a[0])], a[0])] = [z.n, a[1]];
+  });
   MREV_PATCH.forEach(x => {                                 // позиции бланка, которых в прошлом листе не было
-    if (has(x[1])) return;
+    if (has(x[1]) || alias[mnorm(x[1])] || mrevDropped(x[0], x[1])) return;
     const z = secOf(x[0]);
     (z ? z.items : extra).push({ a: "", n: x[1], u: mrevUCanon(x[2]), bold: false });
   });
@@ -1977,7 +1995,12 @@ function mgrWo(p) {
    позиции (0,7 — бутылка 0,7 л); норма — сколько держать, в тех же единицах. */
 const REF = "Справочник";
 const REF_HEAD = ["Раздел", "Позиция", "Ед. изм.", "Код R-Keeper", "Тара", "Норма (держать)", "Поставщик", "Цена закупки", "Заметка",
-  "Название в R-Keeper", "Коэф. R-Keeper", "Ед. R-Keeper"];               // J, K, L — запоминает загрузка прихода (K — для единицы L)
+  "Название в R-Keeper", "Коэф. R-Keeper", "Ед. R-Keeper",                // J, K, L — запоминает загрузка прихода (K — для единицы L)
+  "Сверка с продажами"];                                                   // M: да / нет / пусто — по разделу (мелочь — нет)
+/* «мелочь» (решение бар-менеджера): фрукты, зелень, специи, десерты, заморозка, соусы — по продажам точно не посчитать;
+   в выводе о расходе — только расход, без «недостачи». Пустая «Сверка» — по разделу, «да» / «нет» — как задано */
+const REF_LOOSE = /^(фрукты|специи|десерты|консервация|заправки)/i;
+const refLoose = (sec, chk) => { const c = String(chk || "").trim().toLowerCase(); return c === "нет" ? true : c === "да" ? false : REF_LOOSE.test(String(sec).trim()); };
 const REF_F = ["u", "code", "tara", "norm", "sup", "price", "note"];      // столбцы C…I
 const refKey = (sec, n) => [sec, n].map(x => String(x).trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ")).join("|");
 
@@ -2032,9 +2055,10 @@ function dailyNames() {
   return MEMO.dn = new Set(pos.map(x => nameKey(x.n)));
 }
 /* строка для сайта: [раздел, позиция, ед., код, тара, норма, поставщик, цена, заметка, есть в бланке (месячной), название R-Keeper, коэф., ед. R-Keeper,
-   есть в ежедневной ревизии] */
+   есть в ежедневной ревизии, сверка («да» / «нет» / ""), мелочь (1 — без «недостачи»)] */
 const refRow = (r, inBlank) => [String(r[0]).trim(), String(r[1]).trim()].concat(r.slice(2, 9).map(x => String(x).trim()),
-  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim(), String(r[11] || "").trim(), inBlank && dailyNames().has(nameKey(r[1])) ? 1 : 0]);
+  [inBlank ? 1 : 0, String(r[9] || "").trim(), String(r[10] || "").trim(), String(r[11] || "").trim(), inBlank && dailyNames().has(nameKey(r[1])) ? 1 : 0,
+   String(r[12] || "").trim(), refLoose(r[0], r[12]) ? 1 : 0]);
 /* справочник для сайта: по порядку бланка; строки, которых в бланке уже нет, — в конце с пометкой */
 function mgrRef() {
   const lock = lockOrBusy(15000);
@@ -2060,6 +2084,7 @@ function mgrRefSet(p) {
     u: clean(f.u, 20), code: clean(f.code, 30), tara: numf(f.tara), norm: numf(f.norm),
     sup: clean(f.sup, 80), price: numf(f.price), note: clean(f.note, 200)
   };
+  const chk = f.chk === undefined ? null : /^(да|нет)$/.test(String(f.chk)) ? String(f.chk) : "";   // старый сайт не шлёт — не трогаем
   if (vals.tara === null || vals.norm === null || vals.price === null) return { error: "bad" };
   const lock = lockOrBusy(15000);
   try {
@@ -2069,6 +2094,7 @@ function mgrRefSet(p) {
     if (i < 0) return { error: "gone" };
     sh.getRange(i + 2, 3, 1, 2).setNumberFormat("@");                     // ед. и код — текстом
     sh.getRange(i + 2, 3, 1, REF_F.length).setValues([REF_F.map(k => vals[k])]);
+    if (chk !== null) sh.getRange(i + 2, 13).setNumberFormat("@").setValue(chk);
     try { CacheService.getScriptCache().remove("munits"); } catch (e) {}
     SpreadsheetApp.flush();
     const r = refVals(sh.getRange(i + 2, 1, 1, REF_HEAD.length).getValues())[0];
@@ -2871,7 +2897,17 @@ function mgrPeriod(p) {
   const ref = mgrRef();
   if (!ref.ok) return ref;
   if (p && p.kind === "m") return mgrPeriodM(p, ref);
-  const tl = revTimeline(), R = tl.revs, out = { ok: true, kind: "d", revs: R.map(revOut), rows: [] };
+  const tl = revTimeline(), R = tl.revs, out = { ok: true, kind: "d", revs: R.map(revOut), rows: [], wd: workDays() };
+  /* все дни ежедневной ревизии (и неполные — где посчитали не все зоны): начало и конец можно выбрать любые */
+  out.days = tl.all.map(x => ({ d: x.d, iso: x.iso, wd: WD_RU[isoWd(x.iso)], who: x.who, full: x.full, z: x.z }));
+  if (p && ddmmOk(p.da) && ddmmOk(p.db)) {
+    const A = tl.all.find(x => x.d === p.da), B = tl.all.find(x => x.d === p.db);
+    if (A && B && A.iso < B.iso) {
+      out.sel = { a: A.d, b: B.d }; out.from = revOut(A, -1); out.to = revOut(B, -1);
+      out.skipped = [];
+      return perDays(ref, A, B, out);
+    }
+  }
   if (R.length < 2) return out;
   let i = p && p.i != null && String(p.i) !== "" ? parseInt(p.i, 10) : R.length - 1;
   if (!(i >= 1 && i < R.length)) i = R.length - 1;
@@ -2888,8 +2924,10 @@ function mgrPeriod(p) {
   const A = R[a], B = R[i];
   out.i = i; out.a = a; out.from = revOut(A, a); out.to = revOut(B, i);
   out.skipped = tl.all.filter(x => !x.full && x.iso >= A.iso && x.iso <= B.iso && x !== A && x !== B).map(x => ({ d: x.d, z: x.z }));
-
-  /* остатки двух ревизий */
+  return perDays(ref, A, B, out);
+}
+/* остатки двух дней ежедневной ревизии (столбцы «Итога») → расчёт периода между ними */
+function perDays(ref, A, B, out) {
   const M = perMaps(ref), ss = revBook(), ts = revTotal(ss), pos = revPositions(ts), du = dailyUnits(ref);
   const h = pos.length ? pos[pos.length - 1].row - 2 : 0;
   const va = h ? ts.getRange(3, A.col, h, 1).getValues() : [], vb = h ? ts.getRange(3, B.col, h, 1).getValues() : [];
@@ -2950,10 +2988,11 @@ function mgrPeriodM(p, ref) {
 }
 /* справочник для расчёта: ключ, единица, тара, цена; позиция бланка по названию (однозначная) */
 function perMaps(ref) {
-  const M = { byName: {}, byAll: {}, RU: {}, RT: {}, RP: {} };
+  const M = { byName: {}, byAll: {}, RU: {}, RT: {}, RP: {}, RL: {} };
   ref.rows.forEach(r => {
     const key = refKey(r[0], r[1]), k = nameKey(r[1]);
     M.RU[key] = refUn(r[2]); M.RT[key] = num(String(r[4]).replace(",", ".")); M.RP[key] = num(String(r[7]).replace(",", "."));
+    if (r[15] === 1) M.RL[key] = 1;
     if (r[9] === 1) { M.byName[k] = k in M.byName ? null : key; (M.byAll[k] = M.byAll[k] || []).push(key); }
   });
   M.keyOf = (sec, n) => { const k = refKey(sec || "", n); if (sec && k in M.RU) return k; const b = M.byName[nameKey(n)]; return b || ""; };
@@ -3103,15 +3142,17 @@ function perCalc(M, A, B, items, nokey, out) {
     if (x.zag) { r.info = 1; out.rows.push(r); return; }                  // заготовка с рецептом — уже в сырье
     if (was != null) r.exp = r3(was + x.inc - x.sold - x.wo - x.pr);      // ожидалось (автозаявке — «сейчас»)
     if (was == null || now == null) { r.miss = was == null ? "from" : "to"; out.rows.push(r); return; }
+    r.use = r3(was + x.inc - x.wo - x.pr - now);                          // ушло на самом деле (по ревизии, приходу и актам)
+    if (M.RL[k]) { r.loose = 1; out.rows.push(r); return; }              // мелочь — только расход, без «недостачи»
     r.diff = r3(now - r.exp);
     r.money = Math.round(r.diff * r.price);
     if (r.money < 0) short -= r.money; else over += r.money;
     out.rows.push(r);
   });
-  out.rows.sort((a, b) => (a.info || a.miss ? 1 : 0) - (b.info || b.miss ? 1 : 0) || Math.abs(b.money || 0) - Math.abs(a.money || 0) || Math.abs(b.diff || 0) - Math.abs(a.diff || 0) || a.n.localeCompare(b.n, "ru"));
+  out.rows.sort((a, b) => (a.info || a.miss || a.loose ? 1 : 0) - (b.info || b.miss || b.loose ? 1 : 0) || Math.abs(b.money || 0) - Math.abs(a.money || 0) || Math.abs(b.diff || 0) - Math.abs(a.diff || 0) || a.n.localeCompare(b.n, "ru"));
   out.short = short; out.over = over;
   out.nokey = nokey;
-  out.noprice = out.rows.filter(r => !r.info && !r.miss && r.diff && !r.price).length;
+  out.noprice = out.rows.filter(r => !r.info && !r.miss && !r.loose && r.diff && !r.price).length;
   out.unconv = Object.keys(out.unconv || {});
   out.zagno = Object.keys(items).filter(k => /^(заготовки|премиксы на коктейли|настойки)\|/.test(k) && !zag[k]).map(k => items[k].n);
   return out;
@@ -3707,7 +3748,7 @@ function periodHtml(per) {
     (per.zagno || []).length ? "Заготовки без рецепта: " + per.zagno.join(", ") + "." : "",
     (per.nokey || []).length ? "Нет в справочнике: " + per.nokey.join(", ") + "." : "",
     per.noprice ? "Без цены закупки (не в сумме ₽): " + per.noprice + " поз." : ""].filter(Boolean);
-  const rows = per.rows.filter(r => !r.info && !r.miss);
+  const rows = per.rows.filter(r => !r.info && !r.miss && !r.loose);        // мелочь — без сверки, в письме не нужна
   let h = '<div style="font:14px Arial,sans-serif;color:#222">' +
     '<h2 style="font:700 19px Arial,sans-serif;margin:0 0 4px">Бар «Мечты» — ревизия ' + hx(lab(per.to)) + '</h2>' +
     '<p style="margin:0;color:#666">Период ' + hx(lab(per.from) + " → " + lab(per.to)) + (per.to.who ? " · считали: " + hx(per.to.who) : "") + '</p>' +
