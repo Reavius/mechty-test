@@ -135,7 +135,7 @@ function mrow(it, hist, mi){
   b.cols.forEach((c, k) => { if (k !== mi && it.c[k] != null) sub.push((c.zones && c.zones.length ? mcolName(c) : c.name + " " + String(c.date).slice(0, 5)) + ": " + rfmt(it.c[k])); });
   if (it.p != null) sub.push("прошлая: " + mfmt(it.p, it.u));
   return '<li class="rrow' + (it.tot == null ? " mnone" : "") + '" data-r="' + it.r + '">' +
-    '<div class="rtop"><span class="rn">' + esc(it.n) + (it.u ? '<small>' + esc(it.u) + '</small>' : '') + '</span>' +
+    '<div class="rtop"><span class="rn">' + esc(it.n) + (it.u ? '<small class="mu">, ' + esc(it.u) + '</small>' : '') + '</span>' +
     '<b' + (it.pend ? ' class="pend"' : '') + ' title="Итог">' + (it.tot == null ? '—' : rfmt(it.tot) + (it.u ? '<small>' + esc(it.u) + '</small>' : '')) + '</b></div>' +
     '<div class="rsub">' + esc(sub.join(" · ")) + '</div>' +
     (mi >= 0 ? '<form class="rin"><input type="text" inputmode="decimal" autocomplete="off" placeholder="Напр. 3 или 0,7×6" aria-label="Добавить: ' + esc(it.n) + '">' +

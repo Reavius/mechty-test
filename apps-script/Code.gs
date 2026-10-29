@@ -626,15 +626,7 @@ function mrevPatch(sh) {
         const at = rows[j - 1].r;                                // последняя позиция раздела
         sh.insertRowAfter(at);
         sh.getRange(at + 1, 1, 1, 3).breakApart().setFontWeight("normal").setNumberFormat("@").setValues([["", x[1], x[2]]]);
-      } else {                                                   // раздел в листе переименовали — вниз, в «Новые позиции»
-        let last = Math.max(sh.getLastRow(), 7);
-        if (!rows.some(r => r.t === "h" && r.n === MREV_NEW)) {
-          last++; ensureRows(sh, last);
-          sh.getRange(last, 1, 1, 3).merge().setValue(MREV_NEW).setFontWeight("bold");
-        }
-        ensureRows(sh, last + 1);
-        sh.getRange(last + 1, 1, 1, 3).setNumberFormat("@").setValues([["", x[1], x[2]]]);
-      }
+      } else mrevNewRow(sh, rows, x[1], x[2]);                  // раздел в листе переименовали — в «Новые позиции»
       rows = mrevRows(sh); n++;
     }
     done.push(x[1]);
@@ -642,6 +634,122 @@ function mrevPatch(sh) {
   mprops().setProperty("MREV_PATCH", JSON.stringify(done));
   return n;
 }
+/* новая позиция — сразу под последней в «Новых позициях» (раздела нет — он заводится сразу под списком). Строка
+   вставляется, поэтому ничего ниже не затирается и пустых строк между позициями не бывает. Возвращает номер строки. */
+function mrevNewRow(sh, rows, name, unit) {
+  const items = rows.filter(r => r.t === "i"), h = rows.findIndex(r => r.t === "h" && r.n === MREV_NEW);
+  let at;
+  if (h < 0) {
+    at = items.length ? items[items.length - 1].r : 6;
+    sh.insertRowAfter(at); at++;
+    sh.getRange(at, 1, 1, 3).breakApart().setNumberFormat("@").setValues([[MREV_NEW, "", ""]]);
+    sh.getRange(at, 1, 1, 3).merge().setFontWeight("bold");
+  } else {
+    let j = h + 1;
+    while (j < rows.length && rows[j].t === "i") j++;
+    at = rows[j - 1].r;                                       // последняя позиция раздела (или сам заголовок)
+  }
+  sh.insertRowAfter(at);
+  sh.getRange(at + 1, 1, 1, 3).breakApart().setFontWeight("normal").setNumberFormat("@").setValues([["", name, unit || ""]]);
+  return at + 1;
+}
+
+/* Один раз (версия MREV_PACK_V): столбцы ревизий — вплотную к «Ед. изм.»: совсем пустые столбцы между C и ревизиями
+   и между ревизиями убираются; совсем пустые строки внутри «Новых позиций» — тоже; служебная строка 4 (id столбцов) —
+   скрыта. «Совсем пустой» — ни значения, ни формулы, ни заметки; столбец с id ревизии не трогается никогда.
+   Ссылки «Итога» при удалении столбцов и строк Таблица поправляет сама. */
+const MREV_PACK_V = "1";
+function mrevPack(sh) {
+  const ids = mrevIds(sh), cs = Object.keys(ids).map(k => ids[k]), lastRow = Math.max(sh.getLastRow(), 7);
+  let gone = 0;
+  if (cs.length) {
+    const right = Math.max.apply(null, cs);
+    if (right > 4) {
+      const rg = sh.getRange(1, 4, lastRow, right - 3), v = rg.getValues(), f = rg.getFormulas(), nt = rg.getNotes();
+      const del = [];
+      for (let c = 0; c < right - 3; c++)
+        if (cs.indexOf(c + 4) < 0 && v.every((r, i) => r[c] === "" && !f[i][c] && !nt[i][c])) del.push(c + 4);
+      for (let i = del.length - 1; i >= 0;) {                // отрезками, справа налево — номера не сбиваются
+        let j = i;
+        while (j > 0 && del[j - 1] === del[j] - 1) j--;
+        sh.deleteColumns(del[j], del[i] - del[j] + 1); gone += del[i] - del[j] + 1;
+        i = j - 1;
+      }
+    }
+  }
+  const rows = mrevRows(sh), h = rows.findIndex(r => r.t === "h" && r.n === MREV_NEW);
+  if (h >= 0) {
+    let j = h + 1;
+    while (j < rows.length && rows[j].t === "i") j++;
+    const from = (h > 0 ? rows[h - 1].r : rows[h].r) + 1, to = rows[j - 1].r, lc = Math.max(sh.getLastColumn(), 3);
+    if (to > from) {
+      const rg = sh.getRange(from, 1, to - from + 1, lc), v = rg.getValues(), f = rg.getFormulas(), nt = rg.getNotes();
+      for (let i = v.length - 1; i >= 0; i--)
+        if (v[i].every((x, c) => x === "" && !f[i][c] && !nt[i][c])) sh.deleteRow(from + i);
+    }
+  }
+  mrevFreezeOld(sh);
+  if (sh.getMaxRows() >= 4) sh.hideRows(4);
+  mprops().setProperty("MREV_PACK", MREV_PACK_V);
+  return gone;
+}
+function mrevPackIfDue() {
+  if (mprops().getProperty("MREV_PACK") === MREV_PACK_V) return 0;
+  const sh = mrevSheet(true);
+  return sh ? mrevPack(sh) : 0;
+}
+
+/* Позиции, которые бармены дописали в «Новые позиции», а им есть место в бланке: [название, раздел, ед. изм.].
+   Один раз (свойство MREV_MOVED) строка переезжает в конец своего раздела вместе с числами всех ревизий;
+   пустая ед. изм. в листе — дописывается. Позиции нет в «Новых позициях» — ничего не делается. */
+const MREV_MOVE = [];
+function mrevMoveIfDue(sh) {
+  let done = [];
+  try { done = JSON.parse(mprops().getProperty("MREV_MOVED") || "[]"); } catch (e) { done = []; }
+  const todo = MREV_MOVE.filter(x => done.indexOf(x[0]) < 0);
+  if (!todo.length) return 0;
+  let n = 0;
+  todo.forEach(x => {
+    const rows = mrevRows(sh), h = rows.findIndex(r => r.t === "h" && r.n === MREV_NEW);
+    let j = h + 1;
+    while (h >= 0 && j < rows.length && rows[j].t === "i") j++;
+    const src = h >= 0 ? rows.slice(h + 1, j).find(r => mnorm(r.n) === mnorm(x[0])) : null;
+    const s0 = rows.findIndex(r => r.t !== "i" && mnorm(r.n) === mnorm(x[1]));
+    if (src && s0 >= 0) {
+      let k = s0 + 1;
+      while (k < rows.length && rows[k].t === "i") k++;
+      const dest = rows[k - 1].r + 1;                            // сразу под последней позицией раздела
+      sh.moveRows(sh.getRange(src.r, 1), dest);
+      const at = dest < src.r ? dest : dest - 1;
+      if (x[2] && !String(sh.getRange(at, 3).getDisplayValue()).trim()) sh.getRange(at, 3).setNumberFormat("@").setValue(x[2]);
+      sh.getRange(at, 1, 1, 3).setFontWeight("normal");
+      n++;
+    }
+    done.push(x[0]);
+  });
+  mprops().setProperty("MREV_MOVED", JSON.stringify(done));
+  return n;
+}
+const mrevMoveDue = P => { let d = []; try { d = JSON.parse(P.MREV_MOVED || "[]"); } catch (e) {} return MREV_MOVE.some(x => d.indexOf(x[0]) < 0); };
+
+/* единица позиции на сайте: справочник → «Ед. изм.» в листе → бланк по умолчанию; пусто — литр, как везде */
+const MREV_U = { "литр": "л", "литры": "л", "л": "л", "l": "л", "мл": "мл", "кг": "кг", "kg": "кг", "г": "г", "гр": "г", "шт": "шт", "бут": "бут" };
+const mrevU = u => { const k = String(u || "").trim().toLowerCase().replace(/\.$/, ""); return k ? MREV_U[k] || k : "л"; };
+function mrevUnits() {
+  if (MEMO.munits) return MEMO.munits;
+  const cache = CacheService.getScriptCache();
+  let m = null;
+  try { m = JSON.parse(cache.get("munits") || "null"); } catch (e) { m = null; }
+  if (!m) {
+    m = { ref: {}, auto: {} };
+    REF_AUTO.forEach(x => { m.auto[refKey(x[0], x[1])] = x[2]; });
+    const rs = refSheet(false), rl = rs ? rs.getLastRow() : 0;
+    if (rl >= 2) rs.getRange(2, 1, rl - 1, 3).getDisplayValues().forEach(r => { const u = String(r[2]).trim(); if (u) m.ref[refKey(r[0], r[1])] = u; });
+    try { cache.put("munits", JSON.stringify(m), 600); } catch (e) {}
+  }
+  return MEMO.munits = m;
+}
+
 /* под блокировкой; create — нет листа: создать (месячная ревизия), иначе подождать (справочник берёт MREV_ROWS) */
 function mrevPatchIfDue(create) {
   if (!mrevPatchDue(mprops().getProperties())) return 0;
@@ -658,6 +766,8 @@ function monthly(p) {
   const lock = lockOrBusy(20000);
   try {
     mrevPatchIfDue(true);                    // новые позиции бланка — в лист
+    mrevPackIfDue();                         // один раз: столбцы ревизий — вплотную к C, строка 4 скрыта
+    if (mrevMoveDue(mprops().getProperties())) mrevMoveIfDue(mrevSheet());   // «Новые позиции» — в свои разделы
     if (act === "state") return { ok: true, mrev: mrevState() };
     if (act === "begin") return mrevBegin(rn, p.zones, p.fresh === "1");
     if (act === "mine") return mrevMine(rn, p.zones);
@@ -794,6 +904,7 @@ function mrevState(ro) {
   const rows = mrevRows(sh), ids = mrevIds(sh), P = mprops().getProperties();
   if (P.MREV_OPEN) { if (ro) return null; mprops().deleteProperty("MREV_OPEN"); }   // старая схема (до «Итога»)
   if (ro && mrevPatchDue(P)) return null;                                           // новые позиции бланка — под блокировкой
+  if (ro && (P.MREV_PACK !== MREV_PACK_V || mrevMoveDue(P))) return null;           // уборка и переносы — под блокировкой
   let b = null;
   try { b = JSON.parse(P.MREV_BLOCK || "null"); } catch (e) { b = null; }
   const lastRow = Math.max(sh.getLastRow(), 7);
@@ -813,8 +924,12 @@ function mrevState(ro) {
   const tv = b && ids[b.total] ? colVals(ids[b.total]) : [];
   const cv = cols.map(c => colVals(ids[c.id]));
   const prevId = P.MREV_PREV, pv = prevId && ids[prevId] ? colVals(ids[prevId]) : [];
+  const U = mrevUnits();
+  let sec = "";
   rows.forEach(x => {
-    if (x.t !== "i") return;
+    if (x.t !== "i") { sec = x.n; return; }
+    const k = refKey(sec, x.n);
+    x.u = mrevU(U.ref[k] || x.u || U.auto[k]);                // «Верментино Вилла Солаис» — л, «Гранат» — кг, «Корона» — шт
     x.tot = val(tv, x.r);
     x.c = cv.map(a => val(a, x.r));
     x.p = val(pv, x.r);
@@ -840,14 +955,59 @@ function mrevRead() {
   try { return mrevState(); } finally { lock.releaseLock(); }
 }
 
-/* новый столбец справа: шапка в строках 3–6 */
+/* новый столбец — сразу за последним столбцом ревизий (вставкой: ничего правее не затирается, пустых столбцов
+   между ревизиями не бывает); шапка в строках 3–6, строка 4 (id) скрыта */
 function mrevNewCol(sh, id, title, name, date) {
-  const col = Math.max(sh.getLastColumn(), 3) + 1;
+  const ids = mrevIds(sh), cs = Object.values(ids), after = cs.length ? Math.max.apply(null, cs) : 3, col = after + 1;
   ensureCols(sh, col);
+  if (sh.getLastColumn() >= col && !mrevColEmpty(sh, col)) {
+    /* правее ревизий что-то вписано руками — сдвигаем это вставкой, а открытые формулы «Итога» идущей ревизии
+       (Таблица сдвинула бы их начало) пишем заново */
+    sh.insertColumnAfter(after);
+    sh.getRange(1, col, sh.getMaxRows(), 1).clearFormat();
+    const b = mrevBlock(), tc = b && b.open ? ids[b.total] : 0;
+    if (tc) mrevReopen(sh, tc);
+  }
+  if (sh.getMaxRows() >= 4) sh.hideRows(4);
   sh.getRange(3, col, 4, 1).setNumberFormat("@").setValues([[title], [id], [name], [date]]);
   sh.getRange(5, col, 2, 1).setFontWeight("bold").setHorizontalAlignment("center");
   sh.getRange(4, col).setFontColor("#9aa0a6").setFontSize(8);
   return col;
+}
+
+/* столбец совсем пустой: ни значения, ни формулы, ни заметки */
+function mrevColEmpty(sh, col) {
+  const n = Math.max(sh.getLastRow(), 7), rg = sh.getRange(1, col, n, 1), v = rg.getValues(), f = rg.getFormulas(), nt = rg.getNotes();
+  return v.every((r, i) => r[0] === "" && !f[i][0] && !nt[i][0]);
+}
+/* открытые формулы «Итога» (до конца строки) — заново, со столбца сразу за «Итогом» */
+function mrevReopen(sh, tc) {
+  const n = Math.max(sh.getLastRow(), 7) - 6;
+  if (n < 1) return;
+  const rg = sh.getRange(7, tc, n, 1), fs = rg.getFormulas();
+  let any = false;
+  const out = fs.map((r, i) => { const f = r[0];
+    if (/^=IF\(COUNT\(\$?[A-Z]{1,3}\$?\d+:\$?\d+\),SUM\(\$?[A-Z]{1,3}\$?\d+:\$?\d+\),""\)$/.test(f)) { any = true; return [totFormula(tc, i + 7, 0)]; }
+    return [f || null]; });
+  if (any) out.forEach((r, i) => { if (r[0] && r[0] !== fs[i][0]) sh.getRange(i + 7, tc).setFormula(r[0]); });
+}
+/* «Итог» прошлых ревизий — только по своим столбцам: открытые ссылки (до конца строки) закрываются на последнем
+   столбце своей ревизии, иначе прошлый «Итог» прибавлял бы числа следующей. Вписанное руками не трогаем. */
+function mrevFreezeOld(sh) {
+  const ids = mrevIds(sh), b = mrevBlock(), cur = b && b.open ? b.total : "";
+  const tots = Object.keys(ids).filter(k => /-t$/.test(k) && k !== cur).map(k => ids[k]).sort((x, y) => x - y);
+  if (!tots.length) return 0;
+  const all = Object.values(ids).sort((x, y) => x - y), rows = mrevRows(sh);
+  let n = 0;
+  tots.forEach(tc => {
+    const next = all.filter(c => c > tc && Object.keys(ids).some(k => ids[k] === c && /-t$/.test(k)))[0];
+    const end = Math.max(tc + 1, ...all.filter(c => c > tc && (!next || c < next)));
+    const items = rows.filter(x => x.t === "i");
+    if (!items.length) return;
+    const top = items[0].r, cnt = items[items.length - 1].r - top + 1, fs = sh.getRange(top, tc, cnt, 1).getFormulas();
+    fs.forEach((r, i) => { const g = r[0] && freezeRefs(r[0], end); if (g && g !== r[0]) { sh.getRange(top + i, tc).setFormula(g); n++; } });
+  });
+  return n;
 }
 
 /* fresh — «Начать новую ревизию»: прошлая должна быть посчитана целиком, она закрывается («Итог» фиксируется) */
@@ -872,6 +1032,7 @@ function mrevBegin(name, zones, fresh) {
   const key = "m" + started.getTime().toString(36);
   b = { key: key, title: "Ревизия · " + months[loc.getUTCMonth()] + " " + loc.getUTCFullYear(), date: date, started: started.getTime(),
         open: true, total: key + "-t", cols: [], n: 0 };
+  mrevFreezeOld(sh);                                       // прошлые «Итоги» не потянут столбцы этой
   const tc = mrevNewCol(sh, b.total, b.title, "Итог", date);
   sh.getRange(7, tc, Math.max(sh.getLastRow(), 7) - 6, 1).setFontWeight("bold");
   mrevTotals(sh, tc, mrevRows(sh), 0);
@@ -1043,13 +1204,7 @@ function mrevAdd(p, isNew) {
     const same = rows.filter(x => x.t === "i" && mnorm(x.n) === mnorm(text(name, 80)));
     if (same.length) { row = same[same.length - 1].r; pos = same[same.length - 1].n; }
     else {
-      let last = Math.max(sh.getLastRow(), 7);
-      if (!rows.some(x => x.t === "h" && x.n === MREV_NEW)) {
-        last++; ensureRows(sh, last);
-        sh.getRange(last, 1, 1, 3).merge().setValue(MREV_NEW).setFontWeight("bold");
-      }
-      row = last + 1; ensureRows(sh, row);
-      sh.getRange(row, 1, 1, 3).setNumberFormat("@").setValues([["", text(name, 80), text(p.unit, 12)]]);
+      row = mrevNewRow(sh, rows, text(name, 80), text(p.unit, 12));
       sh.getRange(row, tc).setFormula(totFormula(tc, row, 0)).setFontWeight("bold");
     }
   } else if (!(row >= 7) || mnorm(pos = String(sh.getRange(row, 2).getDisplayValue()).trim()) !== mnorm(name)) {
@@ -1825,6 +1980,7 @@ function mgrRefSet(p) {
     if (i < 0) return { error: "gone" };
     sh.getRange(i + 2, 3, 1, 2).setNumberFormat("@");                     // ед. и код — текстом
     sh.getRange(i + 2, 3, 1, REF_F.length).setValues([REF_F.map(k => vals[k])]);
+    try { CacheService.getScriptCache().remove("munits"); } catch (e) {}
     SpreadsheetApp.flush();
     const r = refVals(sh.getRange(i + 2, 1, 1, REF_HEAD.length).getValues())[0];
     return { ok: true, row: refRow(r, true) };
