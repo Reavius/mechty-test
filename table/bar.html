@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0E1014">
+<meta name="color-scheme" content="dark">
+<title>Заказы со столов — бармену</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/table/table.css">
+<script src="/table/bar.js" defer></script>
+</head>
+<body class="tbarv">
+<main class="wrap">
+  <header class="bhead">
+    <div>
+      <p class="mark">Бар «Мечты» · бармену</p>
+      <h1>Заказы со&nbsp;столов</h1>
+    </div>
+    <button type="button" class="bsound" id="bSound" aria-pressed="false">Звук нового заказа: выкл</button>
+  </header>
+  <div class="bstats" id="bStats"></div>
+  <div class="modes gtabs btabs" id="bTabs" role="group" aria-label="Раздел">
+    <button type="button" data-p="orders" aria-pressed="true">Заказы</button>
+    <button type="button" data-p="stop" aria-pressed="false">Стоп-лист</button>
+    <button type="button" data-p="rev" aria-pressed="false">Отзывы</button>
+  </div>
+  <div id="pOrders"><div class="bgrid" id="bOrders"><p class="empty">Загружаем…</p></div></div>
+  <div id="pStop" hidden>
+    <p class="ghint">Отмеченное гости не смогут заказать — в меню будет «Нет в наличии».</p>
+    <div class="controls"><input id="gq" type="search" placeholder="Поиск по меню" autocomplete="off" aria-label="Поиск по меню"></div>
+    <div id="bStop"></div>
+  </div>
+  <div id="pRev" hidden><ul class="brev" id="bRev"></ul></div>
+  <p class="ghint" id="bFoot"></p>
+</main>
+<div class="bslip" id="bSlip" hidden role="dialog" aria-modal="true" aria-label="Бегунок заказа">
+  <div class="bslip-in">
+    <pre id="bSlipText"></pre>
+    <div class="bact"><button type="button" class="main" id="bPrint">Печать</button><button type="button" id="bSlipClose">Закрыть</button></div>
+  </div>
+</div>
+</body>
+</html>
