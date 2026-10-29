@@ -69,6 +69,37 @@ function coef(){
   return ing && ing[1] ? v / ing[1] : 0;
 }
 
+/* Многосоставный ингредиент (п/ф, премикс) — своя рецептура в калькуляторе: нажали на название — под строкой его состав
+   ровно на это количество (и на каждый мерник), внутри — так же. Связь по названию: «Фисташковая база п/ф» → «Фисташковая база». */
+const ckey = s => String(s).toLowerCase().replace(/ё/g, "е").replace(/\s*(п\/ф|\(премикс\))\s*/g, " ").replace(/\s+/g, " ").trim();
+const csub = (x, path) => {
+  if (x[2] !== "мл") return null;
+  const r = ALL.find(y => ckey(y.n) === ckey(x[0]));
+  return r && r.out > 0 && !path.includes(r.id) ? r : null;
+};
+const copen = new Set();
+/* стрелка — вместе с последним словом, чтобы не уезжала на отдельную строку */
+const csubName = n => { const i = n.lastIndexOf(" ") + 1;
+  return esc(n.slice(0, i)) + '<span class="cw">' + esc(n.slice(i)) + '<i class="car" aria-hidden="true"></i></span>'; };
+const kfmt = k => "×" + String(Math.round(k * 1000) / 1000).replace(".", ",");
+function crows(r, k, round, path){
+  const lvl = path.length - 1, cols = cn > 1 ? 3 : 2, cin = l => ' class="cin" style="--l:' + l + '"';
+  return r.i.map(x => {
+    const v = x[1] * k, s = csub(x, path), key = s ? path.concat(s.id).join(">") : "", on = !!s && copen.has(key);
+    let h = '<tr' + (lvl ? cin(lvl) : '') + '><td class="n">' +
+      (s ? '<button type="button" class="csub" data-k="' + esc(key) + '" aria-expanded="' + on + '">' + csubName(x[0]) + '</button>' : esc(x[0])) + '</td>' +
+      '<td class="v">' + fmt(v, round) + '<small>' + esc(x[2]) + '</small></td>' +
+      (cn > 1 ? '<td class="p">' + fmt(v / cn, round) + '</td>' : '') + '</tr>';
+    if (on){
+      const sk = v / s.out;
+      h += '<tr' + cin(lvl + 1).replace('"cin"', '"cin ccap"') + '><td colspan="' + cols + '">' + esc(s.n) + ' на ' + fmt(v, round) + ' мл — ' + kfmt(sk) + ' от замеса' +
+        (cn > 1 ? ', в мерник — ' + fmt(v / cn, round) + ' мл' : '') + '</td></tr>' + crows(s, sk, round, path.concat(s.id)) +
+        (s.m ? '<tr' + cin(lvl + 1).replace('"cin"', '"cin ccap"') + '><td colspan="' + cols + '"><b>Метод.</b> ' + esc(s.m) + '</td></tr>' : '');
+    }
+    return h;
+  }).join("");
+}
+
 function drawCalc(){
   if (!R) return;
   const r = cur();
@@ -82,12 +113,7 @@ function drawCalc(){
   if (r.basis === "por") stats.splice(1, 0, ["Порций", fmt(k, false), "шт."]);
   if (r.abv) stats.push(["Крепость", "≈ " + r.abv, "%"]);
 
-  const rows = r.i.map(x => {
-    const v = x[1] * k;
-    return '<tr><td class="n">' + esc(x[0]) + '</td>' +
-      '<td class="v">' + fmt(v, round) + '<small>' + esc(x[2]) + '</small></td>' +
-      (cn > 1 ? '<td class="p">' + fmt(v / cn, round) + '</td>' : '') + '</tr>';
-  }).join("");
+  const rows = crows(r, k, round, [r.id]), subs = r.i.some(x => csub(x, [r.id]));
 
   $("res").innerHTML =
     '<dl class="stats">' + stats.map(s =>
@@ -96,7 +122,8 @@ function drawCalc(){
     '<table><thead><tr><th>Ингредиент</th><th>Всего</th>' +
     (cn > 1 ? '<th>В каждый мерник</th>' : '') +
     '</tr></thead><tbody>' + rows + '</tbody></table>' +
-    (r.m ? '<p class="method"><b>Метод.</b> ' + esc(r.m) + '</p>' : '');
+    (r.m ? '<p class="method"><b>Метод.</b> ' + esc(r.m) + '</p>' : '') +
+    (subs ? '<p class="method">Подчёркнутое — п/ф или премикс: нажмите, чтобы увидеть его состав на это количество.</p>' : '');
 
   $("resNote").textContent = (round && k > 0)
     ? "Значения округлены: до 5 от сотни и выше, до 1 ниже. Снимите «Округлять», чтобы увидеть точный расчёт."
@@ -138,6 +165,15 @@ function start(){
     if (!b) return;
     $("val").value = b.dataset.v;
     drawCalc();
+  });
+  $("res").addEventListener("click", e => {
+    const b = e.target.closest(".csub");
+    if (!b) return;
+    const k = b.dataset.k;
+    if (!copen.delete(k)) copen.add(k);
+    drawCalc();
+    const nb = [...$("res").querySelectorAll(".csub")].find(x => x.dataset.k === k);
+    if (nb) nb.focus();
   });
   $("pos").addEventListener("change", () => { buildIngs(); syncInput(); drawCalc(); });
   $("ing").addEventListener("change", () => { syncInput(); drawCalc(); });

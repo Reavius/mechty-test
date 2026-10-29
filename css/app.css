@@ -270,6 +270,18 @@ td.n{font-weight:500;line-height:1.35}
 td.v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
 td.v small{font-weight:600;color:var(--muted);font-size:12px;margin-left:3px}
 td.p{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:var(--accent);white-space:nowrap}
+/* калькулятор: п/ф или премикс раскрывается — его состав на нужное количество, со сдвигом по уровню */
+.csub{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;text-align:left;cursor:pointer;
+  text-decoration:underline dashed var(--accent);text-underline-offset:4px}
+.csub .cw{white-space:nowrap}
+.csub .car{display:inline-block;margin-left:5px;font-style:normal;color:var(--accent)}
+.csub .car::before{content:"▸"}
+.csub[aria-expanded="true"] .car::before{content:"▾"}
+.csub:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+tr.cin td{background:var(--surface-2);font-size:13.5px;padding-block:8px}
+tr.cin td.n,tr.ccap td{padding-left:calc(16px + var(--l) * 14px)}
+tr.ccap td{color:var(--muted);font-size:12px;line-height:1.4}
+tr.ccap td b{color:var(--fg)}
 
 .tq{
   width:100%;font-family:var(--sans);font-size:16px;font-weight:500;margin-top:4px;
