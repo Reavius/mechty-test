@@ -88,7 +88,8 @@ const STFX = {
 /* живое видео вместо сцены: проигрывается вперёд и назад по кругу — так оно и собрано в файле (без стыка), без звука */
 const STVID = {
   pantera: { mp4: "video/pantera.mp4", webm: "video/pantera.webm", poster: "video/pantera.jpg" },
-  pornstar: { mp4: "video/pornstar.mp4", webm: "video/pornstar.webm", poster: "video/pornstar.jpg" }
+  pornstar: { mp4: "video/pornstar.mp4", webm: "video/pornstar.webm", poster: "video/pornstar.jpg" },
+  maitai: { mp4: "video/maitai.mp4", webm: "video/maitai.webm", poster: "video/maitai.jpg" }
 };
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
