@@ -91,7 +91,8 @@ const STVID = {
   pornstar: { mp4: "video/pornstar.mp4", webm: "video/pornstar.webm", poster: "video/pornstar.jpg" },
   maitai: { mp4: "video/maitai.mp4", webm: "video/maitai.webm", poster: "video/maitai.jpg" },
   "c-bosford": { mp4: "video/bosford.mp4", webm: "video/bosford.webm", poster: "video/bosford.jpg" },
-  tropiki: { mp4: "video/tropiki.mp4", webm: "video/tropiki.webm", poster: "video/tropiki.jpg" }
+  tropiki: { mp4: "video/tropiki.mp4", webm: "video/tropiki.webm", poster: "video/tropiki.jpg" },
+  "c-watermelon": { mp4: "video/watermelon.mp4", webm: "video/watermelon.webm", poster: "video/watermelon.jpg" }
 };
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
