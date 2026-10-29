@@ -1104,3 +1104,24 @@ html.stopen{overflow:hidden}
 .fs-leg{stroke:#c9a24b;stroke-width:2.4;stroke-linecap:round}
 .fs-glass{fill:#141820;stroke:#c9a24b;stroke-width:1.2}
 .fs-shelf{stroke:#8d7a4f;stroke-width:1.6;stroke-linecap:round}
+
+/* ── меню: плитки коктейлей — вертикальные везде: фото сверху, под ним название, состав, кнопка и цена.
+   На компьютере — по три в ряд, а не во всю ширину; на телефоне — по две (на совсем узком — по одной). ── */
+.mgrid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.mtile{padding:14px 16px 13px}
+.mtile .mph{height:200px;display:flex;align-items:center;justify-content:center;margin:0 0 12px;border-radius:10px;
+  background:radial-gradient(ellipse 60% 55% at 50% 62%,rgba(201,162,75,.11),transparent 72%)}
+.mtile .cph{height:100%;width:auto;max-width:100%;margin:0;object-fit:contain}
+.mtile .mglass{width:52px;height:auto;color:var(--muted);opacity:.4}
+.mtile h3{font-size:21px;margin:0 0 8px}
+.mtile .mdesc{flex:1 0 auto;align-self:stretch;margin:0 0 12px;font-size:13.5px}
+.mtile .mmore{align-self:flex-start;margin:0 0 13px}
+.mtile .mfoot{flex-direction:column-reverse;align-items:flex-start;gap:6px}
+@media (max-width:520px){
+  .mgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .mtile{padding:12px 12px 11px}
+  .mtile .mph{height:150px;margin-bottom:10px}
+  .mtile h3{font-size:18px}
+  .mtile .mdesc{font-size:13px;line-height:1.4}
+  .mtile .mmore{padding:9px 12px;font-size:12.5px;margin-bottom:11px}
+}

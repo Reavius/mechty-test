@@ -199,6 +199,7 @@ const CARD_EN = {
   chilimed: ["Chili-honey syrup", "water, honey, chili pepper"],
   ananaspf: ["Pineapple-parsley purée", "pineapple, parsley"],
   imbir: ["Ginger syrup", "water, sugar, ginger"],
+  kcitrus: ["Citrus cordial", "orange, lime, lemon, water, sugar"],
   sirop: ["Sugar syrup", "water, sugar"],
   igristoe: ["Sparkling wine foam", "sparkling wine, egg white"],
   kisloty: ["Acid mix", "lactic acid, citric acid"]
@@ -264,12 +265,16 @@ const mVol = x => x.v ? x.v + " " + t(x.u === "pcs" ? "pcs" : "ml") : "";
 
 let mActive = "all", gPane = "menu", mScroll = null;
 
+/* плитка — вертикальная на любом экране: фото (нет фото — значок бокала), название, состав, «Узнать больше», объём и цена */
+const MGLASS = '<svg class="mglass" viewBox="0 0 48 64" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M6 6h36L24 30z"/><path d="M11 11.5h26"/><path d="M24 30v24"/><path d="M14 58h20"/></svg>';
 function mTile(x){
-  const ci = x.c ? cardItem(x.c) : null, n = mName(x), d = mDesc(x);
+  const ci = x.c ? cardItem(x.c) : null, n = mName(x), d = mDesc(x), ph = ci && ci.img;
   return '<article class="mtile">' +
-    '<div class="chead"><h3>' + esc(n) + '</h3></div>' +
-    '<div class="cbody">' + (ci && ci.img ? '<div class="mtx"><p class="mdesc">' + esc(d) + '</p><button type="button" class="mmore" data-more="' + esc(x.c) + '">' + t("more") + '<span aria-hidden="true">→</span></button></div>' +
-      '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async" data-more="' + esc(x.c) + '">' : '<p class="mdesc">' + esc(d) + '</p>') + '</div>' +
+    '<div class="mph">' + (ph ? '<img class="cph" src="' + esc(ci.img) + '" alt="' + esc(n) + '"' + phwh(ci.img) + ' loading="lazy" decoding="async" data-more="' + esc(x.c) + '">' : MGLASS) + '</div>' +
+    '<h3>' + esc(n) + '</h3>' +
+    '<p class="mdesc">' + esc(d) + '</p>' +
+    (ph ? '<button type="button" class="mmore" data-more="' + esc(x.c) + '">' + t("more") + '<span aria-hidden="true">→</span></button>' : '') +
     '<div class="mfoot">' + (ci ? '<a class="mlink" href="#sostav-' + esc(x.c) + '">' + t("link") + ' →</a>' : '<span></span>') +
     '<span class="mvp">' + (x.v ? '<small>' + esc(mVol(x)) + '</small>' : '') + '<b>' + esc(x.p) + '</b></span></div></article>';
 }
