@@ -3,7 +3,7 @@
    Сеть есть, но еле дышит (слабый сигнал в баре): страница ждёт сеть не дольше 4 секунд, дальше — сохранённая копия,
    и тогда весь её код тоже из кэша (версии не смешиваются); свежая версия скачивается в фоне — к следующему открытию.
    Запросы к Google (журнал, ревизия) не кэшируются. */
-const CACHE = "mechty-v87";
+const CACHE = "mechty-v89";
 const SLOW = 4000;
 const STALE = new Set();                                      // вкладки, открытые из сохранённой копии
 const CODE = ["css/app.css", "js/core.js", "js/data.js", "js/menu.js", "js/card.js", "js/story.js", "js/fridge.js", "js/auth.js", "js/ttk.js", "js/wo.js", "js/lart.js", "js/labels.js",
@@ -41,6 +41,9 @@ self.addEventListener("fetch", e => {
     e.respondWith(STALE.has(e.clientId) ? caches.match(req).then(hit => hit || fresh(req, req)) : fresh(req, req));
     return;
   }
+
+  /* видео — мимо кэша: браузер просит его кусками (Range), Safari иначе не проиграет */
+  if (/\.(mp4|webm|mov)$/i.test(url.pathname)) return;
 
   /* свои файлы и шрифты Google: из кэша, в фоне обновляем */
   if (url.origin === location.origin || /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) {
