@@ -85,6 +85,8 @@ const STFX = {
   "c-campari": {fizz: 14},
   "c-sarti": {fizz: 14}
 };
+/* живое видео вместо сцены: проигрывается вперёд и назад по кругу — так оно и собрано в файле (без стыка), без звука */
+const STVID = { pantera: { mp4: "video/pantera.mp4", webm: "video/pantera.webm", poster: "video/pantera.jpg" } };
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
 function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; s = s || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
@@ -154,13 +156,25 @@ function stFxStart(id, tone){
   stFx.raf = requestAnimationFrame(stFxLoop);
 }
 function stFxStop(){ if (stFx && stFx.raf) cancelAnimationFrame(stFx.raf); if (stFx) stFx.raf = 0; }
-document.addEventListener("visibilitychange", () => { if (!document.hidden && stFx && stId && !stFx.raf && !stReduce()) stFx.raf = requestAnimationFrame(stFxLoop); });
+/* видео карточки: «уменьшить движение» — стоит на первом кадре; не запустилось (экономия батареи) — тоже первый кадр */
+function stVidPlay(){
+  const v = $("stVid");
+  if (!v || v.hidden || !stId) return;
+  if (stReduce()){ v.pause(); return; }
+  const p = v.play();
+  if (p && p.catch) p.catch(() => {});
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && stFx && stId && !stFx.raf && !stReduce()) stFx.raf = requestAnimationFrame(stFxLoop);
+  if (!document.hidden && stId) stVidPlay();
+});
 
 function stBuild(){
   stEl = document.createElement("div");
   stEl.className = "story"; stEl.id = "story"; stEl.hidden = true;
   stEl.setAttribute("role", "dialog"); stEl.setAttribute("aria-modal", "true"); stEl.setAttribute("aria-labelledby", "stName");
-  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async"></div></div>' +
+  stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async"></div>' +
+    '<video class="stvid" id="stVid" muted playsinline loop preload="none" disablepictureinpicture disableremoteplayback aria-hidden="true" hidden></video></div>' +
     '<div class="stpanel"><button type="button" class="stback" id="stBack">' + ST_ICON.back + '<span></span></button>' +
     '<p class="stkick" id="stKick"></p><h2 id="stName"></h2>' +
     '<div class="stpages" id="stPages"></div>' +
@@ -219,7 +233,20 @@ function stDraw(it){
     img.src = hd;
   }
   $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — бокал стоит на стойке
-  if (!stFx || stFx.id !== it.id) stFxStart(it.id, tone); else stFx.tone = tone;
+  const sv = STVID[it.id], vid = $("stVid");
+  $("stBg").hidden = $("stGlass").hidden = !!sv; vid.hidden = !sv;
+  if (sv){                                                                   // видео вместо сцены с пузырьками
+    stFxStop(); stFx = null;
+    if (vid.dataset.src !== sv.mp4){                                         // MP4 — iPhone и почти все; WebM — где MP4 не играет
+      vid.dataset.src = sv.mp4; vid.poster = sv.poster;
+      vid.innerHTML = '<source src="' + sv.mp4 + '" type="video/mp4"><source src="' + sv.webm + '" type="video/webm">';
+      vid.load();
+    }
+    stVidPlay();
+  } else {
+    if (vid.dataset.src){ vid.pause(); vid.innerHTML = ""; vid.removeAttribute("poster"); vid.dataset.src = ""; vid.load(); }
+    if (!stFx || stFx.id !== it.id) stFxStart(it.id, tone); else stFx.tone = tone;
+  }
   img.alt = cname(it);
   $("stBack").querySelector("span").textContent = su("back");
   $("stKick").textContent = m ? m.sec : "";
@@ -252,7 +279,7 @@ function storyOpen(id, from){
   stEl.hidden = false; stDim.hidden = false;
   document.documentElement.classList.add("stopen");
   $("stPages").scrollLeft = 0; stNavDraw();
-  stFit();
+  stFit(); stVidPlay();                                             // Safari не запускает видео, пока карточка скрыта
   if (!was && !stReduce() && stEl.animate){                           // «раскрывается» из плитки: прозрачность и масштаб — плавно и на iPhone
     stOrigin(from);
     stEl.animate([{opacity: 0, transform: "scale(.9)"}, {opacity: 1, transform: "scale(1)"}], {duration: 320, easing: "cubic-bezier(.2,.8,.2,1)"});
@@ -263,7 +290,7 @@ function storyOpen(id, from){
 }
 function storyClose(){
   if (!stId || !stEl) return;
-  const from = stFrom, done = () => { stEl.hidden = true; stDim.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; };
+  const from = stFrom, done = () => { stEl.hidden = true; stDim.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; $("stVid").pause(); };
   stId = ""; stFrom = null; stPushed = false;
   if (stQrEl) stQrEl.hidden = true;
   if (!stReduce() && stEl.animate){
