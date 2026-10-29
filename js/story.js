@@ -64,7 +64,7 @@ function stTone(hex){
   return {h: Math.round(h), s: Math.round(Math.max(28, Math.min(72, s * 100)))};
 }
 
-let stEl = null, stId = "", stPushed = false, stFrom = null, stBack = null, stQrEl = null;
+let stDim = null, stEl = null, stId = "", stPushed = false, stFrom = null, stBack = null, stQrEl = null;
 const stReduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 /* ── живая сцена за фото: петля 3 с, как гифка ──
    Глубокий фон в цвете коктейля, мягкие огни бара (боке), пузырьки, глянцевая стойка.
@@ -168,6 +168,11 @@ function stBuild(){
     '<div class="stsoc"><a class="stbtn" id="stTg" href="' + SOC.tg + '" target="_blank" rel="noopener">' + ST_ICON.tg + '</a>' +
     '<a class="stbtn" id="stIg" href="' + SOC.ig + '" target="_blank" rel="noopener">' + ST_ICON.ig + '</a>' +
     '<button type="button" class="stbtn" id="stQr">' + ST_ICON.qr + '</button></div></div>';
+  /* на широком экране карточка — колонкой по центру, вокруг затемнённое меню: нажали мимо — закрыть */
+  stDim = document.createElement("div");
+  stDim.className = "stdim"; stDim.hidden = true; stDim.setAttribute("aria-hidden", "true");
+  stDim.addEventListener("click", storyBack);
+  document.body.appendChild(stDim);
   document.body.appendChild(stEl);
   $("stBack").addEventListener("click", storyBack);
   $("stQr").addEventListener("click", stQr);
@@ -232,8 +237,8 @@ function stDraw(it){
 }
 /* точка, из которой карточка раскрывается и куда сворачивается: центр плитки (на экране) или центр экрана */
 function stOrigin(from){
-  const r = from && from.getBoundingClientRect(), on = r && r.bottom > 0 && r.top < innerHeight;
-  stEl.style.transformOrigin = on ? Math.round(r.left + r.width / 2) + "px " + Math.round(Math.min(innerHeight, Math.max(0, r.top + r.height / 2))) + "px" : "50% 50%";
+  const r = from && from.getBoundingClientRect(), on = r && r.bottom > 0 && r.top < innerHeight, b = stEl.getBoundingClientRect();
+  stEl.style.transformOrigin = on ? Math.round(r.left + r.width / 2 - b.left) + "px " + Math.round(Math.min(innerHeight, Math.max(0, r.top + r.height / 2)) - b.top) + "px" : "50% 50%";
 }
 /* открыть карточку: from — плитка меню (карточка «раскрывается» из неё) */
 function storyOpen(id, from){
@@ -244,24 +249,26 @@ function storyOpen(id, from){
   stId = id; stFrom = from || null;
   stDraw(it);
   if (!was) stBack = document.activeElement;
-  stEl.hidden = false;
+  stEl.hidden = false; stDim.hidden = false;
   document.documentElement.classList.add("stopen");
   $("stPages").scrollLeft = 0; stNavDraw();
   stFit();
   if (!was && !stReduce() && stEl.animate){                           // «раскрывается» из плитки: прозрачность и масштаб — плавно и на iPhone
     stOrigin(from);
     stEl.animate([{opacity: 0, transform: "scale(.9)"}, {opacity: 1, transform: "scale(1)"}], {duration: 320, easing: "cubic-bezier(.2,.8,.2,1)"});
+    stDim.animate([{opacity: 0}, {opacity: 1}], {duration: 320});
   }
   $("stBack").focus({preventScroll: true});
   return true;
 }
 function storyClose(){
   if (!stId || !stEl) return;
-  const from = stFrom, done = () => { stEl.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; };
+  const from = stFrom, done = () => { stEl.hidden = true; stDim.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; };
   stId = ""; stFrom = null; stPushed = false;
   if (stQrEl) stQrEl.hidden = true;
   if (!stReduce() && stEl.animate){
     stOrigin(from && from.isConnected ? from : null);
+    stDim.animate([{opacity: 1}, {opacity: 0}], {duration: 220, fill: "forwards"}).onfinish = () => stDim.getAnimations().forEach(a => a.cancel());
     stEl.animate([{opacity: 1, transform: "scale(1)"}, {opacity: 0, transform: "scale(.94)"}], {duration: 220, easing: "cubic-bezier(.4,0,1,1)"}).onfinish = done;
   } else done();
   if (stBack && stBack.isConnected) try { stBack.focus({preventScroll: true}); } catch (e) {}

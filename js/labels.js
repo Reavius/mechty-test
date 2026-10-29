@@ -1,7 +1,7 @@
 /* Этикетки Niimbot 50×30. */
 /* ════════════ Этикетки ════════════
    Рисуются на canvas чёрным по белому — для термопринтера (Niimbot). Состав — полный (c),
-   из открытой коктейльной карты, QR ведёт на позицию в ней. Украшения — labels/*.png. */
+   из открытой коктейльной карты, QR ведёт в меню для гостей — на эту позицию (#menu-id). Украшения — labels/*.png. */
 const LSIZES = [[50, 30]];                         // принтер бара — 50×30 мм
 const LPX = 16;                                    // точек на мм (≈ 400 dpi, с запасом)
 /* значки: свои (лимон, ягоды) — из шаблонов бара, остальные — из набора i-*.png */
@@ -55,7 +55,11 @@ function lshort(n){
 
 const lall = () => data.filter(g => !g.nolabel).flatMap(g => g.items.map(it => ({it, g})));
 const lcur = () => { const v = $("lpos").value; return lall().find(x => x.it.id === v) || lall()[0]; };
-const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "") + "#" + id;
+/* QR ведёт в меню — на эту позицию; у заготовок, которых в меню нет (свои п/ф), QR нет */
+const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "") + "#menu-" + id;
+const lqr = it => !it.lo && MENU.some(c => c.secs.some(s => s.items.some(x => x.c === it.id)));
+/* безалкогольные заготовки — с «п/ф» в названии */
+const lname = (it, g) => { const n = it.ln || it.n; return (g.nonalc || g.key === "pf") && !it.abv && !/п\/ф/i.test(n) ? n + " п/ф" : n; };
 const ldmy = d => String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + String(d.getFullYear()).slice(2);
 
 /* список позиций (меню и состав могли обновиться из таблицы — тогда список строится заново) */
@@ -185,7 +189,7 @@ function lcanvas(id, W, H){
 async function labDraw(){
   const sel = lcur(); if (!sel) return;
   const {it, g} = sel;
-  const name = it.ln || it.n;                        // короткое название для этикетки
+  const name = lname(it, g);                          // короткое название для этикетки (+ «п/ф» у безалкогольных заготовок)
   try { localStorage.setItem("mechty-lpos", it.id); } catch (e) {}
   const [mw, mh] = LSIZES[lsize], W = mw * LPX, H = mh * LPX;
   try { await document.fonts.load('700 40px "PT Serif"'); await document.fonts.load('400 40px "PT Serif"'); } catch (e) {}
@@ -257,7 +261,7 @@ async function labDraw(){
   /* QR — поменьше, клетки ровно по точкам термопринтера: 203 dpi = 8 точек/мм, клетка = 3 точки = 6 px холста */
   const bodyTop = tBase + tfs * .32, bodyBottom = H - mb;
   let qx = W - mb, qsz = 0, qy = 0;
-  if (window.qrcode && !it.lo){                             // только для этикеток (нет в карте) — без QR
+  if (window.qrcode && lqr(it)){                            // нет в меню (свои заготовки, только этикетка) — без QR
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
     const n = q.getModuleCount(), cell = Math.max(2, Math.round(LPX * 3 / 8));
     qsz = n * cell; qx = W - mb - H * .02 - qsz; qy = Math.round(bodyTop + (bodyBottom - bodyTop - qsz) / 2);
@@ -294,7 +298,8 @@ async function labDraw(){
     ctx.save(); ctx.translate(bx + dx + cs, by + cs); ctx.rotate(Math.PI); corner.draw(ctx, 0, 0, cs, cs); ctx.restore();
   }
 
-  $("llink").textContent = lurl(it.id);
+  $("llink").textContent = lqr(it) ? lurl(it.id) : "Без QR: этой позиции нет в меню для гостей";
+  $("lcopy").hidden = !lqr(it);
 }
 
 async function labShare(which){
