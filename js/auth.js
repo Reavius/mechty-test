@@ -183,6 +183,7 @@ function enter(p, name, email){
   $("meMail").textContent = email;
   fill();
   fillTtk();
+  if (typeof tkSync === "function") tkSync(true);             // правки техкарт менеджера (таблица) — поверх шифровки
   fillOrder();
   fillZone();
   setSect(sect);

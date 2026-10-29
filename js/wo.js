@@ -668,7 +668,8 @@ const woNetMsg = id => woRecOk.has(id) ? WO_RECN : WO_NET;
 const WO_NET = "Нет связи — акт ещё не в истории и не на Диске. Он отправится сам, как только появится связь (сайт должен быть открыт).";
 const WO_WAIT = "Таблица не приняла акт — пробуем ещё раз…";
 const WO_OLD = "Списания ждут новый Apps Script (см. README) — акт отправится, когда он будет.";
-const woSaved = url => "Акт сохранён — он в истории и на Google Диске" + (url ? " (<a class=\"link\" href=\"" + esc(url) + "\" target=\"_blank\" rel=\"noopener\">открыть</a>)" : "") + ".";
+/* сверху — только статус (без ссылок и кнопок): скачать файл — кнопкой под актом */
+const woSaved = () => "Акт сохранён — он в истории и на Google Диске.";
 /* одна отправка за раз; без force — не чаще раза в 30 с (вкладку открывают часто, а PDF тяжёлые) */
 let woFlushing = null, woAgain = false, woFlushAt = 0, woRetryT = 0, woRetryN = 0, woSent = 0;
 function woFlush(force){

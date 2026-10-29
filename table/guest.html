@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0E1014">
+<meta name="color-scheme" content="dark">
+<title>Заказ — бар «Мечты»</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/table/table.css">
+<script src="/table/guest.js" defer></script>
+</head>
+<body class="tguest">
+
+<!-- ── меню стола ── -->
+<main class="wrap" id="vMenu">
+  <header>
+    <div class="ghead">
+      <p class="mark">Бар «Мечты»</p>
+      <span class="tno" id="tNo"></span>
+    </div>
+    <h1>Меню</h1>
+    <p class="lede">Выберите напитки и оплатите — бармен начнёт готовить сразу после оплаты.</p>
+  </header>
+  <button type="button" class="tcur" id="tCur" hidden></button>
+  <div class="controls">
+    <input id="gq" type="search" placeholder="Поиск по меню" autocomplete="off" aria-label="Поиск по меню">
+    <div class="chips" id="mchips" role="group" aria-label="Фильтр по разделам"></div>
+  </div>
+  <div id="mout"><p class="empty">Загружаем меню…</p></div>
+</main>
+
+<button type="button" class="tbar" id="tBar" hidden>
+  <span class="tbar-n" id="tBarN"></span><b id="tBarSum"></b><span class="tbar-go">Корзина <span aria-hidden="true">→</span></span>
+</button>
+
+<!-- ── корзина ── -->
+<div class="tsheet" id="vCart" hidden role="dialog" aria-modal="true" aria-labelledby="cartH">
+  <div class="tsheet-in">
+    <div class="tsh-head">
+      <h2 id="cartH">Ваш заказ</h2>
+      <button type="button" class="tx" id="cartClose" aria-label="Закрыть">×</button>
+    </div>
+    <ul class="tlines" id="cartLines"></ul>
+    <label class="tlab" for="cartCom">Комментарий бармену</label>
+    <textarea id="cartCom" maxlength="300" rows="2" placeholder="Например: всё сразу, без трубочек"></textarea>
+    <label class="tchk" id="adultRow" hidden><input type="checkbox" id="adult"> <span>Мне есть 18 лет. Бармен может попросить документ.</span></label>
+    <div class="ttotal"><span>Итого</span><b id="cartSum"></b></div>
+    <p class="gmsg" id="cartMsg" role="alert"></p>
+    <button type="button" class="tpay" id="cartPay">Оплатить</button>
+    <p class="ghint">Оплата по СБП — в приложении вашего банка. Заказ начнут готовить только после полной оплаты.</p>
+  </div>
+</div>
+
+<!-- ── заказ: статус, время, чек, отзыв ── -->
+<main class="wrap narrow" id="vOrder" hidden>
+  <header>
+    <div class="ghead">
+      <p class="mark">Бар «Мечты»</p>
+      <span class="tno" id="oTable"></span>
+    </div>
+    <h1 id="oH">Заказ</h1>
+    <p class="lede" id="oLede"></p>
+  </header>
+  <ol class="tsteps" id="oSteps" aria-label="Статус заказа"><li>Оплачен</li><li>Готовится</li><li>Готов</li><li>Отдан</li></ol>
+  <div class="teta" id="oEta" aria-live="polite"></div>
+  <div class="tpaybox" id="oPay" hidden>
+    <button type="button" class="tpay" id="oPayGo">Оплатить</button>
+    <button type="button" class="tlink red" id="oCancel">Отменить заказ</button>
+  </div>
+  <section class="tcheck">
+    <div class="sechead"><h2>Чек</h2><em id="oPaid"></em></div>
+    <ul class="tlines ro" id="oLines"></ul>
+    <p class="tcom" id="oCom" hidden></p>
+    <div class="ttotal"><span>Итого</span><b id="oSum"></b></div>
+    <p class="ghint" id="oDemo"></p>
+  </section>
+  <section class="trev" id="oRev" hidden>
+    <div class="sechead"><h2>Как вам?</h2></div>
+    <div class="tstars" id="oStars" role="radiogroup" aria-label="Оценка от 1 до 5"></div>
+    <textarea id="oText" maxlength="500" rows="3" placeholder="Заметка или отзыв — его прочитают бармен и управляющий"></textarea>
+    <button type="button" class="tpay ghost" id="oSend">Отправить отзыв</button>
+    <p class="gmsg" id="oRevMsg" role="status"></p>
+  </section>
+  <button type="button" class="tlink" id="oMore">← Заказать ещё</button>
+</main>
+
+</body>
+</html>
