@@ -85,18 +85,14 @@ const STFX = {
   "c-campari": {fizz: 14},
   "c-sarti": {fizz: 14}
 };
-/* живое видео вместо сцены: проигрывается вперёд и назад по кругу — так оно и собрано в файле (без стыка), без звука */
-const STVID = {
-  pantera: { mp4: "video/pantera.mp4", webm: "video/pantera.webm", poster: "video/pantera.jpg" },
-  pornstar: { mp4: "video/pornstar.mp4", webm: "video/pornstar.webm", poster: "video/pornstar.jpg" },
-  maitai: { mp4: "video/maitai.mp4", webm: "video/maitai.webm", poster: "video/maitai.jpg" },
-  "c-bosford": { mp4: "video/bosford.mp4", webm: "video/bosford.webm", poster: "video/bosford.jpg" },
-  tropiki: { mp4: "video/tropiki.mp4", webm: "video/tropiki.webm", poster: "video/tropiki.jpg" },
-  "c-watermelon": { mp4: "video/watermelon.mp4", webm: "video/watermelon.webm", poster: "video/watermelon.jpg" },
-  "c-fiero": { mp4: "video/fiero.mp4", webm: "video/fiero.webm", poster: "video/fiero.jpg" },
-  "c-aperol": { mp4: "video/aperol.mp4", webm: "video/aperol.webm", poster: "video/aperol.jpg" },
-  "c-sarti": { mp4: "video/sarti.mp4", webm: "video/sarti.webm", poster: "video/sarti.jpg" }
-};
+/* живое видео вместо сцены: проигрывается вперёд и назад по кругу — так оно и собрано в файле (без стыка), без звука.
+   video/<файл>.av1.mp4 — Android и компьютер, .hevc.mp4 — iPhone и Mac, .mp4 (H.264) — запасной: браузер берёт первый, который
+   умеет; все — 768×432 и легче прежних в 2,5–4 раза (слабый интернет в баре). Первый кадр — <файл>.jpg */
+const STVID = {pantera: "pantera", pornstar: "pornstar", maitai: "maitai", "c-bosford": "bosford", tropiki: "tropiki", "c-watermelon": "watermelon",
+  "c-fiero": "fiero", "c-aperol": "aperol", "c-sarti": "sarti"};
+const STVID_SRC = [[".av1.mp4", 'video/mp4; codecs="av01.0.04M.08"'], [".hevc.mp4", 'video/mp4; codecs="hvc1.1.6.L90.B0"'], [".mp4", "video/mp4"]];
+/* телефон просит экономить трафик или сеть 2G — видео не грузим, остаётся первый кадр */
+const stLite = () => { const c = navigator.connection; return !!(c && (c.saveData || /2g$/.test(c.effectiveType || ""))); };
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
 function stRand(seed){ let s = 0; for (const ch of String(seed)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; s = s || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
@@ -243,13 +239,13 @@ function stDraw(it){
     img.src = hd;
   }
   $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — бокал стоит на стойке
-  const sv = STVID[it.id], vid = $("stVid");
+  const sv = STVID[it.id] ? "video/" + STVID[it.id] : "", vid = $("stVid");
   $("stBg").hidden = $("stGlass").hidden = !!sv; vid.hidden = !sv;
   if (sv){                                                                   // видео вместо сцены с пузырьками
     stFxStop(); stFx = null;
-    if (vid.dataset.src !== sv.mp4){                                         // MP4 — iPhone и почти все; WebM — где MP4 не играет
-      vid.dataset.src = sv.mp4; vid.poster = sv.poster;
-      vid.innerHTML = '<source src="' + sv.mp4 + '" type="video/mp4"><source src="' + sv.webm + '" type="video/webm">';
+    if (vid.dataset.src !== sv){
+      vid.dataset.src = sv; vid.poster = sv + ".jpg";
+      vid.innerHTML = stLite() ? "" : STVID_SRC.map(([x, t]) => '<source src="' + sv + x + '" type=\'' + t + '\'>').join("");
       vid.load();
     }
     stVidPlay();
