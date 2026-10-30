@@ -1915,7 +1915,9 @@ const SAL_CAT = ["сироп", "пюре", "сок", "кордиал", "фреш
    бадьян — «Анис»; ягоды с/м — «Ягоды с/м»; какао — «Горячий шоколад» */
 const SAL_ALIAS = [[/нуволе/i, "игристое розлив"], [/концентр/i, "концентрат в ассортименте"], [/лимонн\S*\s+фреш|фреш\s+лимонн/i, "лимонный сок пф"],
   [/^содов/i, "вода минеральная розлив"], [/^(тоник|кола)(\s|$)/i, "кола тоник литровые"], [/кофейн\S*\s+лик[её]р|лик[её]р\s+кофейн/i, "ликер кофе"],
-  [/^бадьян/i, "анис"], [/^(смородина|вишня|малина|клубника|черника|облепиха|ягоды)\s+с\/м/i, "ягоды с/м"], [/^какао(\s|$)/i, /^горяч\S*\s+шоколад/i]];
+  [/^бадьян/i, "анис"], [/^(смородина|вишня|малина|клубника|черника|облепиха|ягоды)\s+с\/м/i, "ягоды с/м"], [/^какао(\s|$)/i, /^горяч\S*\s+шоколад/i],
+  /* старая карта: «Балтика б/а» — грейпфрутовая нулевка; кордиал корица-базилик — базиликовый сироп, настоянный на корице */
+  [/^балтика\s+б\/?а/i, "балтика нулевка грейпфрут"], [/кордиал\s+корица.?базилик/i, "сироп базилик п/ф"]];
 const SAL_GEN = [[/^пюре(\s|$)/i, "пюре в ассортименте"], [/^сироп(\s|$)/i, "сироп в ассортименте"]];   // \b в JS не видит кириллицу
 const salByName = n => n instanceof RegExp ? sal.ref.findIndex(r => n.test(String(r[1]).trim())) : sal.ref.findIndex(r => incNorm(r[1]) === incNorm(n));
 /* блюдо R-Keeper → позиция бланка, когда в меню название по-английски или иначе, чем в бланке (бутылка, бокал, порция 40 мл) */
@@ -2396,65 +2398,98 @@ $("salDish").addEventListener("submit", async e => {
    (решение бар-менеджера): водка, ушедшая в настойку, — не недостача ── */
 const ZAG_SEC = /^(заготовки|премиксы на коктейли|настойки)$/i;
 const ZAG_GRP = {"заготовки": /заготов|полуфабрикат/i, "премиксы на коктейли": /премикс/i, "настойки": /настойк/i};
+/* заготовка бланка зовётся иначе, чем её замес в техкарте: название в бланке → название замеса */
+const ZAG_LINK = {"облепиха шраб": "Облепиховое пюре", "сироп щавель пф": "Щавелевый кордиал"};
+/* рецепта не было ни в старой, ни в новой техкарте и калькуляторе — рецепт не нужен (решение бар-менеджера, 10.2026):
+   считаются как есть и не попадают в «без рецепта». Тот же список — ZAG_NONE в Apps Script */
+const ZAG_NONE = ["Айриш", "Мандарин", "Клубника каркаде", "Кордиал Гибискус", "Колд брю", "Сироп Базилик п/ф", "Пюре вишня п/ф",
+  "Премикс для лимонада вишня персик", "Сигма бой", "Вишневый Пирог", "Брекфест Тини"].map(incNorm);
+const zagNone = n => ZAG_NONE.includes(incNorm(n));
 function zagCands(sec){
   const re = ZAG_GRP[String(sec).trim().toLowerCase()], out = [], seen = new Set();
-  const add = (g, x, ml) => { const k = incNorm(x.n); if (!re || !re.test(g) || seen.has(k) || !Array.isArray(x.i)) return; seen.add(k); out.push({n: x.n, i: x.i, ml}); };
-  /* выход: у техкарты «на замес» — [число, ед.], у рецепта калькулятора — мл */
-  (typeof K !== "undefined" ? K : []).forEach(G => G.items.forEach(x => { if (x.out) add(G.g, x, x.out); }));
+  const add = (g, x, ml, old) => { const k = incNorm(x.n); if (!re || !re.test(g) || seen.has(k) || !Array.isArray(x.i)) return; seen.add(k); out.push({n: x.n, i: x.i, ml, old}); };
+  /* выход: у техкарты «на замес» — [число, ед.], у рецепта калькулятора — мл; техкарта в долях («часть») — выход в долях */
+  const parts = x => x.i.length && x.i.every(y => String(y[2]).trim() === "часть") ? [x.i.reduce((a, y) => a + mgrN(y[1]), 0), "часть"] : null;
+  (typeof K !== "undefined" ? K : []).forEach(G => G.items.forEach(x => { if (x.out) add(G.g, x, x.out); else if (Array.isArray(x.i) && parts(x)) add(G.g, x, parts(x)); }));
   (R || []).forEach(G => G.items.forEach(x => { if (x.out > 0) add(G.g, x, [x.out, "мл"]); }));
+  /* только для менеджера: рецепты старой карты и рецепты от бар-менеджера — после новой карты */
+  (typeof ZR !== "undefined" ? ZR : []).forEach(G => G.items.forEach(x => { const old = /старой карты/i.test(G.g);
+    if (x.out > 0) add(G.g, x, [x.out, "мл"], old); else if (Array.isArray(x.i) && parts(x)) add(G.g, x, parts(x), old); }));
   return out;
 }
 function zagSuggest(zi){
-  const z = sal.ref[zi], zt = salTok(z[1]), zu = salU(z[2]);
-  let best = null, b1 = 0, b2 = 0;
-  for (const k of zagCands(z[0])){
+  const z = sal.ref[zi], zt = salTok(z[1]), zu = salU(z[2]), cands = zagCands(z[0]), link = ZAG_LINK[incNorm(z[1])];
+  let best = link ? cands.find(k => incNorm(k.n) === incNorm(link)) : null, b1 = best ? 1 : 0, b2 = 0;
+  if (!best) for (const k of cands){
     const kt = salTok(k.n), hit = kt.filter(x => zt.some(y => salSame(x, y))).length;
     const sc = kt.length && zt.length ? 0.6 * hit / kt.length + 0.4 * hit / zt.length : 0;   // всё название замеса — в названии заготовки
     if (sc > b1){ b2 = b1; b1 = sc; best = k; } else if (sc > b2) b2 = sc;
   }
   if (!best || b1 < 0.6 || !(b1 > b2)) return null;
-  /* выход замеса — в единицах заготовки: мл и л — литры, г и кг — килограммы */
-  const oq = mgrN(best.ml[0]), ou = String(best.ml[1] || "").trim().toLowerCase();
-  const out = zu === "л" ? (ou === "мл" ? oq / 1000 : ou === "л" ? oq : 0) : zu === "кг" ? (/^(г|гр)$/.test(ou) ? oq / 1000 : ou === "кг" ? oq : 0) : 0;
+  /* выход замеса — в единицах заготовки: мл и л — литры, г и кг — килограммы; в долях — доля на 1 единицу заготовки */
+  const oq = mgrN(best.ml[0]), ou = String(best.ml[1] || "").trim().toLowerCase(), part = ou === "часть";
+  const out = part ? (zu === "л" || zu === "кг" ? oq : 0) : zu === "л" ? (ou === "мл" ? oq / 1000 : ou === "л" ? oq : 0) : zu === "кг" ? (/^(г|гр)$/.test(ou) ? oq / 1000 : ou === "кг" ? oq : 0) : 0;
   if (!(out > 0)) return null;
   const comps = [], miss = [];
   let apx = false;
   for (const [ing, q, u] of best.i){
-    const ri = salFind(ing, 0.4, true), qq = ri >= 0 && ri !== zi ? salConv(mgrN(q), u, sal.ref[ri]) : null;
+    let ri = salFind(ing, 0.4, true);
+    if (ri >= 0 && /(^|\s)п\/?ф(\s|$)/i.test(ing) && !ZAG_SEC.test(String(sal.ref[ri][0]).trim())) ri = -1;   // п/ф — только заготовка бланка, не похожий покупной сироп
+    const pu = ri >= 0 ? salU(sal.ref[ri][2]) : "";
+    const qq = ri < 0 || ri === zi ? null : part ? (pu === "л" || pu === "кг" ? mgrN(q) : null) : salConv(mgrN(q), u, sal.ref[ri]);
     if (ri < 0 || !(qq > 0)){ if (!/^вода/i.test(ing)) miss.push(ing); continue; }   // воду не считаем
-    if (salApx(u, sal.ref[ri])) apx = true;
+    if (part ? pu !== zu : salApx(u, sal.ref[ri])) apx = true;                      // доли: литр заготовки ≈ кг сырья
     const same = comps.find(c => c.ri === ri);
     if (same) same.q += qq / out; else comps.push({ri, q: qq / out});
   }
-  return comps.length ? {comps, miss, src: "рецепт «" + best.n + "»" + (apx ? " · мл ≈ г" : "")} : null;
+  return comps.length ? {comps, miss, src: (best.old ? "рецепт старой карты «" : "рецепт «") + best.n + "»" + (part ? " · по долям" : "") + (apx ? (part ? " · л ≈ кг" : " · мл ≈ г") : "")} : null;
 }
 function zagDraw(){
   if (!sal) return;
   const zs = sal.ref.map((r, i) => ({ri: i, r})).filter(x => ZAG_SEC.test(String(x.r[0]).trim()) && x.r[9] === 1);
   if (!zs.length){ $("salZag").innerHTML = ""; return; }
-  zs.forEach(x => { x.m = sal.zag[x.ri] || null; if (!x.m) x.sug = zagSuggest(x.ri); });
-  const ok = zs.filter(x => x.m), sug = zs.filter(x => !x.m && x.sug), no = zs.filter(x => !x.m && !x.sug);
+  zs.forEach(x => { x.m = sal.zag[x.ri] || null; x.none = !x.m && zagNone(x.r[1]); if (!x.m && !x.none) x.sug = zagSuggest(x.ri); });
+  const ok = zs.filter(x => x.m), sug = zs.filter(x => !x.m && x.sug), no = zs.filter(x => !x.m && !x.sug && !x.none), none = zs.filter(x => x.none);
   const line = x => {
     const key = "z" + x.ri, open = sal.zopen === key, st = x.m ? salCompTxt(x.m.comps) : x.sug ? salCompTxt(x.sug.comps) : "";
     return '<li class="' + (x.m ? "inc-code" : x.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(x.r[1]) + ' <small>' + esc(x.r[0]) + '</small></span>' +
-      '<small class="mgrwhy">на 1 ' + esc(useU(x.r[2])) + (st ? ': <b>' + esc(st) + '</b>' : ' · <b>рецепта нет</b>') +
+      '<small class="mgrwhy">на 1 ' + esc(useU(x.r[2])) + (st ? ': <b>' + esc(st) + '</b>' : x.none ? ' · считается как есть' : ' · <b>рецепта нет</b>') +
         (x.sug && !x.m ? ' · ' + esc(x.sug.src) + (x.sug.miss.length ? " (без: " + esc(x.sug.miss.join(", ")) + ")" : "") : "") + '</small>' +
       (open ? salForm(x, true) : '<div class="salbtns">' + (x.sug && !x.m ? '<button type="button" class="link" data-zok="' + x.ri + '">Верно</button>' : "") +
         '<button type="button" class="link" data-zed="' + key + '">' + (x.m || x.sug ? "Изменить" : "Задать рецепт") + '</button>' +
         (x.m ? '<button type="button" class="link" data-zno="' + x.ri + '">Убрать рецепт</button>' : "") + '</div>') + '</div></li>';
   };
   $("salZag").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>сырьё на 1 л</em><h3>Рецепты заготовок</h3></div>' +
-    '<p class="mgrsum salsum">Заготовок: <b>' + zs.length + '</b> · рецепт есть у ' + ok.length + (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · нет у ' + no.length : "") + '</p>' +
-    '<p class="wnhint salnote">С рецептом остаток заготовки, её списания и продажи через неё во вкладке «Расход» раскладываются на сырьё — сироп, сделанный впрок, не покажется недостачей сахара.</p>' +
+    '<p class="mgrsum salsum">Заготовок: <b>' + zs.length + '</b> · рецепт есть у ' + ok.length + (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · нет у ' + no.length : "") +
+      (none.length ? ' · не нужен у ' + none.length : "") + '</p>' +
+    '<p class="wnhint salnote">С рецептом остаток заготовки, её списания и продажи через неё во вкладке «Расход» раскладываются на сырьё — сироп, сделанный впрок, не покажется недостачей сахара. ' +
+      'Предложения — из техкарт и калькулятора, новой карты и старой: проверьте состав и нажмите «Верно».</p>' +
+    (sug.length > 1 ? '<div class="refbtns"><button type="button" class="wogo" data-zall="1">Принять все предложенные (' + sug.length + ')</button></div>' : "") +
     (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
     (ok.length ? '<details class="incmapd salok zagok"' + (sal.zokOpen || ok.some(x => "z" + x.ri === sal.zopen) ? " open" : "") + '><summary>Рецепт есть (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
+    (none.length ? '<details class="incmapd salok zagnone"' + (sal.znOpen || none.some(x => "z" + x.ri === sal.zopen) ? " open" : "") + '><summary>Рецепт не нужен (' + none.length + ')</summary>' +
+      '<p class="wnhint">Их не было ни в старой, ни в новой техкарте и калькуляторе — в «Расходе» считаются как есть и не попадают в «без рецепта». Понадобится рецепт — «Задать рецепт».</p>' +
+      '<ul class="olist incl">' + none.map(line).join("") + '</ul></details>' : "") +
     '<p class="warn" id="zagMsg" role="status"></p></div>';
 }
+const zagPack = (zi, comps, src) => ({sec: sal.ref[zi][0], n: sal.ref[zi][1], src, comps: comps.map(c => ({sec: sal.ref[c.ri][0], n: sal.ref[c.ri][1], q: c.q, u: sal.ref[c.ri][2] || "литр"}))});
 async function zagSave(zi, comps, src){
-  const z = sal.ref[zi], d = await pubPost({mgr: "zagset", zags: [{sec: z[0], n: z[1], src, comps: comps.map(c => ({sec: sal.ref[c.ri][0], n: sal.ref[c.ri][1], q: c.q, u: sal.ref[c.ri][2] || "литр"}))}]});
+  const d = await pubPost({mgr: "zagset", zags: [zagPack(zi, comps, src)]});
   if (!d) return false;
   if (!d.ok){ $("zagMsg").textContent = pubErr(d); return false; }
   if (comps.length) sal.zag[zi] = {comps, src}; else delete sal.zag[zi];
+  buzz(14); perData = null;
+  return true;
+}
+/* все предложенные рецепты — одним запросом */
+async function zagSaveAll(){
+  const all = sal.ref.map((r, zi) => ({zi, r})).filter(x => ZAG_SEC.test(String(x.r[0]).trim()) && x.r[9] === 1 && !sal.zag[x.zi] && !zagNone(x.r[1]))
+    .map(x => ({zi: x.zi, s: zagSuggest(x.zi)})).filter(x => x.s);
+  if (!all.length) return false;
+  const d = await pubPost({mgr: "zagset", zags: all.map(x => zagPack(x.zi, x.s.comps, x.s.src))});
+  if (!d) return false;
+  if (!d.ok){ $("zagMsg").textContent = pubErr(d); return false; }
+  all.forEach(x => { sal.zag[x.zi] = {comps: x.s.comps, src: x.s.src}; });
   buzz(14); perData = null;
   return true;
 }
@@ -2462,12 +2497,17 @@ $("salZag").addEventListener("click", async e => {
   const b = e.target.closest("button");
   if (!b || !sal) return;
   if (b.dataset.zok){ const zi = +b.dataset.zok, s = zagSuggest(zi); if (s && await zagSave(zi, s.comps, s.src)) zagDraw(); return; }
+  if (b.dataset.zall){ b.disabled = true; if (await zagSaveAll()) zagDraw(); else b.disabled = false; return; }
   if (b.dataset.zno){ if (await zagSave(+b.dataset.zno, [], "")) zagDraw(); return; }
   if (b.dataset.zed){ sal.zopen = b.dataset.zed; return zagDraw(); }
   if (b.dataset.cx){ sal.zopen = ""; return zagDraw(); }
   if (b.dataset.addc) salAddRow(b);
 });
-$("salZag").addEventListener("toggle", e => { if (sal && e.target.classList && e.target.classList.contains("zagok")) sal.zokOpen = e.target.open; }, true);
+$("salZag").addEventListener("toggle", e => {
+  if (!sal || !e.target.classList) return;
+  if (e.target.classList.contains("zagok")) sal.zokOpen = e.target.open;
+  if (e.target.classList.contains("zagnone")) sal.znOpen = e.target.open;
+}, true);
 $("salZag").addEventListener("submit", async e => {
   const f = e.target.closest("form.salf");
   if (!f) return;
