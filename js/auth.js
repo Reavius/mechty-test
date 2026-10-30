@@ -178,7 +178,7 @@ function enter(p, name, email){
   Z = Array.isArray(p.z) ? p.z : [];
   ZO = Array.isArray(p.zo) ? p.zo : [];
   ZN = Array.isArray(p.zn) ? p.zn : [];
-  ZR = Array.isArray(p.zr) ? p.zr : [];                       // рецепты заготовок старой карты — только для «Рецептов» менеджера
+  ZR = Array.isArray(p.zr) ? p.zr : [];                       // рецепты заготовок старой карты и от бар-менеджера — только для «Рецептов» менеджера
   me = {name, email};
   $("meName").textContent = name;
   $("meMail").textContent = email;

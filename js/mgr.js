@@ -2402,8 +2402,8 @@ const ZAG_GRP = {"заготовки": /заготов|полуфабрикат/
 const ZAG_LINK = {"облепиха шраб": "Облепиховое пюре", "сироп щавель пф": "Щавелевый кордиал"};
 /* рецепта не было ни в старой, ни в новой техкарте и калькуляторе — рецепт не нужен (решение бар-менеджера, 10.2026):
    считаются как есть и не попадают в «без рецепта». Тот же список — ZAG_NONE в Apps Script */
-const ZAG_NONE = ["Айриш", "Мандарин", "Клубника каркаде", "Фреш апельсиновый пф", "Лимонный сок пф", "Кордиал Гибискус", "Медовый сироп",
-  "Колд брю", "Сироп Базилик п/ф", "Пюре вишня п/ф", "Премикс для лимонада вишня персик", "Сигма бой", "Пинк Леди", "Вишневый Пирог", "Брекфест Тини"].map(incNorm);
+const ZAG_NONE = ["Айриш", "Мандарин", "Клубника каркаде", "Кордиал Гибискус", "Колд брю", "Сироп Базилик п/ф", "Пюре вишня п/ф",
+  "Премикс для лимонада вишня персик", "Сигма бой", "Вишневый Пирог", "Брекфест Тини"].map(incNorm);
 const zagNone = n => ZAG_NONE.includes(incNorm(n));
 function zagCands(sec){
   const re = ZAG_GRP[String(sec).trim().toLowerCase()], out = [], seen = new Set();
@@ -2412,7 +2412,9 @@ function zagCands(sec){
   const parts = x => x.i.length && x.i.every(y => String(y[2]).trim() === "часть") ? [x.i.reduce((a, y) => a + mgrN(y[1]), 0), "часть"] : null;
   (typeof K !== "undefined" ? K : []).forEach(G => G.items.forEach(x => { if (x.out) add(G.g, x, x.out); else if (Array.isArray(x.i) && parts(x)) add(G.g, x, parts(x)); }));
   (R || []).forEach(G => G.items.forEach(x => { if (x.out > 0) add(G.g, x, [x.out, "мл"]); }));
-  (typeof ZR !== "undefined" ? ZR : []).forEach(G => G.items.forEach(x => { if (x.out > 0) add(G.g, x, [x.out, "мл"], true); }));   // старая карта — после новой
+  /* только для менеджера: рецепты старой карты и рецепты от бар-менеджера — после новой карты */
+  (typeof ZR !== "undefined" ? ZR : []).forEach(G => G.items.forEach(x => { const old = /старой карты/i.test(G.g);
+    if (x.out > 0) add(G.g, x, [x.out, "мл"], old); else if (Array.isArray(x.i) && parts(x)) add(G.g, x, parts(x), old); }));
   return out;
 }
 function zagSuggest(zi){
