@@ -92,7 +92,10 @@ const STVID = {
   maitai: { mp4: "video/maitai.mp4", webm: "video/maitai.webm", poster: "video/maitai.jpg" },
   "c-bosford": { mp4: "video/bosford.mp4", webm: "video/bosford.webm", poster: "video/bosford.jpg" },
   tropiki: { mp4: "video/tropiki.mp4", webm: "video/tropiki.webm", poster: "video/tropiki.jpg" },
-  "c-watermelon": { mp4: "video/watermelon.mp4", webm: "video/watermelon.webm", poster: "video/watermelon.jpg" }
+  "c-watermelon": { mp4: "video/watermelon.mp4", webm: "video/watermelon.webm", poster: "video/watermelon.jpg" },
+  "c-fiero": { mp4: "video/fiero.mp4", webm: "video/fiero.webm", poster: "video/fiero.jpg" },
+  "c-aperol": { mp4: "video/aperol.mp4", webm: "video/aperol.webm", poster: "video/aperol.jpg" },
+  "c-sarti": { mp4: "video/sarti.mp4", webm: "video/sarti.webm", poster: "video/sarti.jpg" }
 };
 const TAU = Math.PI * 2;
 /* повторяемые «случайные» числа от строки — сцена у коктейля всегда одна и та же */
