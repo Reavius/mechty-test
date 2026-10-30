@@ -3152,6 +3152,12 @@ function mgrZags() {
   const rows = last >= 2 ? sh.getRange(2, 1, last - 1, ZAG_HEAD.length).getValues().map(r => r.map(x => typeof x === "number" ? x : String(x).trim())) : [];
   return { ok: true, rows: rows.filter(r => r[1] && r[3]) };
 }
+/* рецепта не было ни в старой, ни в новой техкарте и калькуляторе — рецепт не нужен (решение бар-менеджера, 10.2026):
+   считаются как есть и не попадают в «Заготовки без рецепта». Тот же список — ZAG_NONE на сайте (js/mgr.js) */
+const ZAG_NONE = ["Айриш", "Мандарин", "Клубника каркаде", "Фреш апельсиновый пф", "Лимонный сок пф", "Кордиал Гибискус", "Медовый сироп",
+  "Колд брю", "Сироп Базилик п/ф", "Пюре вишня п/ф", "Премикс для лимонада вишня персик", "Сигма бой", "Пинк Леди", "Вишневый Пирог", "Брекфест Тини"];
+const zagNone = n => ZAG_NONE.some(x => mnorm(x) === mnorm(n));
+
 /* {zags: [{sec, n, comps: [{sec, n, q, u}], src}]} — строки этих заготовок заменяются целиком; comps пусто — рецепт убран */
 function mgrZagSet(p) {
   if (!mgrOk(p.mk)) return { error: "mgr" };
@@ -3444,7 +3450,7 @@ function perCalc(M, A, B, items, nokey, out) {
   out.nokey = nokey;
   out.noprice = out.rows.filter(r => !r.info && !r.miss && !r.loose && r.diff && !r.price).length;
   out.unconv = Object.keys(out.unconv || {});
-  out.zagno = Object.keys(items).filter(k => /^(заготовки|премиксы на коктейли|настойки)\|/.test(k) && !zag[k]).map(k => items[k].n);
+  out.zagno = Object.keys(items).filter(k => /^(заготовки|премиксы на коктейли|настойки)\|/.test(k) && !zag[k] && !zagNone(items[k].n)).map(k => items[k].n);
   return out;
 }
 
