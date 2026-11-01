@@ -276,14 +276,15 @@ $("refresh").addEventListener("click", refreshLog);
 
 /* ── вкладки ── */
 function showView(v){
-  const bt = v === "bt";
-  $("viewBar").hidden = bt;
+  const bt = v === "bt", fr = v === "fr";                      // fr — журнал холодильника по QR, без входа
+  $("viewBar").hidden = bt || fr;
   $("viewBt").hidden = !bt;
+  $("viewFr").hidden = !fr;
   $("tabBar").removeAttribute("aria-current");
   $("tabBt").removeAttribute("aria-current");
   $(bt ? "tabBt" : "tabBar").setAttribute("aria-current", "page");
-  document.documentElement.lang = bt ? "ru" : LANG;             // «Бартендерам» — по-русски
-  if (bt) window.scrollTo(0, 0);
+  document.documentElement.lang = bt || fr ? "ru" : LANG;       // «Бартендерам» и журнал — по-русски
+  if (bt || fr) window.scrollTo(0, 0);
 }
 
 function route(){

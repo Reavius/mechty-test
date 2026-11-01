@@ -200,12 +200,15 @@ function frInit(){
     document.addEventListener("visibilitychange", () => { if (!document.hidden && sect === "fr" && R) frLoad(); });
   }
 }
-/* QR на холодильнике: #fridge-<id> — вход (если ещё не вошли) и сразу этот холодильник */
-function frRoute(id){
-  frWant = id; sect = "fr";
-  history.replaceState(null, "", location.pathname + location.search + "#bartenders");   // тот же QR ещё раз — снова сработает
-  if (R){ showView("bt"); setSect("fr"); return; }
-  goBt();
+/* QR на холодильнике: #fridge-<id> — бармену (вошёл или вход сохранён на телефоне) сразу этот холодильник для ввода;
+   без входа — открытый журнал (проверка), оттуда бармен может войти */
+async function frRoute(id){
+  const bt = () => { frWant = id; sect = "fr"; history.replaceState(null, "", location.pathname + location.search + "#bartenders"); };   // тот же QR ещё раз — снова сработает
+  if (!frGet(id)){ bt(); return goBt(); }
+  if (R){ bt(); showView("bt"); setSect("fr"); return; }
+  const s = await loadSession();
+  if (s){ bt(); return enter(s.p, s.name, s.email); }
+  frPubOpen(id);
 }
 const frTyping = () => { const a = document.activeElement; return !!a && a.closest && !!a.closest("#frOne") && a.tagName === "INPUT"; };
 
@@ -279,7 +282,8 @@ function frDrawOne(){
         ks.map(sh).join("") + '</div>') +
       '<div class="frmh"><button type="button" class="frmb" data-mm="-1" aria-label="Предыдущий месяц">‹</button><b id="frMt"></b>' +
         '<button type="button" class="frmb" data-mm="1" aria-label="Следующий месяц">›</button></div><div id="frTab"></div>' + frFixHtml(f) +
-      '<div class="otools"><button type="button" class="link" id="frBack">← ' + (f.room ? "Назад" : "Все холодильники") + '</button><button type="button" class="link" id="frQr">QR-код для наклейки</button></div></div>';
+      '<div class="otools"><button type="button" class="link" id="frBack">← ' + (f.room ? "Назад" : "Все холодильники") + '</button><button type="button" class="link" id="frQr">QR-код для наклейки</button></div>' +
+      '<div class="otools frpaper"><button type="button" class="link" id="frPaper">Журнал месяца — PNG (как бумажный)</button></div></div>';
     if (!early) ks.forEach(k => frSetIn(k, r[k]));
   } else if (!early) ks.forEach(k => { if (!frDirty(k)) frSetIn(k, r[k]); });
   if ($("frSvg")) $("frSvg").innerHTML = fridgeSvg(f, last ? frFmt(last.t) : "");
@@ -528,6 +532,7 @@ $("frOne").addEventListener("click", e => {
   if (tr && $("frFix")){ buzz(8); $("frFxD").value = tr.dataset.day; delete $("frFxM").dataset.msg; frFixSync(); $("frFix").scrollIntoView({block: "nearest"}); return; }
   if (e.target.closest("#frBack")){ buzz(8); frId = ""; frM = ""; frDraw(); return; }
   if (e.target.closest("#frQr")) frQrOpen();
+  if (e.target.closest("#frPaper")){ buzz(8); frPaperSave(); return; }
 });
 $("frOne").addEventListener("input", e => {
   const t = e.target;
@@ -558,3 +563,168 @@ $("frStick").addEventListener("click", () => { if (window.qrcode){ buzz(8); frDo
 $("frQrDl").addEventListener("click", () => { const f = frGet(frId); if (f) frDownload(frOneCanvas(f), "QR-fridge-" + f.id + ".png"); });
 $("frQrX").addEventListener("click", () => $("frQrDlg").close());
 window.addEventListener("online", () => { if (R && ckj(FRQ, []).length) frFlush(); });
+
+/* ════════════ Журнал месяца картинкой — как бумажный бланк ════════════
+   Лист A4 (1240×1754): шапка с названием, столбцы как в бумажном журнале (у склада — время, влажность, ответственное
+   лицо), все дни месяца, шрифт с засечками, чёрная сетка; ниже — график температуры за месяц. Одна картинка — и для
+   бармена («Журнал месяца — PNG» в карточке), и для проверки по QR без пароля (свежая, из таблицы на момент открытия).
+   get(day) → {s, e, off}: показание — {t, h, f (ФИО), w (кто внёс), at, fix (дата исправления)}. Пустое — пусто, как на бумаге. */
+const frFmt1 = n => n == null || n === "" ? "" : (n < 0 ? "−" : "") + Math.abs(n).toFixed(1).replace(".", ",");   // как пишут в журнале: 4,0
+const FR_SERIF = "'Times New Roman', Times, 'Liberation Serif', 'Noto Serif', serif";
+const FR_MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+function frPaper(f, m, get, made){
+  const W = 1240, H = 1754, L = 70, Rx = W - 70, y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7)), days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d"), ink = "#111", red = "#B3261E", font = (w, s) => w + " " + s + "px " + FR_SERIF;
+  x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);
+  const cols = f.room ? [["Дата"], ["Время"], ["Температура,", "°C"], ["Влажность,", "%"], ["Ответственное", "лицо"], ["Подпись"]]
+                      : [["Дата"], ["Температура в", "начале смены"], ["Температура в", "конце смены"], ["ФИО"], ["Подпись"]];
+  const cw = f.room ? [150, 120, 180, 180, 230, 240] : [170, 230, 230, 230, 240], cx = [L];
+  cw.forEach((w, i) => cx.push(cx[i] + w));
+  const txt = (t, x0, w, yy, fnt, col, align) => { x.font = fnt; x.fillStyle = col || ink; x.textAlign = align || "center";
+    let s = String(t); while (s.length > 1 && x.measureText(s).width > w - 14) s = s.slice(0, -2) + "…";
+    x.fillText(s, align === "left" ? x0 + 10 : x0 + w / 2, yy); x.textAlign = "left"; };
+  /* шапка */
+  x.font = font("italic", 22); x.fillStyle = "#444"; x.fillText("Журнал учёта температурного режима", L, 52);
+  x.textAlign = "right"; x.fillText("Бар «Мечты»", Rx, 52); x.textAlign = "left";
+  const top = 72, tH = 64, hH = 72, rH = 34, body = top + tH + hH, tabB = body + days * rH;
+  txt(f.n + " · " + FR_MON[mo - 1] + " " + y, L, Rx - L, top + 42, font("bold", 30));
+  cols.forEach((h, i) => h.forEach((ln, j) => txt(ln, cx[i], cw[i], top + tH + (h.length === 1 ? 44 : 30 + j * 26), font("bold", 21))));
+  /* строки дней */
+  const norm = (v, lo, hi) => v != null && ((lo != null && v < lo) || (hi != null && v > hi));
+  /* подпись — кто внёс с сайта и во сколько; исправление бар-менеджера — с датой исправления */
+  const sig = r => !r ? "" : r.fix != null ? String(r.w || "").replace(/ · менеджер$/, "") + ", испр. " + r.fix + (r.at ? " " + r.at : "") : (r.w || "") + (r.at ? " " + r.at : "");
+  const pts = {s: [], e: []};
+  for (let d = 1; d <= days; d++){
+    const key = m + "-" + String(d).padStart(2, "0"), r = get(key) || {}, yy = body + (d - 1) * rH + 24, s = r.s, e = r.e;
+    txt(String(d).padStart(2, "0") + "." + m.slice(5, 7) + "." + y, cx[0], cw[0], yy, font("", 20));
+    if (r.off && !s && !e){ txt("не работали", cx[1], cx[cx.length - 2] - cx[1], yy, font("italic", 20), "#666"); continue; }
+    const tv = v => v ? frFmt1(v.t) : "", fio = [s, e].filter(Boolean).map(v => v.f).filter((v, i, a) => v && a.indexOf(v) === i).join(" / ");
+    const sg = [s, e].filter(Boolean).map(sig).filter((v, i, a) => v && a.indexOf(v) === i).join("; ");
+    if (f.room){
+      txt(s ? s.at : "", cx[1], cw[1], yy, font("", 20));
+      txt(tv(s), cx[2], cw[2], yy, font("", 23), s && norm(s.t, f.lo, f.hi) ? red : ink);
+      txt(s && s.h != null ? frFmt(s.h) : "", cx[3], cw[3], yy, font("", 23), s && norm(s.h, f.hlo, f.hhi) ? red : ink);
+      txt(fio, cx[4], cw[4], yy, font("", 20)); txt(sg, cx[5], cw[5], yy, font("", 16), "#333");
+    } else {
+      txt(tv(s), cx[1], cw[1], yy, font("", 23), s && norm(s.t, f.lo, f.hi) ? red : ink);
+      txt(tv(e), cx[2], cw[2], yy, font("", 23), e && norm(e.t, f.lo, f.hi) ? red : ink);
+      txt(fio, cx[3], cw[3], yy, font("", 20)); txt(sg, cx[4], cw[4], yy, font("", 16), "#333");
+    }
+    if (s) pts.s.push([d, s.t]);
+    if (e) pts.e.push([d, e.t]);
+  }
+  /* сетка */
+  x.strokeStyle = ink; x.lineWidth = 1.4;
+  const hl = yy => { x.beginPath(); x.moveTo(L, yy); x.lineTo(Rx, yy); x.stroke(); };
+  hl(top + tH); hl(body); for (let d = 1; d < days; d++) hl(body + d * rH);
+  cx.slice(1, -1).forEach(v => { x.beginPath(); x.moveTo(v, top + tH); x.lineTo(v, tabB); x.stroke(); });
+  x.lineWidth = 2.6; x.strokeRect(L, top, Rx - L, tabB - top);
+  /* график: начало смены — сплошная, конец — пунктир; у склада один замер */
+  const gT = tabB + 40, gB = H - 110, gL = L + 64, gR = Rx - 10, all = pts.s.concat(pts.e).map(p => p[1]);
+  x.font = font("bold", 23); x.fillStyle = ink; x.fillText("Температура за месяц, °C", L, gT);
+  if (!f.room){
+    x.font = font("", 19); x.textAlign = "right";
+    x.fillText("— начало смены    - - конец смены", Rx, gT); x.textAlign = "left";
+  }
+  const pT = gT + 22;
+  let lo = all.length ? Math.min(...all) : 0, hi = all.length ? Math.max(...all) : 10;
+  if (f.lo != null) lo = Math.min(lo, f.lo); if (f.hi != null) hi = Math.max(hi, f.hi);
+  lo = Math.floor(lo - 1); hi = Math.ceil(hi + 1);
+  const step = hi - lo > 24 ? 5 : hi - lo > 10 ? 2 : 1, X = d => gL + (d - 1) * (gR - gL) / Math.max(days - 1, 1), Y = v => gB - (v - lo) * (gB - pT) / (hi - lo || 1);
+  if (f.lo != null || f.hi != null){ x.fillStyle = "#ececec"; const a = Y(f.hi != null ? f.hi : hi), b = Y(f.lo != null ? f.lo : lo); x.fillRect(gL, a, gR - gL, b - a); }
+  x.strokeStyle = "#cfcfcf"; x.lineWidth = 1; x.font = font("", 17); x.fillStyle = "#333"; x.textAlign = "right";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step){ x.beginPath(); x.moveTo(gL, Y(v)); x.lineTo(gR, Y(v)); x.stroke(); x.fillText(frFmt(v), gL - 10, Y(v) + 6); }
+  x.textAlign = "center";
+  for (let d = 1; d <= days; d += 2) x.fillText(String(d), X(d), gB + 26);
+  x.textAlign = "left"; x.strokeStyle = ink; x.lineWidth = 1.6; x.strokeRect(gL, pT, gR - gL, gB - pT);
+  const line = (p, dash, fill) => {
+    if (!p.length) return;
+    x.strokeStyle = ink; x.lineWidth = 2.4; x.setLineDash(dash); x.beginPath();
+    p.forEach(([d, v], i) => { const prev = p[i - 1]; if (i && prev[0] === d - 1) x.lineTo(X(d), Y(v)); else x.moveTo(X(d), Y(v)); });
+    x.stroke(); x.setLineDash([]);
+    p.forEach(([d, v]) => { x.beginPath(); x.arc(X(d), Y(v), 5.5, 0, 7); x.fillStyle = fill; x.fill(); x.lineWidth = 2; x.stroke(); });
+  };
+  line(pts.s, [], ink); line(pts.e, [10, 7], "#fff");
+  if (!all.length){ x.font = font("italic", 22); x.fillStyle = "#777"; x.textAlign = "center"; x.fillText("Показаний за месяц пока нет", (gL + gR) / 2, (pT + gB) / 2); x.textAlign = "left"; }
+  /* подвал */
+  x.font = font("", 18); x.fillStyle = "#444";
+  x.fillText("Норма: " + (frNorm(f) || "не задана") + (f.w ? " · " + f.w : "") + " · " + frZn(f.z), L, H - 46);
+  x.textAlign = "right"; x.fillText("Сформировано " + made + " (Астана) по журналу на сайте", Rx, H - 46); x.textAlign = "left";
+  return c;
+}
+const frMade = () => { const d = new Date(Date.now() + 5 * 3600e3), p = n => String(n).padStart(2, "0");
+  return p(d.getUTCDate()) + "." + p(d.getUTCMonth() + 1) + "." + d.getUTCFullYear() + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()); };
+async function frPngSave(c, name, title){
+  const blob = await new Promise(ok => c.toBlob(ok, "image/png"));
+  if (!blob) return;
+  const file = new File([blob], name, {type: "image/png"});
+  if (navigator.canShare && navigator.canShare({files: [file]})){
+    try { await navigator.share({files: [file], title}); return; } catch (e) { if (e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"), u = URL.createObjectURL(blob);
+  a.href = u; a.download = name;                                         // латиницей — кириллицу в имени файла теряют некоторые браузеры
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 4000);
+}
+/* карточка бармена: журнал открытого месяца — с неотправленными показаниями */
+async function frPaperSave(){
+  const f = frGet(frId), m = frM || frCurM();
+  if (!f) return;
+  try { await document.fonts.ready; } catch (e) {}
+  const mm = frSt && frSt.m[m] && frSt.m[m][f.id] || {};
+  const c = frPaper(f, m, day => Object.assign({off: !!(mm[day] && mm[day].off)}, frRec(f.id, day)), frMade());
+  frPngSave(c, "zhurnal-" + f.id + "-" + m + ".png", f.n + " · " + FR_MON[Number(m.slice(5, 7)) - 1] + " " + m.slice(0, 4));
+}
+
+/* ════════════ Журнал по QR без пароля ════════════
+   QR на холодильнике (#fridge-<id>): бармену с сохранённым входом — карточка для ввода, как раньше; всем остальным
+   (проверка) — открытый журнал: свежая картинка-бланк месяца из таблицы, последнее показание крупно, месяцы стрелками,
+   «Сохранить PNG». Внести без входа нельзя — «Я бармен — внести показание» ведёт ко входу. */
+let fpId = "", fpM = "", fpData = null, fpTimer = 0, fpCanvas = null;
+function frPubOpen(id){
+  fpId = id; fpM = ""; fpData = null;
+  showView("fr"); fpDraw(); fpLoad();
+  if (!fpTimer) fpTimer = setInterval(() => { if (!$("viewFr").hidden && !document.hidden && fpId) fpLoad(); }, 60e3);
+}
+async function fpLoad(){
+  const id = fpId, d = await api({frpub: 1, id, m: fpM || ""});
+  if (id !== fpId) return;
+  fpData = d.ok ? d : {error: d.error || "net"};
+  if (d.ok && !fpM) fpM = d.m;
+  fpDraw();
+}
+function fpDraw(){
+  const f = frGet(fpId);
+  if (!f) return;
+  $("fpName").textContent = f.n;
+  $("fpWhere").textContent = [frZn(f.z), f.w, frNorm(f) ? "норма " + frNorm(f) : ""].filter(Boolean).join(" · ");
+  const d = fpData, cur = (d && d.day && d.day >= FR_START ? d.day : FR_START).slice(0, 7), m = fpM || cur;
+  $("fpMon").textContent = FR_MON[Number(m.slice(5, 7)) - 1] + " " + m.slice(0, 4);
+  $("fpPrev").disabled = m <= FR_FROM; $("fpNext").disabled = m >= cur;
+  if (!d){ $("fpInfo").textContent = "Загружаем журнал…"; return; }
+  if (d.error){ $("fpInfo").textContent = d.error === "bad" ? "Журнал этого холодильника пока недоступен." : "Нет связи с журналом. Повторим через минуту."; if (!fpCanvas) return; }
+  else {
+    /* последнее показание — крупно: проверке это важнее всего */
+    const days = Object.keys(d.r).sort().reverse();
+    let last = null;
+    for (const k of days){ const r = d.r[k], x = r.e || r.s; if (x){ last = {day: k, x, k: r.e ? "e" : "s"}; break; } }
+    $("fpToday").innerHTML = last ? '<span class="fpt">' + frFmt1(last.x.t) + '<small> °C</small></span><span class="fpw">Последнее показание: ' +
+      (last.day === d.day ? "сегодня" : Number(last.day.slice(8, 10)) + " " + FR_MON_GEN[Number(last.day.slice(5, 7)) - 1]) + ", " + frSlot(f, last.k) +
+      (last.x.at ? " · " + esc(last.x.at) : "") + (last.x.f ? " · " + esc(last.x.f) : "") + (f.room && last.x.h != null ? " · влажность " + frFmt(last.x.h) + " %" : "") + '</span>'
+      : '<span class="fpw">' + (m === cur ? "В этом месяце показаний пока нет." : "Показаний за этот месяц нет.") + '</span>';
+    $("fpInfo").textContent = "Данные из журнала на сайте на " + frMade().slice(-5) + ". Нажмите на лист, чтобы рассмотреть.";
+    fpCanvas = frPaper(f, d.m, day => d.r[day], frMade());
+  }
+  $("fpImg").src = fpCanvas.toDataURL("image/png");
+  $("fpImg").alt = "Журнал температуры: " + f.n + ", " + $("fpMon").textContent;
+}
+$("fpPrev").addEventListener("click", () => { const [y, m] = (fpM || fpData.m).split("-").map(Number), d = new Date(Date.UTC(y, m - 2, 1)); fpM = d.toISOString().slice(0, 7); fpData = null; fpCanvas = null; fpDraw(); fpLoad(); });
+$("fpNext").addEventListener("click", () => { const [y, m] = (fpM || fpData.m).split("-").map(Number), d = new Date(Date.UTC(y, m, 1)); fpM = d.toISOString().slice(0, 7); fpData = null; fpCanvas = null; fpDraw(); fpLoad(); });
+$("fpSheet").addEventListener("click", () => { buzz(6); $("fpSheet").classList.toggle("zoom"); });
+$("fpSave").addEventListener("click", () => { const f = frGet(fpId); if (fpCanvas && f) frPngSave(fpCanvas, "zhurnal-" + f.id + "-" + (fpM || "") + ".png", f.n + " · " + $("fpMon").textContent); });
+$("fpBt").addEventListener("click", () => {
+  frWant = fpId; sect = "fr";
+  history.replaceState(null, "", location.pathname + location.search + "#bartenders");
+  goBt();
+});

@@ -685,6 +685,22 @@
   </footer>
 </main>
 
+<!-- ── Журнал холодильника по QR — открыто всем (проверка), без пароля ── -->
+<main class="wrap narrow" id="viewFr" hidden>
+  <header>
+    <p class="mark">Бар «Мечты» · журнал температуры</p>
+    <h1 id="fpName"></h1>
+    <p class="lede" id="fpWhere"></p>
+  </header>
+  <div class="fptoday" id="fpToday" role="status"></div>
+  <div class="frmh fpmh"><button type="button" class="frmb" id="fpPrev" aria-label="Предыдущий месяц">‹</button><b id="fpMon"></b>
+    <button type="button" class="frmb" id="fpNext" aria-label="Следующий месяц">›</button></div>
+  <p class="cktop fpinfo" id="fpInfo"></p>
+  <div class="fpsheet" id="fpSheet"><img id="fpImg" alt="" width="1240" height="1754"></div>
+  <button type="button" class="wogo" id="fpSave">Сохранить PNG</button>
+  <button type="button" class="link fpbt" id="fpBt">Я бармен — внести показание</button>
+</main>
+
 <dialog id="frQrDlg" class="frqrd" aria-labelledby="frQrT">
   <div class="frqr">
     <h2 class="h3" id="frQrT"></h2>

@@ -1264,3 +1264,19 @@ details.incmapd .bll li{padding:9px 4px}
 .grlen{margin:10px 0 0;color:var(--accent);font-weight:700;min-height:1.2em}
 .grf .refbtns{display:flex;align-items:center;gap:18px}
 .grf .refbtns .wogo{width:auto;flex:1}
+
+/* ── Журнал холодильника по QR (без входа): последнее показание крупно, лист-бланк картинкой ── */
+.fptoday{margin:22px 0 0;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--surface);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.fptoday:empty{display:none}
+.fpt{font:700 44px/1 var(--sans);color:var(--fg);font-variant-numeric:tabular-nums}
+.fpt small{font-size:20px;color:var(--muted);font-weight:600}
+.fpw{color:var(--muted);font-size:14.5px;line-height:1.45}
+.fpmh{margin-top:14px;border:1px solid var(--line);border-radius:12px}
+.fpinfo{margin-top:10px}
+.fpsheet{margin-top:8px;border-radius:10px;overflow:hidden;background:#fff;cursor:zoom-in;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.fpsheet img{display:block;width:100%;height:auto}
+.fpsheet.zoom{overflow:auto;cursor:zoom-out;max-height:80vh}
+.fpsheet.zoom img{width:1240px;max-width:none}
+#viewFr .wogo{margin-top:18px}
+.fpbt{display:block;margin:16px auto 0}
+.frpaper{border-top:0;padding-top:0}

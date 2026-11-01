@@ -42,6 +42,8 @@ function doGet(e) {
 
   if (p.pub) {                                                           // меню и состав для гостей — без пароля
     try { out = pubGet(); } catch (err) { console.error("pub: " + err); out = { error: "net" }; }
+  } else if (p.frpub) {                                                  // журнал холодильника по QR — без пароля
+    try { out = frPub(p); } catch (err) { console.error("frpub: " + err); out = { error: "net" }; }
   } else if (!tokenOk(p.token)) {
     out = { error: "denied" };
   } else if (p.rev) {
@@ -4188,6 +4190,7 @@ function fridges(p) {
   const lock = lockOrBusy(10000);
   try {
     sh.appendRow(["'" + day, id, f.n, f.z, k === "s" ? "начало" : "конец", v.t, v.h, v.wipe ? "" : fio, who, new Date(), v.wipe ? "сайт · стёрто" : "сайт"]);
+    frPubDrop(id, day);
     const fst = {}, r = frRead(sh, day.slice(0, 7), fst);
     try { frMonth(ss, day.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }   // запись уже есть
     /* чеклист: «Заполнить бланки температуры…» — отмечается сам, когда у всех внесено начало смены (у склада — замер) */
@@ -4199,6 +4202,31 @@ function fridges(p) {
     lock.releaseLock();
   }
 }
+/* Открытый журнал по QR на холодильнике — без пароля (проверка сканирует наклейку): только этот холодильник и один
+   месяц с начала журнала. Отдаётся то же, что в листе месяца, как в бумажном журнале: температура (у склада — время
+   и влажность), ФИО, кто внёс с сайта и во сколько, «исправлено» (дата) и «не работали». Почты, причины исправлений
+   и записи других холодильников не уходят. Ответ кэшируется на минуту — частые сканы не нагружают таблицу. */
+function frPub(p) {
+  const id = frId(p.id), day = frDayKey(), cur = (day < FR_START ? FR_START : day).slice(0, 7);
+  const m = /^\d{4}-\d{2}$/.test(String(p.m || "")) ? String(p.m) : cur;
+  if (!id || !frMeta().some(x => x.id === id)) return { error: "bad" };
+  const base = { ok: true, id: id, m: m, day: day, start: FR_START, r: {} };
+  if (m < FR_START.slice(0, 7) || m > cur) return base;
+  const cache = CacheService.getScriptCache(), ck = "frpub:" + id + ":" + m, hit = cache.get(ck);
+  if (hit) return JSON.parse(hit);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FR_LOG), mine = (sh ? frRead(sh, m) : {})[id] || {};
+  Object.keys(mine).forEach(d => {
+    const e = mine[d], o = {};
+    ["s", "e"].forEach(k => { const x = e[k]; if (!x) return;
+      o[k] = { t: x.t, h: x.h, f: x.f, w: x.w, at: x.at || "" };
+      if (x.m != null) o[k].fix = x.on || ""; });
+    if (e.off) o.off = 1;
+    base.r[d] = o;
+  });
+  try { cache.put(ck, JSON.stringify(base), 60); } catch (e) {}
+  return base;
+}
+const frPubDrop = (id, d) => { try { CacheService.getScriptCache().remove("frpub:" + id + ":" + String(d).slice(0, 7)); } catch (e) {} };   // открытый журнал — сразу свежий
 const FR_CK = "d6";
 const frId = v => String(v || "").replace(/[^a-z0-9]/g, "").slice(0, 12);
 /* температура и влажность из запроса: {t, h, wipe} или null; пустая температура — стереть показание */
@@ -4228,6 +4256,7 @@ function frFix(ss, sh, p, day) {
   const lock = lockOrBusy(10000);
   try {
     sh.appendRow(row);
+    frPubDrop(id, d);
     const fst = {}, r = frRead(sh, d.slice(0, 7), fst);
     try { frMonth(ss, d.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }
     return { ok: true, day: day, m: d.slice(0, 7), r: r, fst: fst, work: FR_WORK };
