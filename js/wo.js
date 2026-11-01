@@ -910,7 +910,8 @@ let wnBadgeT = 0, wnBadgeN = 0;
 const wnSeen = () => new Set(wjson(WNSEEN, []));
 function wnBadgeDraw(n){
   wnBadgeN = n;
-  const b = document.querySelector('#sect button[data-s="wo"]');
+  const b = document.querySelector('#sect button[data-s="wo"] .btt b'), dot = document.getElementById("btDot");
+  if (dot) dot.hidden = !n;                                                    // точка на «трёх полосках» — есть новое
   if (b){ let i = b.querySelector(".nbadge"); if (!n){ if (i) i.remove(); } else { if (!i){ i = document.createElement("b"); i.className = "nbadge"; b.appendChild(i); } i.textContent = n > 99 ? "99+" : n; i.setAttribute("aria-label", "новое в заметке: " + n); } }
   try { if (navigator.setAppBadge) n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) {}
 }

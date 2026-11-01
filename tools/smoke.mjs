@@ -96,14 +96,18 @@ if (PW) {
   await page.waitForSelector("#viewBt:not([hidden])", { timeout: 15000 });
   ok(true, "вход по паролю");
   ok(await page.locator("#tres .tcard").count() >= 30, `технологическая карта: ${await page.locator("#tres .tcard").count()}`);
-  for (const s of ["calc", "order", "zone", "rev", "lab", "ttk"]) {
-    await page.click(`[data-s="${s}"]`); await page.waitForTimeout(400);
-  }
-  await page.click('[data-s="calc"]');
+  /* раздел — через «три полоски»: шторка справа со списком разделов */
+  const go = async s => { await page.click("#btBurger"); await page.click(`#sect [data-s="${s}"]`); await page.waitForTimeout(400); };
+  await page.click("#btBurger"); await page.waitForTimeout(450);
+  ok(await page.isVisible("#btNav") && (await page.locator("#sect [data-s]").count()) === 11 && await page.getAttribute("#btBurger", "aria-expanded") === "true", "разделы: шторка открылась, 11 разделов");
+  await page.keyboard.press("Escape"); await page.waitForTimeout(450);
+  ok(!(await page.isVisible("#btNav")), "разделы: Esc закрывает шторку");
+  for (const s of ["calc", "order", "zone", "rev", "lab", "ttk"]) await go(s);
+  await go("calc");
   ok((await page.textContent("#res")).trim().length > 0, "калькулятор считает");
   await page.selectOption("#pos", "malmar").catch(() => {});
   ok((await page.textContent("#res")).includes("Концентрат малины"), "база лимонада «Малина-маракуйя» в калькуляторе");
-  await page.click('[data-s="order"]');
+  await go("order");
   ok(await page.locator("#olist input[type=checkbox]").count() > 10, "заявка");
   // количество в заявке: отметить → вписать → в копии «позиция количество»
   await page.click('#okind [data-o="gen"]');
@@ -119,13 +123,13 @@ if (PW) {
   ok(orderSent && orderSent.kind === "gen" && orderSent.items.some(x => x.n === fname && x.q === "5 кг") &&
     (await page.textContent("#osent")).includes("В архиве у бар-менеджера"), "заявка отправлена в архив");
   await page.reload(); await page.waitForSelector("#viewBt:not([hidden])", { timeout: 15000 });
-  await page.click('[data-s="order"]');
+  await go("order");
   ok(await page.inputValue("#osum input.oq") === "5 кг", "количество сохраняется");
   await page.click("#osum button.x");
   ok(await page.locator("#osum input.oq").count() === 0, "позиция убирается из сводки");
   await page.click('#okind [data-o="prep"]');
   // «Взять на бар»: отметить → количество только числом → в копии по разделам
-  await page.click('[data-s="zone"]');
+  await go("zone");
   ok(await page.locator("#zlist input[type=checkbox]").count() > 50, "взять на бар: список по разделам");
   const zf = page.locator("#zlist input[type=checkbox]").first(), zname = await zf.getAttribute("data-n");
   await zf.check();
@@ -136,9 +140,9 @@ if (PW) {
   ok(/^Взять на бар \d\d\.\d\d\.\d{4}\n\n[^\n]+\n— /.test(zclip) && zclip.includes("— " + zname + " 2"), "взять на бар: копия по разделам с количеством");
   await page.click("#zsum button.x");
   ok(await page.locator("#zsum input.oq").count() === 0 && await page.locator("#olist input:checked").count() === 0, "взять на бар: отметка убирается, заявку не трогает");
-  await page.click('[data-s="lab"]'); await page.waitForTimeout(1200);
+  await go("lab"); await page.waitForTimeout(1200);
   ok(await page.evaluate(() => document.getElementById("lback").width > 100), "этикетки рисуются");
-  await page.click('[data-s="rev"]'); await page.waitForTimeout(800);
+  await go("rev"); await page.waitForTimeout(800);
   ok(await page.isVisible("#rlist li") && await page.locator("#rzone button").count() === 6 &&
     (await page.textContent('#rzone button[data-z="Кафе"] small')) === "Другой", "ревизия: зоны и кто их считает");
   await page.click('#rkind [data-k="month"]'); await page.waitForTimeout(600);
@@ -150,7 +154,7 @@ if (PW) {
   await page.fill("#mq", "");
   await page.click('#rkind [data-k="day"]');
   ok(await page.locator("#log li").count() > 0, "журнал входов");
-  await page.click('[data-s="wo"]'); await page.waitForTimeout(300);
+  await go("wo"); await page.waitForTimeout(300);
   ok(await page.inputValue("#woName") === "Тест" && await page.locator("#woRows .worow").count() >= 1, "списания: форма акта");
   ok(await page.isVisible("#wnBox") && await page.locator("#wnList li").count() >= 1 && await page.isDisabled("#wnMove"), "списания: заметка к списанию");
   await page.click("#woPasteOpen");
@@ -161,7 +165,7 @@ if (PW) {
   await page.click('#wokind [data-k="pr"]'); await page.waitForTimeout(200);
   ok(await page.textContent("#woTitle") === "Акт проработки" && await page.textContent("#woRows .woy") === "Проработка", "списания: акт проработки");
   await page.click('#wokind [data-k="wo"]');
-  await page.click('[data-s="mgr"]'); await page.waitForTimeout(200);
+  await go("mgr"); await page.waitForTimeout(200);
   ok(await page.isVisible("#mgrIn") && !(await page.isVisible("#mgrBox")), "менеджер: без пароля менеджера — только форма входа");
 }
 

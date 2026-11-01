@@ -276,6 +276,7 @@ $("refresh").addEventListener("click", refreshLog);
 
 /* ── вкладки ── */
 function showView(v){
+  if (v !== "bt" && typeof btNav === "function") btNav(false);              // ушли из «Бартендерам» — шторка закрыта
   const bt = v === "bt", fr = v === "fr";                      // fr — журнал холодильника по QR, без входа
   $("viewBar").hidden = bt || fr;
   $("viewBt").hidden = !bt;
