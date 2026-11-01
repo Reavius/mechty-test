@@ -49,7 +49,7 @@ await page.waitForSelector("#mout .mtile", { timeout: 10000 });
 ok(await page.locator("#pMenu").isVisible(), "главная — меню");
 ok(await page.locator("#mout .mtile, #mout .mrow").count() >= 140, "меню: " + await page.locator("#mout .mtile, #mout .mrow").count() + " позиций");
 await page.fill("#gq", "негрони");
-ok(await page.locator("#mout .mtile").count() === 1, "поиск по меню");
+ok(await page.locator("#mout .mtile").count() === 2, "поиск по меню: Негрони и Вишнёвый Негрони");
 await page.fill("#gq", "");
 await page.click("#gTabs button[data-p=card]");
 await page.waitForSelector("#out article", { timeout: 10000 });
