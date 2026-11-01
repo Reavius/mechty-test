@@ -120,6 +120,7 @@
       <button type="button" data-s="rev"   aria-pressed="false">Ревизия</button>
       <button type="button" data-s="lab"   aria-pressed="false">Этикетки</button>
       <button type="button" data-s="wo"    aria-pressed="false">Списания</button>
+      <button type="button" data-s="gr"    aria-pressed="false">График</button>
       <button type="button" data-s="mgr"   aria-pressed="false">Менеджер</button>
     </div>
     <h1 id="btTitle">Технологическая<br>карта</h1>
@@ -630,6 +631,14 @@
     <div id="ckList"></div>
   </div>
 
+  <div id="secGr" hidden>
+    <div class="modes grmon" id="grMon" role="group" aria-label="Месяц"></div>
+    <button type="button" class="wogo grgo" id="grEdit">Внести правки</button>
+    <p class="cktop grinfo" id="grInfo" role="status"></p>
+    <div id="grSum"></div>
+    <div id="grWeeks"></div>
+  </div>
+
   <div id="secFr" hidden>
     <p class="cktop" id="frInfo"></p>
     <div class="frlost" id="frLost" role="alert" hidden><p id="frLostT"></p><button type="button" class="link" id="frLostX">Понятно</button></div>
@@ -723,6 +732,7 @@
 <script src="js/mrev.js" defer></script>
 <script src="js/order.js" defer></script>
 <script src="js/open.js" defer></script>
+<script src="js/graph.js" defer></script>
 <script src="js/xlsx.js" defer></script>
 <script src="js/mgr.js" defer></script>
 <script src="js/mgr2.js" defer></script>

@@ -1374,6 +1374,7 @@ function doPost(e) {
     if (p.wo === "rec") return jsonOut(woSave(p, true));
     if (p.order === "send") return jsonOut(orderSave(p));
     if (p.fr) return jsonOut(fridges(p));
+    if (p.gr) return jsonOut(graph(p));
     if (p.mgr === "login") return jsonOut(mgrLogin(p));
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
@@ -4353,4 +4354,93 @@ function frMonth(ss, m, data, fst) {
   ensureRows(sh, rows.length);
   sh.getRange(1, 1, rows.length, W).setValues(rows).setBackgrounds(bg).setFontWeights(fw);
   blocks.forEach(b => sh.getRange(b[0] + 1, 1, days + 1, b[1]).setBorder(true, true, true, true, true, true));   // рамка, как у бланка
+}
+
+/* ═════════════ График барменов и барбеков ═════════════
+   Лист «График»: строка — человек в неделе (неделя — с понедельника, «Неделя с» — дата понедельника). Смена в ячейке
+   дня — текстом: «утро 13:00–20:00», «вечер 20:00–02:00» или «14:00–23:00» (пн–ср: начало и конец вручную); пусто —
+   не работает. «Часы» — за неделю по строке (сайт считает сам, столбец — для глаз). Прошлые недели не стираются:
+   сайт показывает текущий и следующий месяц, а часы за прошлые — здесь. Править может любой бармен; правки приходят
+   пачкой и ложатся поверх чужих по ячейкам, не затирая неделю целиком. */
+const GR_SHEET = "График", GR_HEAD = ["Неделя с", "№", "Имя", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс", "Часы", "Кто правил"];
+const GR_V = /^((утро|вечер) )?([01]\d|2[0-3]):[0-5]\d–([01]\d|2[0-3]):[0-5]\d$/, GR_ROWS = 20;
+const grIso = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && new Date(s + "T00:00:00Z").getUTCDay() === 1 ? String(s) : "";
+const grRu = iso => iso.split("-").reverse().join(".");
+const grSafe = s => /^[=+\-@]/.test(s) ? "'" + s : s;                 // как clean: имя не станет формулой при перезаписи листа
+const grFromRu = s => { const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(s || "").replace(/^'/, "").trim()); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+function grHours(v) {
+  const m = GR_V.exec(String(v || ""));
+  if (!m) return 0;
+  const t = String(v).replace(/^(утро|вечер) /, "").split("–").map(x => +x.slice(0, 2) * 60 + +x.slice(3));
+  let d = t[1] - t[0];
+  if (d <= 0) d += 1440;
+  return d / 60;
+}
+function grSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(GR_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(GR_SHEET);
+    sh.getRange(1, 1, 1, GR_HEAD.length).setValues([GR_HEAD]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+    [96, 36, 130, 120, 120, 120, 120, 120, 120, 120, 60, 170].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  }
+  return sh;
+}
+/* все строки листа: [{w (iso), r, n, d[7], who}] */
+function grRead(sh) {
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, GR_HEAD.length).getDisplayValues().map(x => ({
+    w: grFromRu(x[0]), r: parseInt(x[1], 10) - 1, n: String(x[2] || "").replace(/^'/, "").trim(),
+    d: x.slice(3, 10).map(v => String(v || "").trim()), who: x[11] })).filter(x => x.w && x.r >= 0);
+}
+const grWeeksOut = (rows, keep) => {
+  const out = {};
+  rows.filter(x => keep(x.w)).forEach(x => {
+    const w = out[x.w] || (out[x.w] = { rows: [] });
+    w.rows[x.r] = { n: x.n, d: x.d.map(v => GR_V.test(v) ? v : "") };
+  });
+  Object.keys(out).forEach(k => { const rs = out[k].rows; for (let i = 0; i < rs.length; i++) if (!rs[i]) rs[i] = { n: "", d: ["", "", "", "", "", "", ""] }; });
+  return out;
+};
+function graph(p) {
+  const act = String(p.gr);
+  if (act === "list") {
+    const a = grIso(p.a), b = grIso(p.b);
+    if (!a || !b || b < a) return { error: "bad" };
+    const ss = SpreadsheetApp.getActiveSpreadsheet(), sh = ss.getSheetByName(GR_SHEET);
+    return { ok: true, weeks: sh ? grWeeksOut(grRead(sh), w => w >= a && w <= b) : {} };
+  }
+  if (act !== "set") return { error: "action" };
+  const who = clean(p.rn, 60), ch = (Array.isArray(p.ch) ? p.ch : []).slice(0, 200);
+  if (!who || !ch.length) return { error: "bad" };
+  journalPin();
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = grSheet(), rows = grRead(sh), touched = {}, stamp = who + " · " + Utilities.formatDate(new Date(), TZ, "dd.MM HH:mm");
+    const find = (w, r) => rows.find(x => x.w === w && x.r === r);
+    for (const c of ch) {
+      const w = grIso(c && c.w), r = parseInt(c && c.r, 10);
+      if (!w || !(r >= 0 && r < GR_ROWS)) continue;
+      /* новая неделя — сначала строки с именами, как их видел бармен (по умолчанию — общий список) */
+      if (!rows.some(x => x.w === w) && Array.isArray(c.ns))
+        c.ns.slice(0, GR_ROWS).forEach((n, i) => rows.push({ w: w, r: i, n: clean(n, 40), d: ["", "", "", "", "", "", ""], who: "" }));
+      for (let i = 0; i <= r; i++) if (!find(w, i)) rows.push({ w: w, r: i, n: "", d: ["", "", "", "", "", "", ""], who: "" });
+      const row = find(w, r);
+      if (c.n != null) row.n = clean(c.n, 40).replace(/^'/, "");
+      const d = parseInt(c.d, 10);
+      if (d >= 0 && d < 7) { const v = String(c.v || "").trim(); if (v && !GR_V.test(v)) continue; row.d[d] = v; }
+      row.who = stamp; touched[w] = 1;
+    }
+    rows.sort((x, y) => x.w < y.w ? -1 : x.w > y.w ? 1 : x.r - y.r);
+    const vals = rows.map(x => [grRu(x.w), x.r + 1, grSafe(x.n)].concat(x.d, [Math.round(x.d.reduce((s, v) => s + grHours(v), 0) * 100) / 100 || "", grSafe(x.who || "")]));
+    if (vals.length) {
+      ensureRows(sh, vals.length + 1);
+      sh.getRange(2, 1, vals.length, 1).setNumberFormat("@");
+      sh.getRange(2, 1, vals.length, GR_HEAD.length).setValues(vals);
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, weeks: grWeeksOut(rows, w => !!touched[w]) };
+  } finally { lock.releaseLock(); }
 }
