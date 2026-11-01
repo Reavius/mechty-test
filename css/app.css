@@ -292,8 +292,7 @@ tr.ccap td b{color:var(--fg)}
 }
 .tq::placeholder{color:var(--muted)}
 .tq:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-color:transparent}
-.modes.sect{margin:0 0 26px;grid-template-columns:repeat(5,1fr)}
-@media (max-width:640px){.modes.sect{grid-template-columns:repeat(2,1fr)}.modes.sect button:last-child:nth-child(odd){grid-column:1/-1}}
+
 input[type="date"]{
   width:100%;font-family:var(--sans);font-size:16px;font-weight:600;padding:12px 15px;
   border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg);
@@ -1193,3 +1192,145 @@ details.incmapd .bll li{padding:9px 4px}
 #woDl{border:2px solid var(--accent);border-radius:10px;padding:10px 18px;color:var(--accent);font-weight:700;text-decoration:none;
   box-shadow:0 0 0 3px rgba(201,162,75,.18)}
 #woDl:hover{background:rgba(201,162,75,.10)}
+
+/* ── График барменов и барбеков: неделя — таблица пн–вс, имя закреплено слева, на телефоне таблица листается вбок ── */
+.modes.grmon{margin-bottom:12px}
+.grgo{margin-top:0}
+.grgo.on{background:transparent;color:var(--accent)}
+.grinfo:empty{display:none}
+.grsum table{font-size:14px}
+.grsum td{padding:9px 16px}
+.grsum tr.grtot td{border-top:1px solid var(--line);color:var(--accent);font-weight:700}
+.grleg{margin:0;padding:12px 16px 14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);line-height:1.9}
+.grleg span{display:inline-block;padding:0 7px;border-radius:6px;font-weight:700;line-height:1.6}
+.grleg .gr-m{background:rgba(201,162,75,.16);color:#E9C878}
+.grleg .gr-e{background:rgba(124,112,226,.2);color:#BDB5F5}
+.grleg .gr-x{background:rgba(96,165,214,.17);color:#A8D3F0}
+.grwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.grt{min-width:600px;table-layout:fixed;font-size:13px}
+.grt th,.grt td{padding:8px 3px;text-align:center;vertical-align:middle;border-bottom:1px solid var(--line)}
+.grt thead th{padding:10px 3px 8px;letter-spacing:.06em}
+.grt thead th.grd span{display:block}
+.grt thead th.grd b{display:block;font-size:13px;letter-spacing:0;color:var(--fg);margin-top:2px}
+.grt thead th.grx b,.grt thead th.grx span{opacity:.45}
+.grt thead th.grnow b,.grt thead th.grnow span{color:var(--accent);opacity:1}
+.grt .grn{position:sticky;left:0;z-index:1;width:104px;background:var(--surface);text-align:left;padding-left:12px;font-weight:600;font-size:13.5px;
+  text-transform:none;letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grt thead .grn{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase}
+.grt .grh{width:52px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.grt td.grc{font-weight:700;font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.grt td.gr-m{background:rgba(201,162,75,.16);color:#E9C878}
+.grt td.gr-e{background:rgba(124,112,226,.2);color:#BDB5F5}
+.grt td.gr-x{background:rgba(96,165,214,.17);color:#A8D3F0}
+.grt td.gron{box-shadow:inset 0 0 0 2px var(--accent)}
+.grt td.grc button{width:100%;min-height:38px;padding:0 2px;border:1px dashed var(--line);border-radius:8px;background:none;color:inherit;
+  font:inherit;cursor:pointer}
+.grt td.grc.gr-m button,.grt td.grc.gr-e button,.grt td.grc.gr-x button{border-color:transparent}
+.grt td.grc button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.grt td.grnone{color:var(--muted);text-align:left;padding-left:12px}
+.grt .grn input.grname{width:100%;min-width:0;font:600 16px var(--sans);color:var(--fg);background:var(--surface-2);border:1px solid var(--line);
+  border-radius:8px;padding:6px 7px}   /* 16px — iPhone не увеличивает страницу */
+.grt .grn input.grname:focus{outline:none;border-color:var(--accent)}
+.grt.ed .grn{width:128px;padding-left:8px}
+.grt td.grc .grb::before{content:"–"}
+/* телефон, просмотр: вся неделя на экране — начало и конец смены друг под другом; правка листается вбок */
+@media (max-width:640px){
+  .grt:not(.ed){min-width:0}
+  .grt:not(.ed) .grn{width:86px;padding-left:8px;font-size:12.5px}
+  .grt:not(.ed) .grh{width:36px;font-size:12px}
+  .grt:not(.ed) thead th.grh{font-size:9px;letter-spacing:0}
+  .grt:not(.ed) td.grc{font-size:11.5px}
+  .grt:not(.ed) thead .grn{font-size:9.5px}
+  .grt:not(.ed) thead th{letter-spacing:.02em}
+  .grt:not(.ed) thead th.grd b{font-size:12px}
+  .grt:not(.ed) td.grc span{display:block;line-height:1.2}
+  .grt:not(.ed) td.grc .grb::before{content:none}
+}
+.grfoot{display:flex;justify-content:space-between;gap:12px;padding:12px 16px 14px;border-top:1px solid var(--line)}
+.grfoot button:only-child{margin-left:auto}
+.grf{padding:14px 16px 4px;border-top:1px solid var(--line);background:var(--surface-2)}
+.grft{margin:0 0 10px;font-size:15px}
+.modes.grk{grid-template-columns:repeat(3,1fr);margin-bottom:12px}
+.grq{display:flex;gap:18px;margin:0 0 10px}
+.grq button[aria-pressed="true"]{text-decoration:underline;text-underline-offset:4px}
+.grtimes{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.grtime{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+.grtime input{font:600 16px var(--sans);color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:132px}
+.grend{margin:0 0 12px;color:var(--muted);font-size:14px}
+.grend b{color:var(--fg)}
+.grlen{margin:10px 0 0;color:var(--accent);font-weight:700;min-height:1.2em}
+.grf .refbtns{display:flex;align-items:center;gap:18px}
+.grf .refbtns .wogo{width:auto;flex:1}
+
+/* ── Журнал холодильника по QR (без входа): последнее показание крупно, лист-бланк картинкой ── */
+.fptoday{margin:22px 0 0;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--surface);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.fptoday:empty{display:none}
+.fpt{font:700 44px/1 var(--sans);color:var(--fg);font-variant-numeric:tabular-nums}
+.fpt small{font-size:20px;color:var(--muted);font-weight:600}
+.fpw{color:var(--muted);font-size:14.5px;line-height:1.45}
+.fpmh{margin-top:14px;border:1px solid var(--line);border-radius:12px}
+.fpinfo{margin-top:10px}
+.fpsheet{margin-top:8px;border-radius:10px;overflow:hidden;background:#fff;cursor:zoom-in;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.fpsheet img{display:block;width:100%;height:auto}
+.fpsheet.zoom{overflow:auto;cursor:zoom-out;max-height:80vh}
+.fpsheet.zoom img{width:1240px;max-width:none}
+#viewFr .wogo{margin-top:18px}
+.fpbt{display:block;margin:16px auto 0}
+.frpaper{border-top:0;padding-top:0}
+
+/* ── Образцы подписей для журнала холодильников ── */
+.frsigs{margin-bottom:14px}
+.frsgnote{margin:0;padding:12px 16px 0}
+.frsgl{margin:10px 0 0;padding:0;list-style:none}
+.frsgl li{display:block;padding:10px 16px;border-top:1px solid var(--line)}
+.frsgrow{display:flex;align-items:center;gap:12px}
+.frsgn{font-weight:600;min-width:110px}
+.frsgv{height:40px;width:150px;background:#fff;border-radius:6px}
+.frsgno{color:var(--muted);font-size:13px;flex:1}
+.frsgrow .link{margin-left:auto}
+.frsigpad{margin-top:12px}
+.frsigpad .refbtns .wogo{margin-top:8px}
+.frsgask{margin:8px 0 0;font-size:13.5px;color:var(--flag)}
+
+/* ── «Бартендерам»: разделы — «три полоски» и шторка справа ── */
+.bthead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px}
+.bthead .mark{margin:0}
+.btburger{position:relative;flex:none;width:46px;height:46px;border-radius:14px;border:1px solid var(--accent);background:var(--surface);
+  display:grid;place-items:center;cursor:pointer;transition:background .15s}
+.btburger:hover{background:var(--surface-2)}
+.btburger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btburger span{display:grid;gap:5px;width:20px}
+.btburger i{display:block;height:2px;border-radius:2px;background:var(--accent)}
+.btburger i:nth-child(2){width:14px;margin-left:auto}
+.btdot{position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:var(--red);border:2px solid var(--bg)}
+.btdim{position:fixed;inset:0;z-index:400;background:rgba(6,7,10,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  opacity:0;visibility:hidden;transition:opacity .3s,visibility 0s .3s}
+.btdim.open{opacity:1;visibility:visible;transition:opacity .3s}
+.btnav{position:fixed;top:0;right:0;bottom:0;z-index:401;width:min(86vw,370px);background:#13161B;border-left:1px solid var(--line);
+  box-shadow:-24px 0 60px rgba(0,0,0,.55);display:flex;flex-direction:column;padding:calc(18px + env(safe-area-inset-top)) 0 calc(14px + env(safe-area-inset-bottom));
+  transform:translateX(104%);visibility:hidden;transition:transform .34s cubic-bezier(.22,.8,.24,1),visibility 0s .34s}
+.btnav.open{transform:none;visibility:visible;transition:transform .34s cubic-bezier(.22,.8,.24,1)}
+html.navopen,html.navopen body{overflow:hidden}
+.btntop{display:flex;align-items:center;justify-content:space-between;padding:0 18px 4px 22px}
+.btntop h2{font-family:var(--display);font-size:34px;font-weight:600;margin:0;line-height:1}
+.btx{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);display:grid;place-items:center;cursor:pointer}
+.btx svg{width:18px;height:18px}
+.btnwho{margin:6px 22px 4px;color:var(--muted);font-size:13px;min-height:1em}
+.btnwho b{color:var(--fg)}
+.btnlist{overflow:auto;flex:1;padding:0 12px 6px;overscroll-behavior:contain}
+.btg{margin:16px 10px 6px;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.btrow{display:flex;align-items:center;gap:14px;width:100%;padding:11px 12px;border-radius:13px;border:1px solid transparent;background:none;
+  color:var(--fg);text-align:left;font:inherit;cursor:pointer;transition:background .15s}
+.btrow:hover{background:var(--surface)}
+.btrow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.btic{width:22px;height:22px;color:var(--accent);flex:none}
+.btt{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+.btt b{font-weight:650;font-size:15.5px;display:flex;align-items:center}
+.btt small{color:var(--muted);font-size:12.5px}
+.btch{width:16px;height:16px;color:var(--muted);flex:none}
+.btrow[aria-pressed="true"]{background:linear-gradient(90deg,rgba(201,162,75,.16),rgba(201,162,75,.04));border-color:rgba(201,162,75,.35)}
+.btrow[aria-pressed="true"] .btt b{color:var(--accent)}
+.btmgr{margin:14px 0 0;padding:14px 0 0;border-top:1px solid var(--line)}
+.btmgr .btic{color:var(--muted)}
+.btlock{width:14px;height:14px;color:var(--muted);margin-left:6px}
+@media (prefers-reduced-motion:reduce){.btnav,.btnav.open,.btdim,.btdim.open{transition:none}}

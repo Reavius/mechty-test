@@ -42,6 +42,8 @@ function doGet(e) {
 
   if (p.pub) {                                                           // меню и состав для гостей — без пароля
     try { out = pubGet(); } catch (err) { console.error("pub: " + err); out = { error: "net" }; }
+  } else if (p.frpub) {                                                  // журнал холодильника по QR — без пароля
+    try { out = frPub(p); } catch (err) { console.error("frpub: " + err); out = { error: "net" }; }
   } else if (!tokenOk(p.token)) {
     out = { error: "denied" };
   } else if (p.rev) {
@@ -1374,6 +1376,7 @@ function doPost(e) {
     if (p.wo === "rec") return jsonOut(woSave(p, true));
     if (p.order === "send") return jsonOut(orderSave(p));
     if (p.fr) return jsonOut(fridges(p));
+    if (p.gr) return jsonOut(graph(p));
     if (p.mgr === "login") return jsonOut(mgrLogin(p));
     if (p.mgr === "out") return jsonOut(mgrLogout(p));
     if (p.mgr === "ref") return jsonOut(mgrRefSet(p));
@@ -4171,9 +4174,10 @@ function fridges(p) {
   }
   if (act === "get") {
     const m = /^\d{4}-\d{2}$/.test(String(p.m || "")) ? String(p.m) : day.slice(0, 7), fst = {};
-    return { ok: true, day: day, m: m, r: frRead(sh, m, fst), fst: fst, work: FR_WORK, start: FR_START };
+    return { ok: true, day: day, m: m, r: frRead(sh, m, fst), fst: fst, work: FR_WORK, start: FR_START, sigs: frSigs(ss) };
   }
   if (act === "fix") return frFix(ss, sh, p, day);
+  if (act === "sig") return frSigSet(ss, p, day);
   if (act !== "set") return { error: "action" };
 
   const id = frId(p.id), k = p.k === "s" || p.k === "e" ? p.k : "";
@@ -4187,17 +4191,83 @@ function fridges(p) {
   const lock = lockOrBusy(10000);
   try {
     sh.appendRow(["'" + day, id, f.n, f.z, k === "s" ? "начало" : "конец", v.t, v.h, v.wipe ? "" : fio, who, new Date(), v.wipe ? "сайт · стёрто" : "сайт"]);
+    frPubDrop(id, day);
     const fst = {}, r = frRead(sh, day.slice(0, 7), fst);
     try { frMonth(ss, day.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }   // запись уже есть
     /* чеклист: «Заполнить бланки температуры…» — отмечается сам, когда у всех внесено начало смены (у склада — замер) */
     if (k === "s" && !v.wipe && ckDay() === day) try {
       if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры: все холодильники, склад и зал клуба");
     } catch (e) { console.error("frCk: " + e); }
-    return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK };
+    return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK, sigs: frSigs(ss) };
   } finally {
     lock.releaseLock();
   }
 }
+/* Открытый журнал по QR на холодильнике — без пароля (проверка сканирует наклейку): только этот холодильник и один
+   месяц с начала журнала. Отдаётся то же, что в листе месяца, как в бумажном журнале: температура (у склада — время
+   и влажность), ФИО, кто внёс с сайта и во сколько, «исправлено» (дата) и «не работали». Почты, причины исправлений
+   и записи других холодильников не уходят. Ответ кэшируется на минуту — частые сканы не нагружают таблицу. */
+function frPub(p) {
+  const id = frId(p.id), day = frDayKey(), cur = (day < FR_START ? FR_START : day).slice(0, 7);
+  const m = /^\d{4}-\d{2}$/.test(String(p.m || "")) ? String(p.m) : cur;
+  if (!id || !frMeta().some(x => x.id === id)) return { error: "bad" };
+  const base = { ok: true, id: id, m: m, day: day, start: FR_START, r: {} };
+  if (m < FR_START.slice(0, 7) || m > cur) return base;
+  const cache = CacheService.getScriptCache(), ck = "frpub:" + id + ":" + m, hit = cache.get(ck);
+  if (hit) return JSON.parse(hit);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FR_LOG), mine = (sh ? frRead(sh, m) : {})[id] || {};
+  Object.keys(mine).forEach(d => {
+    const e = mine[d], o = {};
+    ["s", "e"].forEach(k => { const x = e[k]; if (!x) return;
+      o[k] = { t: x.t, h: x.h, f: x.f, w: x.w, at: x.at || "" };
+      if (x.m != null) o[k].fix = x.on || ""; });
+    if (e.off) o.off = 1;
+    base.r[d] = o;
+  });
+  /* образцы подписей тех, кто вносил в этом месяце, — для столбца «Подпись», как в бумажном журнале */
+  const all = frSigs(SpreadsheetApp.getActiveSpreadsheet()), sigs = {};
+  Object.keys(base.r).forEach(d => ["s", "e"].forEach(k => { const x = base.r[d][k]; if (x && x.f && all[x.f]) sigs[x.f] = all[x.f]; }));
+  base.sigs = sigs;
+  try { cache.put(ck, JSON.stringify(base), 60); } catch (e) {}
+  return base;
+}
+
+/* Образцы подписей для журнала холодильников (решение бар-менеджера: один раз на ФИО, подписи видны и в открытом
+   журнале по QR). Лист «Подписи»: ФИО, подпись — штрихи пальцем {w, h, s: [[x, y, x, y, …], …]} (целые, без
+   полей вокруг), кто сохранил, когда. Заменили подпись — новая строка ниже, действует последняя; прежние остаются. */
+const FR_SIG = "Подписи";
+function frSigs(ss) {
+  if (MEMO.frsigs) return MEMO.frsigs;
+  const sh = ss.getSheetByName(FR_SIG), out = {};
+  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(r => {
+    const fio = String(r[0] || "").replace(/^'/, "").trim();
+    try { const g = JSON.parse(String(r[1] || "")); if (fio && frSigOk(g)) out[fio] = g; } catch (e) {}
+  });
+  return MEMO.frsigs = out;
+}
+function frSigOk(g) {
+  if (!g || !(g.w > 0 && g.w <= 2000 && g.h > 0 && g.h <= 2000) || !Array.isArray(g.s) || !g.s.length || g.s.length > 80) return false;
+  let n = 0;
+  return g.s.every(a => Array.isArray(a) && a.length >= 2 && a.length % 2 === 0 && (n += a.length) <= 12000 && a.every(v => Number.isInteger(v) && v >= 0 && v <= 2000));
+}
+function frSigSet(ss, p, day) {
+  const fio = clean(p.fio, 40), who = clean(p.rn, 60), g = p.sig;
+  if (!fio || !who || !frSigOk(g)) return { error: "bad" };
+  const js = JSON.stringify({ w: g.w, h: g.h, s: g.s });
+  if (js.length > 40000) return { error: "bad" };
+  const lock = lockOrBusy(10000);
+  try {
+    let sh = ss.getSheetByName(FR_SIG);
+    if (!sh) { sh = ss.insertSheet(FR_SIG); sh.getRange(1, 1, 1, 4).setValues([["ФИО", "Подпись (штрихи)", "Кто сохранил", "Когда"]]).setFontWeight("bold"); sh.setFrozenRows(1); }
+    sh.appendRow([fio, js, who, new Date()]);
+    MEMO.frsigs = null;
+    /* открытый журнал — сразу с новой подписью: этот и прошлый месяц у всех холодильников */
+    const prev = Utilities.formatDate(new Date(Date.parse(day.slice(0, 7) + "-01T12:00:00Z") - 5 * 864e5), TZ, "yyyy-MM");
+    try { CacheService.getScriptCache().removeAll(frMeta().reduce((a, f) => a.concat(["frpub:" + f.id + ":" + day.slice(0, 7), "frpub:" + f.id + ":" + prev]), [])); } catch (e) {}
+    return { ok: true, sigs: frSigs(ss) };
+  } finally { lock.releaseLock(); }
+}
+const frPubDrop = (id, d) => { try { CacheService.getScriptCache().remove("frpub:" + id + ":" + String(d).slice(0, 7)); } catch (e) {} };   // открытый журнал — сразу свежий
 const FR_CK = "d6";
 const frId = v => String(v || "").replace(/[^a-z0-9]/g, "").slice(0, 12);
 /* температура и влажность из запроса: {t, h, wipe} или null; пустая температура — стереть показание */
@@ -4227,6 +4297,7 @@ function frFix(ss, sh, p, day) {
   const lock = lockOrBusy(10000);
   try {
     sh.appendRow(row);
+    frPubDrop(id, d);
     const fst = {}, r = frRead(sh, d.slice(0, 7), fst);
     try { frMonth(ss, d.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }
     return { ok: true, day: day, m: d.slice(0, 7), r: r, fst: fst, work: FR_WORK };
@@ -4353,4 +4424,93 @@ function frMonth(ss, m, data, fst) {
   ensureRows(sh, rows.length);
   sh.getRange(1, 1, rows.length, W).setValues(rows).setBackgrounds(bg).setFontWeights(fw);
   blocks.forEach(b => sh.getRange(b[0] + 1, 1, days + 1, b[1]).setBorder(true, true, true, true, true, true));   // рамка, как у бланка
+}
+
+/* ═════════════ График барменов и барбеков ═════════════
+   Лист «График»: строка — человек в неделе (неделя — с понедельника, «Неделя с» — дата понедельника). Смена в ячейке
+   дня — текстом: «утро 13:00–20:00», «вечер 20:00–02:00» или «14:00–23:00» (пн–ср: начало и конец вручную); пусто —
+   не работает. «Часы» — за неделю по строке (сайт считает сам, столбец — для глаз). Прошлые недели не стираются:
+   сайт показывает текущий и следующий месяц, а часы за прошлые — здесь. Править может любой бармен; правки приходят
+   пачкой и ложатся поверх чужих по ячейкам, не затирая неделю целиком. */
+const GR_SHEET = "График", GR_HEAD = ["Неделя с", "№", "Имя", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс", "Часы", "Кто правил"];
+const GR_V = /^((утро|вечер) )?([01]\d|2[0-3]):[0-5]\d–([01]\d|2[0-3]):[0-5]\d$/, GR_ROWS = 20;
+const grIso = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && new Date(s + "T00:00:00Z").getUTCDay() === 1 ? String(s) : "";
+const grRu = iso => iso.split("-").reverse().join(".");
+const grSafe = s => /^[=+\-@]/.test(s) ? "'" + s : s;                 // как clean: имя не станет формулой при перезаписи листа
+const grFromRu = s => { const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(s || "").replace(/^'/, "").trim()); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+function grHours(v) {
+  const m = GR_V.exec(String(v || ""));
+  if (!m) return 0;
+  const t = String(v).replace(/^(утро|вечер) /, "").split("–").map(x => +x.slice(0, 2) * 60 + +x.slice(3));
+  let d = t[1] - t[0];
+  if (d <= 0) d += 1440;
+  return d / 60;
+}
+function grSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(GR_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(GR_SHEET);
+    sh.getRange(1, 1, 1, GR_HEAD.length).setValues([GR_HEAD]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+    [96, 36, 130, 120, 120, 120, 120, 120, 120, 120, 60, 170].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  }
+  return sh;
+}
+/* все строки листа: [{w (iso), r, n, d[7], who}] */
+function grRead(sh) {
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, GR_HEAD.length).getDisplayValues().map(x => ({
+    w: grFromRu(x[0]), r: parseInt(x[1], 10) - 1, n: String(x[2] || "").replace(/^'/, "").trim(),
+    d: x.slice(3, 10).map(v => String(v || "").trim()), who: x[11] })).filter(x => x.w && x.r >= 0);
+}
+const grWeeksOut = (rows, keep) => {
+  const out = {};
+  rows.filter(x => keep(x.w)).forEach(x => {
+    const w = out[x.w] || (out[x.w] = { rows: [] });
+    w.rows[x.r] = { n: x.n, d: x.d.map(v => GR_V.test(v) ? v : "") };
+  });
+  Object.keys(out).forEach(k => { const rs = out[k].rows; for (let i = 0; i < rs.length; i++) if (!rs[i]) rs[i] = { n: "", d: ["", "", "", "", "", "", ""] }; });
+  return out;
+};
+function graph(p) {
+  const act = String(p.gr);
+  if (act === "list") {
+    const a = grIso(p.a), b = grIso(p.b);
+    if (!a || !b || b < a) return { error: "bad" };
+    const ss = SpreadsheetApp.getActiveSpreadsheet(), sh = ss.getSheetByName(GR_SHEET);
+    return { ok: true, weeks: sh ? grWeeksOut(grRead(sh), w => w >= a && w <= b) : {} };
+  }
+  if (act !== "set") return { error: "action" };
+  const who = clean(p.rn, 60), ch = (Array.isArray(p.ch) ? p.ch : []).slice(0, 200);
+  if (!who || !ch.length) return { error: "bad" };
+  journalPin();
+  const lock = lockOrBusy(15000);
+  try {
+    const sh = grSheet(), rows = grRead(sh), touched = {}, stamp = who + " · " + Utilities.formatDate(new Date(), TZ, "dd.MM HH:mm");
+    const find = (w, r) => rows.find(x => x.w === w && x.r === r);
+    for (const c of ch) {
+      const w = grIso(c && c.w), r = parseInt(c && c.r, 10);
+      if (!w || !(r >= 0 && r < GR_ROWS)) continue;
+      /* новая неделя — сначала строки с именами, как их видел бармен (по умолчанию — общий список) */
+      if (!rows.some(x => x.w === w) && Array.isArray(c.ns))
+        c.ns.slice(0, GR_ROWS).forEach((n, i) => rows.push({ w: w, r: i, n: clean(n, 40), d: ["", "", "", "", "", "", ""], who: "" }));
+      for (let i = 0; i <= r; i++) if (!find(w, i)) rows.push({ w: w, r: i, n: "", d: ["", "", "", "", "", "", ""], who: "" });
+      const row = find(w, r);
+      if (c.n != null) row.n = clean(c.n, 40).replace(/^'/, "");
+      const d = parseInt(c.d, 10);
+      if (d >= 0 && d < 7) { const v = String(c.v || "").trim(); if (v && !GR_V.test(v)) continue; row.d[d] = v; }
+      row.who = stamp; touched[w] = 1;
+    }
+    rows.sort((x, y) => x.w < y.w ? -1 : x.w > y.w ? 1 : x.r - y.r);
+    const vals = rows.map(x => [grRu(x.w), x.r + 1, grSafe(x.n)].concat(x.d, [Math.round(x.d.reduce((s, v) => s + grHours(v), 0) * 100) / 100 || "", grSafe(x.who || "")]));
+    if (vals.length) {
+      ensureRows(sh, vals.length + 1);
+      sh.getRange(2, 1, vals.length, 1).setNumberFormat("@");
+      sh.getRange(2, 1, vals.length, GR_HEAD.length).setValues(vals);
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, weeks: grWeeksOut(rows, w => !!touched[w]) };
+  } finally { lock.releaseLock(); }
 }
