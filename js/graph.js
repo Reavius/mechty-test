@@ -5,9 +5,9 @@ const GR_NAMES = ["Вячеслав", "Александр", "Кирилл", "А�
 const GR_WD = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"], GR_WDF = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
 const GR_MON = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const GR_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-/* конец смены по дню недели (0 — пн … 6 — вс): чт и вс — утро до 20:00, вечер до 02:00; пт и сб — утро до 20:00,
-   вечер до 06:00. Пн–ср — начало и конец вводятся вручную */
-const GR_END = {3: ["20:00", "02:00"], 4: ["20:00", "06:00"], 5: ["20:00", "06:00"], 6: ["20:00", "02:00"]};
+/* обычный конец смены по дню недели (0 — пн … 6 — вс) — подставляется, но его можно поменять: чт — утро до 20:00, вечер
+   до 02:00; пт и сб — утро до 20:00, вечер до 06:00; вс — и утро, и вечер до 02:00. Пн–ср — начало и конец вручную */
+const GR_END = {3: ["20:00", "02:00"], 4: ["20:00", "06:00"], 5: ["20:00", "06:00"], 6: ["02:00", "02:00"]};
 const GR_MORN = "13:00", GR_EVE = ["18:00", "20:00"];
 const GR_S = "mechty-gr", GR_Q = "mechty-gr-q";
 let grSt = null, grMonth = 0, grEdit = false, grOpen = null, grBusy = false, grState = "load", grTimer = 0, grSoon = 0;
@@ -34,6 +34,9 @@ function grWeeks(k){
   return out;
 }
 const grToday = () => grIso(Date.now() + 5 * 3600e3);
+/* прошедшие недели не меняются — только текущая (пн–вс по Астане) и следующие */
+const grMonNow = () => { const t = Date.parse(grToday() + "T00:00:00Z"); return grIso(t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5); };
+const grPast = w => w < grMonNow();
 const grInMonth = (w, d, k) => { const x = grDay(w, d), {y, m} = grMonthOf(k); return x.getUTCFullYear() === y && x.getUTCMonth() === m; };
 
 /* неделя = ответ таблицы (или копия на телефоне) + неотправленные правки поверх; новой недели в таблице нет —
@@ -72,11 +75,15 @@ function grMonthSum(k){
   return [...by.entries()].sort((a, b) => { const i = order.indexOf(a[0]), j = order.indexOf(b[0]); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); }).map(x => x[1]);
 }
 
-/* перерисовка не сбивает набор: поле имени или времени в фокусе остаётся с тем же текстом и курсором */
+/* перерисовка не сбивает набор и прокрутку: поле имени или времени в фокусе остаётся с тем же текстом и курсором,
+   неделя, пролистанная вбок до субботы, так и остаётся на субботе (на телефоне таблица правки шире экрана) */
 function grDraw(){
   const ae = document.activeElement, keep = ae && ae.closest && ae.closest("#grWeeks") && ae.tagName === "INPUT"
     ? {sel: ae.classList.contains("grname") ? '.grname[data-w="' + ae.dataset.w + '"][data-r="' + ae.dataset.r + '"]' : '.grf input[name="' + ae.name + '"]', v: ae.value, c: ae.selectionStart} : null;
+  const sx = {};
+  document.querySelectorAll("#grWeeks .grw").forEach(w => { const s = w.querySelector(".grwrap"); if (s && s.scrollLeft) sx[w.dataset.w] = s.scrollLeft; });
   grPaint();
+  Object.keys(sx).forEach(w => { const s = document.querySelector('#grWeeks .grw[data-w="' + w + '"] .grwrap'); if (s) s.scrollLeft = sx[w]; });
   const inp = keep && document.querySelector(keep.sel);
   if (inp){ inp.value = keep.v; inp.focus(); try { if (keep.c != null) inp.setSelectionRange(keep.c, keep.c); } catch (e) {} }
 }
@@ -85,7 +92,7 @@ function grPaint(){
   $("grMon").innerHTML = [0, 1].map(k => { const x = grMonthOf(k); return '<button type="button" data-k="' + k + '" aria-pressed="' + (k === grMonth) + '">' + GR_MON[x.m] + " " + x.y + '</button>'; }).join("");
   $("grEdit").textContent = grEdit ? "Готово" : "Внести правки";
   $("grEdit").classList.toggle("on", grEdit);
-  $("grInfo").innerHTML = (grEdit ? "Нажмите на клетку дня, чтобы поставить смену. Имя меняется только в своей неделе. " : "") +
+  $("grInfo").innerHTML = (grEdit ? "Нажмите на клетку дня, чтобы поставить смену. Имя меняется только в своей неделе. Прошедшие недели не меняются — только текущая и следующие. " : "") +
     (q ? "Правок ждут отправки: <b>" + q + "</b>. " : "") +
     (grState === "net" ? "Нет связи — правки уйдут, когда появится." : grState === "old" ? "График заработает после обновления Apps Script." : grState === "load" && !grSt ? "Загружаем…" : "");
   const sum = grMonthSum(grMonth), tot = sum.reduce((s, x) => s + x.h, 0);
@@ -93,57 +100,59 @@ function grPaint(){
     '<table><thead><tr><th>Имя</th><th>Смен</th><th>Часов</th></tr></thead><tbody>' +
     sum.map(x => '<tr><td class="n">' + esc(x.n) + '</td><td class="v">' + x.s + '</td><td class="v">' + grNum(x.h) + '</td></tr>').join("") +
     '<tr class="grtot"><td class="n">Всего</td><td class="v">' + sum.reduce((s, x) => s + x.s, 0) + '</td><td class="v">' + grNum(tot) + '</td></tr></tbody></table>' +
-    '<p class="grleg"><span class="gr-m">утро</span> до 20:00 · <span class="gr-e">вечер</span> чт и вс до 02:00, пт и сб до 06:00 · <span class="gr-x">пн–ср</span> начало и конец вручную</p></div>';
+    '<p class="grleg"><span class="gr-m">утро</span> до 20:00, в вс до 02:00 · <span class="gr-e">вечер</span> чт и вс до 02:00, пт и сб до 06:00 — конец можно поменять · <span class="gr-x">пн–ср</span> начало и конец вручную</p></div>';
   const today = grToday();
   $("grWeeks").innerHTML = grWeeks(grMonth).map(w => {
-    const rows = grRows(w), show = rows.map((r, i) => ({r, i})).filter(x => grEdit || grUsed(x.r)), wh = rows.reduce((s, r) => s + grWeekH(r), 0);
+    const ed = grEdit && !grPast(w);                                           // прошедшая неделя — только просмотр
+    const rows = grRows(w), show = rows.map((r, i) => ({r, i})).filter(x => ed || grUsed(x.r)), wh = rows.reduce((s, r) => s + grWeekH(r), 0);
     const head = '<tr><th class="grn">Имя</th>' + GR_WD.map((x, d) => {
       const day = grDay(w, d), iso = grIso(day);
       return '<th class="grd' + (grInMonth(w, d, grMonth) ? "" : " grx") + (iso === today ? " grnow" : "") + '"><span>' + x + '</span><b>' + day.getUTCDate() + (day.getUTCDate() === 1 || d === 0 ? "." + String(day.getUTCMonth() + 1).padStart(2, "0") : "") + '</b></th>';
     }).join("") + '<th class="grh">Часы</th></tr>';
-    const body = show.map(({r, i}) => '<tr><th class="grn" scope="row">' + (grEdit ? '<input type="text" class="grname" data-w="' + w + '" data-r="' + i + '" value="' + esc(r.n) + '" placeholder="Имя" aria-label="Имя, строка ' + (i + 1) + '">' : esc(r.n)) + '</th>' +
+    const body = show.map(({r, i}) => '<tr><th class="grn" scope="row">' + (ed ? '<input type="text" class="grname" data-w="' + w + '" data-r="' + i + '" value="' + esc(r.n) + '" placeholder="Имя" aria-label="Имя, строка ' + (i + 1) + '">' : esc(r.n)) + '</th>' +
       r.d.map((v, d) => { const s = grP(v), txt = s ? '<span>' + grT(s.a) + '</span><span class="grb">' + grT(s.b) + '</span>' : "", on = grOpen && grOpen.w === w && grOpen.r === i && grOpen.d === d;
-        return '<td class="grc ' + grCls(v) + (on ? " gron" : "") + '">' + (grEdit ? '<button type="button" data-w="' + w + '" data-r="' + i + '" data-d="' + d + '" aria-label="' + esc((r.n || "Строка " + (i + 1)) + ", " + GR_WD[d] + " " + grDay(w, d).getUTCDate() + ": " + (v || "выходной")) + '">' + (txt || "+") + '</button>' : txt) + '</td>'; }).join("") +
+        return '<td class="grc ' + grCls(v) + (on ? " gron" : "") + '">' + (ed ? '<button type="button" data-w="' + w + '" data-r="' + i + '" data-d="' + d + '" aria-label="' + esc((r.n || "Строка " + (i + 1)) + ", " + GR_WD[d] + " " + grDay(w, d).getUTCDate() + ": " + (v || "выходной")) + '">' + (txt || "+") + '</button>' : txt) + '</td>'; }).join("") +
       '<td class="grh">' + (grWeekH(r) ? grNum(grWeekH(r)) : "") + '</td></tr>').join("");
     return '<div class="result tcard grw" data-w="' + w + '"><div class="tname"><em>' + (wh ? "≈ " + grNum(wh) + " ч за неделю" : "смен нет") + '</em><h3>' + grTitle(w) + '</h3></div>' +
-      '<div class="grwrap"><table class="grt' + (grEdit ? " ed" : "") + '"><thead>' + head + '</thead><tbody>' + (body || '<tr><td class="grnone" colspan="9">Смен нет</td></tr>') + '</tbody></table></div>' +
+      '<div class="grwrap"><table class="grt' + (ed ? " ed" : "") + '"><thead>' + head + '</thead><tbody>' + (body || '<tr><td class="grnone" colspan="9">Смен нет</td></tr>') + '</tbody></table></div>' +
       (grOpen && grOpen.w === w ? grForm() : "") +
-      '<div class="grfoot">' + (grEdit ? '<button type="button" class="link" data-add="' + w + '">+ строка</button>' : "") +
+      '<div class="grfoot">' + (ed ? '<button type="button" class="link" data-add="' + w + '">+ строка</button>' : grEdit ? '<span class="grlock">прошедшая неделя — только просмотр</span>' : "") +
         '<button type="button" class="link" data-png="' + w + '">Сохранить картинкой</button></div></div>';
   }).join("");
 }
 
-/* правка одной клетки: чт–вс — утро (до 20:00) или вечер (до 02:00 / 06:00), начало вводится; пн–ср — начало и конец */
+/* правка одной клетки: чт–вс — утро или вечер, начало и конец можно выбрать (конец подставлен обычный); пн–ср — начало
+   и конец только вручную */
 function grForm(){
   const o = grOpen, r = grRows(o.w)[o.r] || {n: ""}, day = grDay(o.w, o.d), end = GR_END[o.d], kinds = end ? [["", "Выходной"], ["утро", "Утро"], ["вечер", "Вечер"]] : [["", "Выходной"], ["x", "Смена"]];
   const t = (nm, v, lab) => '<label class="grtime"><span>' + lab + '</span><input type="time" name="' + nm + '" value="' + esc(v || "") + '" step="900" required></label>';
+  const usual = () => '<p class="grend" id="grEnd">' + grEndTxt() + '</p>';
   let body = "";
-  if (o.k === "утро") body = '<div class="grtimes">' + t("a", o.a, "Начало") + '<p class="grend">до <b>' + end[0] + '</b></p></div>';
+  if (o.k === "утро") body = '<div class="grtimes">' + t("a", o.a, "Начало") + t("b", o.b, "Конец") + '</div>' + usual();
   if (o.k === "вечер") body = '<div class="grq">' + GR_EVE.map(x => '<button type="button" class="link" data-t="' + x + '"' + (o.a === x ? ' aria-pressed="true"' : "") + '>с ' + x + '</button>').join("") + '</div>' +
-    '<div class="grtimes">' + t("a", o.a, "Начало") + '<p class="grend">до <b>' + end[1] + '</b></p></div>';
+    '<div class="grtimes">' + t("a", o.a, "Начало") + t("b", o.b, "Конец") + '</div>' + usual();
   if (o.k === "x") body = '<p class="wnhint">В понедельник, вторник и среду конец смены не подставляется — укажите начало и конец.</p><div class="grtimes">' + t("a", o.a, "Начало") + t("b", o.b, "Конец") + '</div>';
   return '<form class="grf" novalidate><p class="grft"><b>' + esc(r.n || "Строка " + (o.r + 1)) + '</b> · ' + GR_WDF[o.d] + ', ' + day.getUTCDate() + " " + GR_GEN[day.getUTCMonth()] + '</p>' +
     '<div class="modes grk" role="group" aria-label="Смена">' + kinds.map(([k, l]) => '<button type="button" data-k="' + k + '" aria-pressed="' + (o.k === k) + '">' + l + '</button>').join("") + '</div>' +
     body + '<p class="grlen" id="grLen">' + grLenTxt() + '</p><p class="warn" id="grMsg" role="status"></p>' +
     '<div class="refbtns"><button type="submit" class="wogo">Сохранить</button><button type="button" class="link" data-cx="1">Отмена</button></div></form>';
 }
+/* обычный конец этого дня и смены; поменяли — «вернуть» */
+function grEndTxt(){
+  const o = grOpen, end = GR_END[o.d], e = end && (o.k === "утро" ? end[0] : o.k === "вечер" ? end[1] : "");
+  return e ? "обычно до <b>" + e + "</b>" + (o.b && o.b !== e ? ' · <button type="button" class="link" data-tb="' + e + '">вернуть ' + e + '</button>' : "") : "";
+}
 /* значение клетки из формы или текст ошибки */
 function grValue(){
-  const o = grOpen, end = GR_END[o.d];
+  const o = grOpen;
   if (!o.k) return "";
   if (!(grMin(o.a) >= 0)) return {err: "Укажите время начала."};
-  if (o.k === "утро"){
-    if (grMin(o.a) < 360 || grMin(o.a) >= grMin(end[0])) return {err: "Утренняя смена начинается до " + end[0] + "."};
-    return "утро " + o.a + "–" + end[0];
-  }
-  if (o.k === "вечер"){
-    if (grMin(o.a) < 720) return {err: "Вечерняя смена начинается не раньше 12:00."};
-    return "вечер " + o.a + "–" + end[1];
-  }
   if (!(grMin(o.b) >= 0)) return {err: "Укажите время конца смены."};
+  if (o.k === "утро" && (grMin(o.a) < 360 || grMin(o.a) >= 1200)) return {err: "Утренняя смена начинается с 06:00 до 20:00."};
+  if (o.k === "вечер" && grMin(o.a) < 720) return {err: "Вечерняя смена начинается не раньше 12:00."};
   if (o.a === o.b) return {err: "Начало и конец совпадают."};
   if (grLen(o.a, o.b) > 16) return {err: "Смена дольше 16 часов — проверьте время."};
-  return o.a + "–" + o.b;
+  return (o.k === "x" ? "" : o.k + " ") + o.a + "–" + o.b;
 }
 function grLenTxt(){
   const v = grValue();
@@ -234,7 +243,7 @@ async function grPng(w){
   x.strokeRect(40, top, W - 80, 92 + Math.max(rows.length, 1) * rh);
   const tot = rows.reduce((s, r) => s + grWeekH(r), 0), fy = top + 92 + Math.max(rows.length, 1) * rh + 56;
   x.fillStyle = "#6b6f76"; x.font = "500 22px Manrope, sans-serif";
-  x.fillText("Утро — до 20:00 · вечер: чт и вс — до 02:00, пт и сб — до 06:00 · пн–ср — время в клетке. Всего за неделю ≈ " + grNum(tot) + " ч", 40, fy);
+  x.fillText("Время смены — в клетке (обычно: утро до 20:00, в вс до 02:00; вечер чт и вс до 02:00, пт и сб до 06:00). Всего за неделю ≈ " + grNum(tot) + " ч", 40, fy);
   const blob = await new Promise(ok => c.toBlob(ok, "image/png"));
   if (!blob) return;
   const name = "grafik-" + w + ".png", file = new File([blob], name, {type: "image/png"});   // латиницей — кириллицу в имени файла теряют некоторые браузеры
@@ -260,22 +269,25 @@ $("grWeeks").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b) return;
   if (b.dataset.png){ grPng(b.dataset.png); return; }
-  if (b.dataset.add){ const w = b.dataset.add, n = grRows(w).length; if (n >= 20) return; grPush({w, r: n, n: ""}); grDraw();
+  if (b.dataset.add){ if (grPast(b.dataset.add)) return; const w = b.dataset.add, n = grRows(w).length; if (n >= 20) return; grPush({w, r: n, n: ""}); grDraw();
     const inp = document.querySelector('.grname[data-w="' + w + '"][data-r="' + n + '"]'); if (inp) inp.focus(); return; }
   if (b.dataset.cx){ grOpen = null; grDraw(); return; }
   if (b.dataset.t){ grOpen.a = b.dataset.t; grDraw(); return; }
+  if (b.dataset.tb){ grOpen.b = b.dataset.tb; grDraw(); return; }
   if (b.dataset.k != null && b.closest(".grf")){
     const k = b.dataset.k, cur = grP(grRows(grOpen.w)[grOpen.r].d[grOpen.d]);
     grOpen.k = k;
-    if (k === "утро") grOpen.a = cur && cur.k === "утро" ? cur.a : GR_MORN;
-    if (k === "вечер") grOpen.a = cur && cur.k === "вечер" ? cur.a : GR_EVE[1];
-    if (k === "x"){ grOpen.a = cur && !cur.k ? cur.a : ""; grOpen.b = cur && !cur.k ? cur.b : ""; }
+    const same = cur && (cur.k || "x") === k, end = GR_END[grOpen.d];                   // своё время смены этого вида — как было
+    if (k === "утро"){ grOpen.a = same ? cur.a : GR_MORN; grOpen.b = same ? cur.b : end[0]; }
+    if (k === "вечер"){ grOpen.a = same ? cur.a : GR_EVE[1]; grOpen.b = same ? cur.b : end[1]; }
+    if (k === "x"){ grOpen.a = same ? cur.a : ""; grOpen.b = same ? cur.b : ""; }
     grDraw(); return;
   }
   if (b.dataset.d != null){
     const w = b.dataset.w, r = +b.dataset.r, d = +b.dataset.d, s = grP(grRows(w)[r].d[d]);
     buzz(8);
-    grOpen = {w, r, d, k: s ? (s.k || "x") : (GR_END[d] ? "утро" : "x"), a: s ? s.a : GR_END[d] ? GR_MORN : "", b: s && !s.k ? s.b : ""};
+    if (grPast(w)) return;
+    grOpen = {w, r, d, k: s ? (s.k || "x") : (GR_END[d] ? "утро" : "x"), a: s ? s.a : GR_END[d] ? GR_MORN : "", b: s ? s.b : GR_END[d] ? GR_END[d][0] : ""};
     grDraw();
     const f = document.querySelector(".grf");
     if (f) f.scrollIntoView({block: "nearest", behavior: "smooth"});
@@ -286,6 +298,7 @@ $("grWeeks").addEventListener("input", e => {
   if (!grOpen || !t.closest(".grf") || !/^[ab]$/.test(t.name)) return;
   grOpen[t.name] = t.value;
   $("grLen").textContent = grLenTxt(); $("grMsg").textContent = "";
+  if (t.name === "b" && $("grEnd")) $("grEnd").innerHTML = grEndTxt();
 });
 $("grWeeks").addEventListener("submit", e => {
   if (!e.target.closest(".grf")) return;

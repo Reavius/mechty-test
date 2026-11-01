@@ -4428,7 +4428,7 @@ function frMonth(ss, m, data, fst) {
 
 /* ═════════════ График барменов и барбеков ═════════════
    Лист «График»: строка — человек в неделе (неделя — с понедельника, «Неделя с» — дата понедельника). Смена в ячейке
-   дня — текстом: «утро 13:00–20:00», «вечер 20:00–02:00» или «14:00–23:00» (пн–ср: начало и конец вручную); пусто —
+   дня — текстом: «утро 13:00–20:00», «вечер 20:00–02:00» или «14:00–23:00» (пн–ср), конец любой; пусто —
    не работает. «Часы» — за неделю по строке (сайт считает сам, столбец — для глаз). Прошлые недели не стираются:
    сайт показывает текущий и следующий месяц, а часы за прошлые — здесь. Править может любой бармен; правки приходят
    пачкой и ложатся поверх чужих по ячейкам, не затирая неделю целиком. */
@@ -4489,10 +4489,15 @@ function graph(p) {
   const lock = lockOrBusy(15000);
   try {
     const sh = grSheet(), rows = grRead(sh), touched = {}, stamp = who + " · " + Utilities.formatDate(new Date(), TZ, "dd.MM HH:mm");
+    /* прошедшие недели не меняются — только текущая (пн–вс по Астане) и следующие */
+    const today = Date.parse(Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd") + "T00:00:00Z");
+    const monNow = new Date(today - ((new Date(today).getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
+    let past = 0;
     const find = (w, r) => rows.find(x => x.w === w && x.r === r);
     for (const c of ch) {
       const w = grIso(c && c.w), r = parseInt(c && c.r, 10);
       if (!w || !(r >= 0 && r < GR_ROWS)) continue;
+      if (w < monNow) { past++; continue; }
       /* новая неделя — сначала строки с именами, как их видел бармен (по умолчанию — общий список) */
       if (!rows.some(x => x.w === w) && Array.isArray(c.ns))
         c.ns.slice(0, GR_ROWS).forEach((n, i) => rows.push({ w: w, r: i, n: clean(n, 40), d: ["", "", "", "", "", "", ""], who: "" }));
@@ -4511,6 +4516,6 @@ function graph(p) {
       sh.getRange(2, 1, vals.length, GR_HEAD.length).setValues(vals);
     }
     SpreadsheetApp.flush();
-    return { ok: true, weeks: grWeeksOut(rows, w => !!touched[w]) };
+    return { ok: true, weeks: grWeeksOut(rows, w => !!touched[w]), past: past };
   } finally { lock.releaseLock(); }
 }
