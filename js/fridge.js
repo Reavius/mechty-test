@@ -146,9 +146,10 @@ function frPut(d){
   frSt.day = d.day; frSt.m[d.m] = d.r || {};
   if (d.fst) frSt.fst = d.fst;
   if (d.work) frSt.work = d.work;
+  if (d.sigs) frSt.sigs = d.sigs;
   const keep = [d.day.slice(0, 7), frCurM(), frM].filter(Boolean);       // на телефоне — текущий месяц и открытый
   Object.keys(frSt.m).forEach(k => { if (keep.indexOf(k) < 0 && k !== d.m) delete frSt.m[k]; });
-  cks(FRS, {day: frSt.day, fst: frSt.fst, work: frSt.work, m: {[frCurM()]: frSt.m[frCurM()] || {}}});
+  cks(FRS, {day: frSt.day, fst: frSt.fst, work: frSt.work, sigs: frSt.sigs, m: {[frCurM()]: frSt.m[frCurM()] || {}}});
 }
 async function frPost(body){
   try {
@@ -244,6 +245,7 @@ function frDraw(){
   }).join("");
   $("frList").hidden = !!frId; $("frOne").hidden = !frId; $("frTools").hidden = !!frId;
   if (frId) return frDrawOne();
+  frSigsDraw();
   $("frList").innerHTML = FR.filter(f => f.z === frZone).map(f => {
     const r = recs[FR.indexOf(f)], last = r.e || r.s;
     const cell = (x, k) => '<span class="frv' + (frBad(f, x) ? " bad" : "") + (x && x.pend ? " pend" : "") + '"><small>' + (f.room ? "Замер" + (x && x.at ? " · " + esc(x.at) : "") : k === "s" ? "Начало" : "Конец") + '</small>' +
@@ -278,7 +280,7 @@ function frDrawOne(){
       '<div class="frday"><p class="frtoday">Сегодня — <b>' + frWdDay(day) + '</b>. ' + (f.room ? "Один замер за день, время запишется само. " : "") + "Вносить и править можно до 14:00." +
         (frMorning() ? ' <b>Сейчас утро — это ещё вчерашний день</b>' + (f.room ? ": замер нового дня — после 14:00." : ": сюда конец его смены, начало новой — после 14:00.") : "") + '</p>' +
         '<label class="label" for="frFio">ФИО</label><select id="frFio"><option value="">— выберите —</option>' +
-        FR_FIO.map(x => '<option' + (x === fio ? " selected" : "") + '>' + x + '</option>').join("") + '</select>' +
+        FR_FIO.map(x => '<option' + (x === fio ? " selected" : "") + '>' + x + '</option>').join("") + '</select><div id="frSigOne"></div>' +
         ks.map(sh).join("") + '</div>') +
       '<div class="frmh"><button type="button" class="frmb" data-mm="-1" aria-label="Предыдущий месяц">‹</button><b id="frMt"></b>' +
         '<button type="button" class="frmb" data-mm="1" aria-label="Следующий месяц">›</button></div><div id="frTab"></div>' + frFixHtml(f) +
@@ -294,7 +296,7 @@ function frDrawOne(){
       (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "") : "Не внесено.";
   });
   if (!early) frBtns();
-  frTable(f); frFixSync();
+  frTable(f); frFixSync(); frSigOneDraw();
 }
 /* поле показывает внесённое; dataset.v — что было внесено (поле поменяли — не затираем при обновлении) */
 function frSetIn(k, x){
@@ -555,7 +557,7 @@ $("frOne").addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.tagName === "INPUT" && /^fr[TH][se]$/.test(e.target.id)){ e.preventDefault(); const k = e.target.id.slice(-1); if (!$("frGo" + k).disabled) frSave(k); }
 });
 $("frOne").addEventListener("change", e => {
-  if (e.target.id === "frFio") try { localStorage.setItem(FRF, e.target.value); } catch (e2) {}
+  if (e.target.id === "frFio"){ try { localStorage.setItem(FRF, e.target.value); } catch (e2) {} frSigOpen = ""; frSigOneDraw(); }
   if (e.target.id === "frFxD" || e.target.id === "frFxK"){ delete $("frFxM").dataset.msg; frFixSync(); }   // выбрали другое — подсказка о нём
 });
 $("frLostX").addEventListener("click", () => { frLost = []; frDraw(); });
@@ -572,7 +574,7 @@ window.addEventListener("online", () => { if (R && ckj(FRQ, []).length) frFlush(
 const frFmt1 = n => n == null || n === "" ? "" : (n < 0 ? "−" : "") + Math.abs(n).toFixed(1).replace(".", ",");   // как пишут в журнале: 4,0
 const FR_SERIF = "'Times New Roman', Times, 'Liberation Serif', 'Noto Serif', serif";
 const FR_MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-function frPaper(f, m, get, made){
+function frPaper(f, m, get, made, sigs){
   const W = 1240, H = 1754, L = 70, Rx = W - 70, y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7)), days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const x = c.getContext("2d"), ink = "#111", red = "#B3261E", font = (w, s) => w + " " + s + "px " + FR_SERIF;
@@ -594,6 +596,17 @@ function frPaper(f, m, get, made){
   const norm = (v, lo, hi) => v != null && ((lo != null && v < lo) || (hi != null && v > hi));
   /* подпись — кто внёс с сайта и во сколько; исправление бар-менеджера — с датой исправления */
   const sig = r => !r ? "" : r.fix != null ? String(r.w || "").replace(/ · менеджер$/, "") + ", испр. " + r.fix + (r.at ? " " + r.at : "") : (r.w || "") + (r.at ? " " + r.at : "");
+  /* подпись: образец того, чья запись (как в бумажном), справа — время внесения; исправление менеджера и ФИО без
+     образца — текстом, как раньше */
+  const sigCell = (ent, x0, w, yy, fallback) => {
+    ent = ent.filter(Boolean);
+    const who = ent.map(v => v.f).filter((v, i, a) => v && a.indexOf(v) === i);
+    if (!ent.length || ent.some(v => v.fix != null) || !who.length || !who.every(n => sigs && sigs[n])) return txt(fallback, x0, w, yy, font("", 16), "#333");
+    const times = who.length === 1 ? ent.map(v => v.at).filter(Boolean).join(" · ") : "";
+    x.font = font("", 15); const tw = times ? x.measureText(times).width + 14 : 0, each = (w - 16 - tw) / who.length;
+    who.forEach((n, i) => frSigPath(x, sigs[n], x0 + 8 + i * each, yy - 22, each - 6, rH - 7));
+    if (times){ x.fillStyle = "#555"; x.textAlign = "right"; x.fillText(times, x0 + w - 8, yy - 2); x.textAlign = "left"; }
+  };
   const pts = {s: [], e: []};
   for (let d = 1; d <= days; d++){
     const key = m + "-" + String(d).padStart(2, "0"), r = get(key) || {}, yy = body + (d - 1) * rH + 24, s = r.s, e = r.e;
@@ -605,11 +618,11 @@ function frPaper(f, m, get, made){
       txt(s ? s.at : "", cx[1], cw[1], yy, font("", 20));
       txt(tv(s), cx[2], cw[2], yy, font("", 23), s && norm(s.t, f.lo, f.hi) ? red : ink);
       txt(s && s.h != null ? frFmt(s.h) : "", cx[3], cw[3], yy, font("", 23), s && norm(s.h, f.hlo, f.hhi) ? red : ink);
-      txt(fio, cx[4], cw[4], yy, font("", 20)); txt(sg, cx[5], cw[5], yy, font("", 16), "#333");
+      txt(fio, cx[4], cw[4], yy, font("", 20)); sigCell([s], cx[5], cw[5], yy, sg);
     } else {
       txt(tv(s), cx[1], cw[1], yy, font("", 23), s && norm(s.t, f.lo, f.hi) ? red : ink);
       txt(tv(e), cx[2], cw[2], yy, font("", 23), e && norm(e.t, f.lo, f.hi) ? red : ink);
-      txt(fio, cx[3], cw[3], yy, font("", 20)); txt(sg, cx[4], cw[4], yy, font("", 16), "#333");
+      txt(fio, cx[3], cw[3], yy, font("", 20)); sigCell([s, e], cx[4], cw[4], yy, sg);
     }
     if (s) pts.s.push([d, s.t]);
     if (e) pts.e.push([d, e.t]);
@@ -673,7 +686,7 @@ async function frPaperSave(){
   if (!f) return;
   try { await document.fonts.ready; } catch (e) {}
   const mm = frSt && frSt.m[m] && frSt.m[m][f.id] || {};
-  const c = frPaper(f, m, day => Object.assign({off: !!(mm[day] && mm[day].off)}, frRec(f.id, day)), frMade());
+  const c = frPaper(f, m, day => Object.assign({off: !!(mm[day] && mm[day].off)}, frRec(f.id, day)), frMade(), frSigsNow());
   frPngSave(c, "zhurnal-" + f.id + "-" + m + ".png", f.n + " · " + FR_MON[Number(m.slice(5, 7)) - 1] + " " + m.slice(0, 4));
 }
 
@@ -714,7 +727,7 @@ function fpDraw(){
       (last.x.at ? " · " + esc(last.x.at) : "") + (last.x.f ? " · " + esc(last.x.f) : "") + (f.room && last.x.h != null ? " · влажность " + frFmt(last.x.h) + " %" : "") + '</span>'
       : '<span class="fpw">' + (m === cur ? "В этом месяце показаний пока нет." : "Показаний за этот месяц нет.") + '</span>';
     $("fpInfo").textContent = "Данные из журнала на сайте на " + frMade().slice(-5) + ". Нажмите на лист, чтобы рассмотреть.";
-    fpCanvas = frPaper(f, d.m, day => d.r[day], frMade());
+    fpCanvas = frPaper(f, d.m, day => d.r[day], frMade(), d.sigs || {});
   }
   $("fpImg").src = fpCanvas.toDataURL("image/png");
   $("fpImg").alt = "Журнал температуры: " + f.n + ", " + $("fpMon").textContent;
@@ -727,4 +740,111 @@ $("fpBt").addEventListener("click", () => {
   frWant = fpId; sect = "fr";
   history.replaceState(null, "", location.pathname + location.search + "#bartenders");
   goBt();
+});
+
+/* ════════════ Образцы подписей ════════════
+   Решение бар-менеджера: каждый из ФИО журнала один раз расписывается пальцем — его подпись встаёт в столбец «Подпись»
+   у каждой его записи: в PNG из карточки и в открытом журнале по QR, как в бумажном. Хранятся в таблице (лист
+   «Подписи»), заменить — расписаться заново. Штрихи ужимаются без полей вокруг в {w, h, s: [[x, y, …], …]} (до 600). */
+let frSigOpen = "", frSgPts = [];
+const frSigsNow = () => (frSt && frSt.sigs) || {};
+function frSigPath(x, g, bx, by, bw, bh, col){
+  if (!g || !Array.isArray(g.s)) return;
+  const k = Math.min(bw / g.w, bh / g.h), ox = bx + (bw - g.w * k) / 2, oy = by + (bh - g.h * k) / 2;
+  x.save(); x.strokeStyle = x.fillStyle = col || "#1d3a8f"; x.lineCap = x.lineJoin = "round"; x.lineWidth = Math.max(1.1, Math.min(3.2, 6 * k));
+  for (const a of g.s){
+    if (a.length === 2){ x.beginPath(); x.arc(ox + a[0] * k, oy + a[1] * k, x.lineWidth / 2, 0, 7); x.fill(); continue; }
+    x.beginPath(); x.moveTo(ox + a[0] * k, oy + a[1] * k);
+    for (let i = 2; i < a.length; i += 2) x.lineTo(ox + a[i] * k, oy + a[i + 1] * k);
+    x.stroke();
+  }
+  x.restore();
+}
+function frSigPack(strokes){
+  const all = strokes.flat();
+  if (all.length < 8) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < all.length; i += 2){ x0 = Math.min(x0, all[i]); x1 = Math.max(x1, all[i]); y0 = Math.min(y0, all[i + 1]); y1 = Math.max(y1, all[i + 1]); }
+  if (Math.max(x1 - x0, y1 - y0) < 24) return null;                                  // точка, а не подпись
+  const pad = 3, w = x1 - x0 + 2 * pad, h = y1 - y0 + 2 * pad, k = 600 / Math.max(w, h);
+  const s = strokes.map(a => { const o = []; let px = -99, py = -99;
+    for (let i = 0; i < a.length; i += 2){
+      const X = Math.round((a[i] - x0 + pad) * k), Y = Math.round((a[i + 1] - y0 + pad) * k);
+      if (i && i < a.length - 2 && Math.hypot(X - px, Y - py) < 4) continue;          // лишние точки — прочь, форма та же
+      o.push(X, Y); px = X; py = Y;
+    }
+    return o; });
+  return {w: Math.round(w * k), h: Math.round(h * k), s};
+}
+const frSigPadHtml = fio => '<div class="frsigpad" data-fio="' + esc(fio) + '"><p class="label wolab">Подпись — ' + esc(fio) +
+  ' <button type="button" class="link" data-sgclr="1">Очистить</button></p>' +
+  '<div class="wosig"><canvas class="frsigc" aria-label="Поле для подписи пальцем или мышью"></canvas><span class="wosighint">Распишитесь здесь</span></div>' +
+  '<p class="cknote">Подпись встанет в журнал у каждой записи «' + esc(fio) + '», как в бумажном, — её видно и в журнале по QR.</p>' +
+  '<p class="warn frsgmsg" role="status"></p><div class="refbtns"><button type="button" class="wogo" data-sgsave="1">Сохранить подпись</button>' +
+  '<button type="button" class="link" data-sgcx="1">Отмена</button></div></div>';
+function frSigPadInit(box){
+  const c = box && box.querySelector(".frsigc");
+  if (!c) return;
+  const dpr = window.devicePixelRatio || 1, cw = c.getBoundingClientRect().width || 300;
+  c.width = Math.round(cw * dpr); c.height = Math.round(170 * dpr);
+  const x = c.getContext("2d");
+  x.scale(dpr, dpr); x.lineCap = x.lineJoin = "round"; x.lineWidth = 2.4; x.strokeStyle = x.fillStyle = "#1d3a8f";
+  frSgPts = [];
+  let on = false;
+  const pt = e => { const b = c.getBoundingClientRect(); return [Math.round((e.clientX - b.left) * 10) / 10, Math.round((e.clientY - b.top) * 10) / 10]; };
+  c.onpointerdown = e => { e.preventDefault(); try { c.setPointerCapture(e.pointerId); } catch (e2) {} on = true; const p = pt(e); frSgPts.push(p);
+    x.beginPath(); x.arc(p[0], p[1], 1.2, 0, 7); x.fill(); box.querySelector(".wosighint").hidden = true; };
+  c.onpointermove = e => { if (!on) return; const a = frSgPts[frSgPts.length - 1], p = pt(e);
+    x.beginPath(); x.moveTo(a[a.length - 2], a[a.length - 1]); x.lineTo(p[0], p[1]); x.stroke(); a.push(p[0], p[1]); };
+  c.onpointerup = c.onpointercancel = () => { on = false; };
+}
+/* поле подписи не перерисовывается, пока в нём расписываются: обновление раз в минуту не сотрёт начатое */
+const frSigBusy = root => !!frSigOpen && !!root.querySelector('.frsigpad[data-fio="' + CSS.escape(frSigOpen) + '"]');
+function frSigsDraw(){
+  const root = $("frSigs");
+  if (!root || frSigBusy(root)) return;
+  const sg = frSigsNow();
+  root.innerHTML = '<div class="result tcard frsigs"><div class="tname"><em>есть у ' + FR_FIO.filter(n => sg[n]).length + " из " + FR_FIO.length + '</em><h3>Образцы подписей</h3></div>' +
+    '<p class="cknote frsgnote">Каждый один раз расписывается пальцем — подпись встаёт в журнал у его записей, как в бумажном (и в журнале по QR).</p>' +
+    '<ul class="olist frsgl">' + FR_FIO.map(n => '<li><div class="frsgrow"><span class="frsgn">' + esc(n) + '</span>' +
+      (sg[n] ? '<canvas class="frsgv" data-fio="' + esc(n) + '" width="240" height="64" aria-label="Подпись: ' + esc(n) + '"></canvas>' : '<span class="frsgno">нет образца</span>') +
+      '<button type="button" class="link" data-sg="' + esc(n) + '">' + (sg[n] ? "Заменить" : "Расписаться") + '</button></div>' + (frSigOpen === n ? frSigPadHtml(n) : "") + '</li>').join("") + '</ul></div>';
+  root.querySelectorAll("canvas.frsgv").forEach(c => frSigPath(c.getContext("2d"), sg[c.dataset.fio], 4, 4, c.width - 8, c.height - 8));
+  frSigPadInit(root.querySelector(".frsigpad"));
+}
+/* карточка: у выбранного ФИО нет образца — подсказка и поле прямо здесь */
+function frSigOneDraw(){
+  const root = $("frSigOne"), sel = $("frFio");
+  if (!root || frSigBusy(root)) return;
+  const fio = sel ? sel.value : "", has = !!frSigsNow()[fio];
+  root.innerHTML = fio && !has ? '<p class="frsgask">У «' + esc(fio) + '» ещё нет образца подписи для журнала. <button type="button" class="link" data-sg="' + esc(fio) + '">Расписаться</button></p>' +
+    (frSigOpen === fio ? frSigPadHtml(fio) : "") : "";
+  frSigPadInit(root.querySelector(".frsigpad"));
+}
+const frSigRedraw = () => frId ? frSigOneDraw() : frSigsDraw();
+async function frSigSave(box){
+  const fio = box.dataset.fio, g = frSigPack(frSgPts), msg = box.querySelector(".frsgmsg"), b = box.querySelector("[data-sgsave]");
+  if (!g){ msg.textContent = "Распишитесь в поле — пока это не подпись."; return; }
+  b.disabled = true; msg.textContent = "Сохраняем…";
+  const d = await frPost({fr: "sig", fio, sig: g, rn: me ? me.name : ""});
+  b.disabled = false;
+  if (!d.ok){ msg.textContent = d.error === "action" ? "Подписи заработают после обновления Apps Script." : d.error === "bad" ? "Таблица не приняла подпись — распишитесь ещё раз." : "Нет связи — подпись не сохранена, попробуйте ещё раз."; return; }
+  frEnsure(); frSt.sigs = d.sigs || {};
+  cks(FRS, Object.assign(ckj(FRS, {}) || {}, {sigs: frSt.sigs}));
+  buzz(14); frSigOpen = ""; frSigRedraw();
+}
+$("secFr").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.sg != null){
+    buzz(8); frSigOpen = frSigOpen === b.dataset.sg ? "" : b.dataset.sg; frSigRedraw();
+    const pad = frSigOpen && document.querySelector("#secFr .frsigpad");
+    if (pad) pad.scrollIntoView({block: "nearest", behavior: "smooth"});
+    return;
+  }
+  const box = b.closest(".frsigpad");
+  if (!box) return;
+  if (b.dataset.sgclr){ const c = box.querySelector(".frsigc"); c.getContext("2d").clearRect(0, 0, c.width, c.height); frSgPts = []; box.querySelector(".wosighint").hidden = false; return; }
+  if (b.dataset.sgcx){ frSigOpen = ""; frSigRedraw(); return; }
+  if (b.dataset.sgsave) frSigSave(box);
 });

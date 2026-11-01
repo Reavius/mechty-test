@@ -4174,9 +4174,10 @@ function fridges(p) {
   }
   if (act === "get") {
     const m = /^\d{4}-\d{2}$/.test(String(p.m || "")) ? String(p.m) : day.slice(0, 7), fst = {};
-    return { ok: true, day: day, m: m, r: frRead(sh, m, fst), fst: fst, work: FR_WORK, start: FR_START };
+    return { ok: true, day: day, m: m, r: frRead(sh, m, fst), fst: fst, work: FR_WORK, start: FR_START, sigs: frSigs(ss) };
   }
   if (act === "fix") return frFix(ss, sh, p, day);
+  if (act === "sig") return frSigSet(ss, p, day);
   if (act !== "set") return { error: "action" };
 
   const id = frId(p.id), k = p.k === "s" || p.k === "e" ? p.k : "";
@@ -4197,7 +4198,7 @@ function fridges(p) {
     if (k === "s" && !v.wipe && ckDay() === day) try {
       if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры: все холодильники, склад и зал клуба");
     } catch (e) { console.error("frCk: " + e); }
-    return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK };
+    return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK, sigs: frSigs(ss) };
   } finally {
     lock.releaseLock();
   }
@@ -4223,8 +4224,48 @@ function frPub(p) {
     if (e.off) o.off = 1;
     base.r[d] = o;
   });
+  /* образцы подписей тех, кто вносил в этом месяце, — для столбца «Подпись», как в бумажном журнале */
+  const all = frSigs(SpreadsheetApp.getActiveSpreadsheet()), sigs = {};
+  Object.keys(base.r).forEach(d => ["s", "e"].forEach(k => { const x = base.r[d][k]; if (x && x.f && all[x.f]) sigs[x.f] = all[x.f]; }));
+  base.sigs = sigs;
   try { cache.put(ck, JSON.stringify(base), 60); } catch (e) {}
   return base;
+}
+
+/* Образцы подписей для журнала холодильников (решение бар-менеджера: один раз на ФИО, подписи видны и в открытом
+   журнале по QR). Лист «Подписи»: ФИО, подпись — штрихи пальцем {w, h, s: [[x, y, x, y, …], …]} (целые, без
+   полей вокруг), кто сохранил, когда. Заменили подпись — новая строка ниже, действует последняя; прежние остаются. */
+const FR_SIG = "Подписи";
+function frSigs(ss) {
+  if (MEMO.frsigs) return MEMO.frsigs;
+  const sh = ss.getSheetByName(FR_SIG), out = {};
+  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(r => {
+    const fio = String(r[0] || "").replace(/^'/, "").trim();
+    try { const g = JSON.parse(String(r[1] || "")); if (fio && frSigOk(g)) out[fio] = g; } catch (e) {}
+  });
+  return MEMO.frsigs = out;
+}
+function frSigOk(g) {
+  if (!g || !(g.w > 0 && g.w <= 2000 && g.h > 0 && g.h <= 2000) || !Array.isArray(g.s) || !g.s.length || g.s.length > 80) return false;
+  let n = 0;
+  return g.s.every(a => Array.isArray(a) && a.length >= 2 && a.length % 2 === 0 && (n += a.length) <= 12000 && a.every(v => Number.isInteger(v) && v >= 0 && v <= 2000));
+}
+function frSigSet(ss, p, day) {
+  const fio = clean(p.fio, 40), who = clean(p.rn, 60), g = p.sig;
+  if (!fio || !who || !frSigOk(g)) return { error: "bad" };
+  const js = JSON.stringify({ w: g.w, h: g.h, s: g.s });
+  if (js.length > 40000) return { error: "bad" };
+  const lock = lockOrBusy(10000);
+  try {
+    let sh = ss.getSheetByName(FR_SIG);
+    if (!sh) { sh = ss.insertSheet(FR_SIG); sh.getRange(1, 1, 1, 4).setValues([["ФИО", "Подпись (штрихи)", "Кто сохранил", "Когда"]]).setFontWeight("bold"); sh.setFrozenRows(1); }
+    sh.appendRow([fio, js, who, new Date()]);
+    MEMO.frsigs = null;
+    /* открытый журнал — сразу с новой подписью: этот и прошлый месяц у всех холодильников */
+    const prev = Utilities.formatDate(new Date(Date.parse(day.slice(0, 7) + "-01T12:00:00Z") - 5 * 864e5), TZ, "yyyy-MM");
+    try { CacheService.getScriptCache().removeAll(frMeta().reduce((a, f) => a.concat(["frpub:" + f.id + ":" + day.slice(0, 7), "frpub:" + f.id + ":" + prev]), [])); } catch (e) {}
+    return { ok: true, sigs: frSigs(ss) };
+  } finally { lock.releaseLock(); }
 }
 const frPubDrop = (id, d) => { try { CacheService.getScriptCache().remove("frpub:" + id + ":" + String(d).slice(0, 7)); } catch (e) {} };   // открытый журнал — сразу свежий
 const FR_CK = "d6";
