@@ -75,11 +75,15 @@ function grMonthSum(k){
   return [...by.entries()].sort((a, b) => { const i = order.indexOf(a[0]), j = order.indexOf(b[0]); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); }).map(x => x[1]);
 }
 
-/* перерисовка не сбивает набор: поле имени или времени в фокусе остаётся с тем же текстом и курсором */
+/* перерисовка не сбивает набор и прокрутку: поле имени или времени в фокусе остаётся с тем же текстом и курсором,
+   неделя, пролистанная вбок до субботы, так и остаётся на субботе (на телефоне таблица правки шире экрана) */
 function grDraw(){
   const ae = document.activeElement, keep = ae && ae.closest && ae.closest("#grWeeks") && ae.tagName === "INPUT"
     ? {sel: ae.classList.contains("grname") ? '.grname[data-w="' + ae.dataset.w + '"][data-r="' + ae.dataset.r + '"]' : '.grf input[name="' + ae.name + '"]', v: ae.value, c: ae.selectionStart} : null;
+  const sx = {};
+  document.querySelectorAll("#grWeeks .grw").forEach(w => { const s = w.querySelector(".grwrap"); if (s && s.scrollLeft) sx[w.dataset.w] = s.scrollLeft; });
   grPaint();
+  Object.keys(sx).forEach(w => { const s = document.querySelector('#grWeeks .grw[data-w="' + w + '"] .grwrap'); if (s) s.scrollLeft = sx[w]; });
   const inp = keep && document.querySelector(keep.sel);
   if (inp){ inp.value = keep.v; inp.focus(); try { if (keep.c != null) inp.setSelectionRange(keep.c, keep.c); } catch (e) {} }
 }
