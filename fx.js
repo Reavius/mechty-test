@@ -6,7 +6,7 @@
     document.documentElement.classList.remove("fx-pre"); return;
   }
   const g = window.gsap;
-  if (window.ScrollTrigger) g.registerPlugin(ScrollTrigger);
+  if (window.ScrollTrigger){ g.registerPlugin(ScrollTrigger); ScrollTrigger.config({ ignoreMobileResize: true }); }   // панель адреса телефона не пересчитывает всё
   document.documentElement.classList.add("fx-on");
   const $ = s => document.querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
@@ -125,9 +125,19 @@
         g.to(c, { opacity: 1, y: 0, duration: .45, ease: "power2.out", overwrite: "auto" });
     });
   }
+  /* догрузилась картинка — позиции пересчитываются, но не посреди прокрутки: пересчёт (ScrollTrigger.refresh) на телефоне
+     обрывает инерцию — страница резко встаёт под конец пролистывания. Ждём, пока прокрутка не стоит полсекунды
+     (инерция шлёт события прокрутки до самой остановки); размеры фото заданы заранее, ждать безопасно */
+  let imgDirty = false, imgT = 0, lastScroll = 0;
+  addEventListener("scroll", () => { lastScroll = performance.now(); }, { passive: true });
+  const imgRefresh = () => { clearTimeout(imgT); imgT = setTimeout(() => {
+    if (!imgDirty) return;
+    if (performance.now() - lastScroll < 500) return imgRefresh();
+    imgDirty = false; ScrollTrigger.refresh();
+  }, 500); };
   ScrollTrigger.addEventListener("scrollEnd", reveal);
-  addEventListener("load", () => { ScrollTrigger.refresh(); reveal(); });
-  document.addEventListener("load", e => { if (e.target.tagName === "IMG") ScrollTrigger.refresh(); }, true);
+  addEventListener("load", () => { imgDirty = false; ScrollTrigger.refresh(); reveal(); });
+  document.addEventListener("load", e => { if (e.target.tagName === "IMG"){ imgDirty = true; imgRefresh(); } }, true);
 
   /* лёгкое увеличение бокала при касании / наведении */
   document.addEventListener("pointerover", e => {

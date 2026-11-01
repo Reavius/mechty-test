@@ -19,16 +19,17 @@ const MENU = [
    {c: "yuzu", v: 150, p: 650},
    {c: "ananas", v: 130, p: 650},
    {c: "c-watermelon", v: 200, p: 650},
+   {c: "negroni", v: 90, p: 600},
    {c: "vnegroni", v: 90, p: 600}]},
-  {ru: "Глинтвейн", en: "Mulled wine", items: [
-   {n: "Белый", e: "White", d: "белое вино, мандарин, пряности", de: "white wine, tangerine, spices", v: 150, p: 570},
-   {n: "Красный", e: "Red", d: "красное вино, апельсин, яблоко, пряности", de: "red wine, orange, apple, spices", v: 150, p: 570},
-   {n: "Безалкогольный", e: "Alcohol-free", d: "вишнёвый сок, апельсин, яблоко, пряности", de: "cherry juice, orange, apple, spices", v: 150, p: 450}]},
   {ru: "Аперитивные коктейли", en: "Aperitif cocktails", tiles: 1, items: [
    {c: "c-aperol", v: 200, p: 650},
    {c: "c-campari", v: 200, p: 650},
    {c: "c-sarti", v: 200, p: 650},
    {n: "Сет из трёх аперитивных коктейлей", e: "Set of three aperitif cocktails", d: "подробности у официанта", de: "ask your waiter for details", p: 1600}]},
+  {ru: "Глинтвейн", en: "Mulled wine", items: [
+   {n: "Белый", e: "White", d: "белое вино, мандарин, пряности", de: "white wine, tangerine, spices", v: 150, p: 570},
+   {n: "Красный", e: "Red", d: "красное вино, апельсин, яблоко, пряности", de: "red wine, orange, apple, spices", v: 150, p: 570},
+   {n: "Безалкогольный", e: "Alcohol-free", d: "вишнёвый сок, апельсин, яблоко, пряности", de: "cherry juice, orange, apple, spices", v: 150, p: 450}]},
   {ru: "Beluga Cocktails", en: "Beluga Cocktails", items: [
    {n: "Beluga 1900", d: "водка Beluga Noble, вино, сахар, кислота", de: "Beluga Noble vodka, wine, sugar, acid", v: 100, p: 550},
    {n: "Beluga Noble Espresso", d: "водка Beluga Noble, кофе, сироп", de: "Beluga Noble vodka, coffee, syrup", v: 100, p: 550},
