@@ -4178,6 +4178,7 @@ function fridges(p) {
   }
   if (act === "fix") return frFix(ss, sh, p, day);
   if (act === "sig") return frSigSet(ss, p, day);
+  if (act === "setm") return frSetMany(ss, sh, p, day);
   if (act !== "set") return { error: "action" };
 
   const id = frId(p.id), k = p.k === "s" || p.k === "e" ? p.k : "";
@@ -4199,6 +4200,40 @@ function fridges(p) {
       if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры: все холодильники и замеры температуры/влажности");
     } catch (e) { console.error("frCk: " + e); }
     return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK, sigs: frSigs(ss) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+/* «Обход» на сайте: показания всех точек одним запросом — те же проверки, что у одного показания, но одна блокировка
+   и одна пересборка листа месяца. Не принятые (день закрыт, неверное число) — в bad: [{n, why}], n — номер показания
+   на телефоне; остальные записываются. */
+function frSetMany(ss, sh, p, day) {
+  const who = clean(p.rn, 60), list = Array.isArray(p.list) ? p.list.slice(0, 40) : [];
+  if (!who || !list.length) return { error: "bad" };
+  const meta = frMeta(), rows = [], bad = [], ids = [];
+  let anyS = false;
+  for (const it of list) {
+    const x = it && typeof it === "object" ? it : {}, n = typeof x.n === "number" ? x.n : null;
+    const id = frId(x.id), k = x.k === "s" || x.k === "e" ? x.k : "", fio = clean(x.f, 40), f = meta.find(y => y.id === id);
+    if (!id || !k || !f || (f.room && k === "e")) { bad.push({ n: n, why: "bad" }); continue; }
+    if (String(x.d || "") !== day) { bad.push({ n: n, why: "closed" }); continue; }
+    if (day < FR_START) { bad.push({ n: n, why: "early" }); continue; }
+    const v = frVal(x);
+    if (!v || (!v.wipe && !fio)) { bad.push({ n: n, why: "bad" }); continue; }
+    rows.push(["'" + day, id, f.n, f.z, k === "s" ? "начало" : "конец", v.t, v.h, v.wipe ? "" : fio, who, new Date(), v.wipe ? "сайт · стёрто" : "сайт"]);
+    if (ids.indexOf(id) < 0) ids.push(id);
+    if (k === "s" && !v.wipe) anyS = true;
+  }
+  const lock = lockOrBusy(10000);
+  try {
+    rows.forEach(r => sh.appendRow(r));
+    ids.forEach(id => frPubDrop(id, day));
+    const fst = {}, r = frRead(sh, day.slice(0, 7), fst);
+    if (rows.length) try { frMonth(ss, day.slice(0, 7), r, fst); } catch (e) { console.error("frMonth: " + (e && e.stack || e)); }   // записи уже есть
+    if (anyS && ckDay() === day) try {
+      if (frMeta().every(x => ((r[x.id] || {})[day] || {}).s)) ckAuto(FR_CK, who, "Общие дела", "Заполнить бланки температуры: все холодильники и замеры температуры/влажности");
+    } catch (e) { console.error("frCk: " + e); }
+    return { ok: true, day: day, m: day.slice(0, 7), r: r, fst: fst, work: FR_WORK, sigs: frSigs(ss), bad: bad };
   } finally {
     lock.releaseLock();
   }

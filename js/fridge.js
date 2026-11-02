@@ -36,7 +36,11 @@ const FR = [
 const FR_START = "2026-11-01", FR_FROM = FR_START.slice(0, 7);   // журнал на сайте — с 1 ноября (тот же день — в Code.gs); октябрь и раньше — бумажный архив
 const FR_MON = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const FRS = "mechty-fr", FRQ = "mechty-frq", FRZ = "mechty-fr-z", FRF = "mechty-fr-fio";
+/* «Обход» — порядок, в котором бармен идёт по заведению: холодильники кафе → влажность кафе → винный кафе → склад →
+   влажность клуба → холодильники клуба → VIP → винный мансарды → влажность мансарды → холодильники мансарды */
+const FR_WALK = ["caf1", "caf2", "caf3", "rcafe", "wcaf", "sklad", "zal", "clb1", "clb2", "clb3", "clb4", "clb5", "wvip", "wman", "rmans", "man1", "man2", "man3"];
 let frSt = null, frAsk = {}, frZone = "cafe", frId = "", frM = "", frWant = "", frBusy = false, frState = "load", frLost = [], frTimer = 0, frRetry = 0;
+let frWalk = "", frSending = [], frBatch = true;   // обход: "s" — начало смены, "e" — конец; frSending — показания, которые уходят сейчас
 try { const z = localStorage.getItem(FRZ); if (FR_ZONES.some(x => x[0] === z)) frZone = z; } catch (e) {}
 
 /* день холодильников: с 14:00 (открытие) до 14:00 по Астане (UTC+5); с 6:00 до 14:00 ещё идёт вчерашний */
@@ -143,6 +147,22 @@ function frRec(id, day){
     v[q.k] = q.t === "" ? null : {t: Number(q.t), h: q.h === "" ? null : Number(q.h), f: q.f, w: q.w, at: ckTime(q.at), pend: 1};
   return v;
 }
+/* прошлое показание перед этой клеткой (день, начало/конец) — подсказка серым в пустом поле; не сохраняется и не вносится */
+function frPrev(f, k, day){
+  if (k === "e"){ const x = frRec(f.id, day).s; if (x) return {x, d: day, k: "s"}; }
+  for (const m of Object.keys(frSt.m).sort().reverse()){
+    const r = frSt.m[m][f.id] || {};
+    for (const d of Object.keys(r).filter(d => d < day).sort().reverse()){
+      const v = r[d];
+      if (v.e) return {x: v.e, d, k: "e"};
+      if (v.s) return {x: v.s, d, k: "s"};
+    }
+  }
+  return null;
+}
+const frPrevPh = (p, hum) => p && (hum ? p.x.h != null : p.x.t != null) ? "прошлое " + (hum ? frFmt(p.x.h) : frSig(p.x.t)) : "—";
+const frPrevTx = (f, p) => p ? "Прошлое: " + frSig(p.x.t) + " °C" + (f.room && p.x.h != null ? ", " + frFmt(p.x.h) + " %" : "") + " — " +
+  (p.d === frDayNow() ? "сегодня" : frWdDay(p.d)) + ", " + frSlot(f, p.k) + ". Впишите цифру с табло." : "";
 function frPut(d){
   frEnsure();
   frSt.day = d.day; frSt.m[d.m] = d.r || {};
@@ -161,7 +181,8 @@ async function frPost(body){
   } catch (e) { return {error: "net"}; }
 }
 
-/* показания — в таблицу по одному, по порядку; день закрылся, пока ждали связи, — не пройдёт и покажется отдельно */
+/* показания — в таблицу по порядку: несколько от одного бармена (обход) — одним запросом, одно — как раньше;
+   старый Apps Script без пачки — по одному. День закрылся, пока ждали связи, — не пройдёт и покажется отдельно */
 async function frFlush(){
   if (frBusy || !TOKEN || !me) return;
   frBusy = true;
@@ -169,19 +190,25 @@ async function frFlush(){
     for (;;){
       const q = ckj(FRQ, []);
       if (!q.length) break;
-      const a = q[0];
-      const d = await frPost({fr: "set", id: a.id, k: a.k, t: a.t, h: a.h, f: a.f, rn: a.w, d: a.d});
+      const part = frBatch ? q.filter(x => x.w === q[0].w).slice(0, 30) : [q[0]], a = part[0];
+      frSending = part.map(x => x.n);
+      const d = part.length > 1 ? await frPost({fr: "setm", rn: a.w, list: part.map(x => ({n: x.n, id: x.id, k: x.k, t: x.t, h: x.h, f: x.f, d: x.d}))})
+        : await frPost({fr: "set", id: a.id, k: a.k, t: a.t, h: a.h, f: a.f, rn: a.w, d: a.d});
+      frSending = [];
+      if (d.error === "action" && part.length > 1){ frBatch = false; continue; }
       if (d.error === "net" || d.error === "busy" || d.error === "denied"){
         frState = "net";
         if (d.error !== "denied" && !frRetry) frRetry = setTimeout(() => { frRetry = 0; frFlush(); }, 15e3);
         break;
       }
       if (d.error === "action"){ frState = "old"; break; }
-      cks(FRQ, ckj(FRQ, []).filter(x => x.n !== a.n));
-      if (d.ok){ frPut(d); frState = "ok"; }
-      else frLost.push(Object.assign({why: d.error === "closed" || d.error === "early" ? d.error : "bad"}, a));
+      cks(FRQ, ckj(FRQ, []).filter(x => !part.some(y => y.n === x.n)));
+      if (d.ok){
+        frPut(d); frState = "ok";
+        (d.bad || []).forEach(b => { const x = part.find(y => y.n === b.n); if (x) frLost.push(Object.assign({why: b.why === "closed" || b.why === "early" ? b.why : "bad"}, x)); });
+      } else part.forEach(x => frLost.push(Object.assign({why: d.error === "closed" || d.error === "early" ? d.error : "bad"}, x)));
     }
-  } finally { frBusy = false; frDraw(); }
+  } finally { frBusy = false; frSending = []; frDraw(); }
 }
 async function frLoad(m){
   if (!TOKEN || !me) return;
@@ -195,7 +222,7 @@ async function frLoad(m){
 const frEnsure = () => { if (!frSt) frSt = ckj(FRS, null); if (!frSt || !frSt.m) frSt = {day: "", m: {}}; };
 function frInit(){
   frEnsure(); frAsk = {};
-  if (frWant){ const f = frGet(frWant); frWant = ""; if (f){ frZone = f.z; frId = f.id; frM = ""; } }
+  if (frWant){ const f = frGet(frWant); frWant = ""; if (f){ frZone = f.z; frId = f.id; frM = ""; frWalkOff(); } }
   frDraw(); frLoad();
   if (frM && frM !== frCurM()) frLoad(frM);
   if (!frTimer){
@@ -213,7 +240,7 @@ async function frRoute(id){
   if (s){ bt(); return enter(s.p, s.name, s.email); }
   frPubOpen(id);
 }
-const frTyping = () => { const a = document.activeElement; return !!a && a.closest && !!a.closest("#frOne") && a.tagName === "INPUT"; };
+const frTyping = () => { const a = document.activeElement; return !!a && a.closest && !!a.closest("#frOne, #frWalk") && a.tagName === "INPUT"; };
 
 /* ФИО: выбранное на этом телефоне, иначе — по фамилии входа */
 function frFio(){
@@ -245,7 +272,10 @@ function frDraw(){
     const list = FR.filter(f => f.z === z), n = list.filter(f => recs[FR.indexOf(f)].s).length;
     return '<button type="button" data-z="' + z + '" aria-pressed="' + (z === frZone) + '">' + t + ' <b>' + n + "/" + list.length + '</b></button>';
   }).join("");
-  $("frList").hidden = !!frId; $("frOne").hidden = !frId; $("frTools").hidden = !!frId;
+  if (frWalk && frEarly()) frWalkOff();
+  $("frList").hidden = !!frId || !!frWalk; $("frOne").hidden = !frId; $("frTools").hidden = !!frId || !!frWalk;
+  $("frZones").hidden = !!frWalk; $("frWalk").hidden = !frWalk; $("frWalkBar").hidden = !!frId || !!frWalk || frEarly();
+  if (frWalk) return frWalkDraw();
   if (frId) return frDrawOne();
   frSigsDraw();
   $("frList").innerHTML = FR.filter(f => f.z === frZone).map(f => {
@@ -269,7 +299,7 @@ function frDrawOne(){
     const fio = frFio();
     const sh = k => {
       const lab = f.room ? "Замер — температура и влажность" : k === "s" ? "Начало смены" : "Конец смены";
-      return '<div class="frsh" data-k="' + k + '"><p class="label">' + lab + '</p><div class="frin">' +
+      return '<div class="frsh" data-k="' + k + '"><p class="label">' + lab + '</p><div class="frin' + (f.room ? " two" : "") + '">' +
         '<button type="button" class="frpm" data-pm="' + k + '" aria-label="Плюс или минус">±</button>' +
         '<input id="frT' + k + '" type="text" inputmode="decimal" maxlength="6" autocomplete="off" enterkeyhint="done" placeholder="—" aria-label="' + lab + ': температура"><span class="fru">°C</span>' +
         (f.room ? '<input id="frH' + k + '" type="text" inputmode="decimal" maxlength="5" autocomplete="off" enterkeyhint="done" placeholder="—" aria-label="' + lab + ': влажность"><span class="fru">%</span>' : "") +
@@ -291,11 +321,13 @@ function frDrawOne(){
     if (!early) ks.forEach(k => frSetIn(k, r[k]));
   } else if (!early) ks.forEach(k => { if (!frDirty(k)) frSetIn(k, r[k]); });
   if ($("frSvg")) $("frSvg").innerHTML = fridgeSvg(f, last ? frFmt(last.t) : "");
-  if (!early) ks.forEach(k => { const x = r[k], w = $("frW" + k);
+  if (!early) ks.forEach(k => { const x = r[k], w = $("frW" + k), p = frPrev(f, k, day);
+    $("frT" + k).placeholder = frPrevPh(p);                                   // серым — прошлое; не вносится, «Внести» ждёт цифру
+    if ($("frH" + k)) $("frH" + k).placeholder = frPrevPh(p, 1);
     if (w.dataset.msg) return;
     w.innerHTML = x ? (x.pend ? '<span class="frpend">ждёт отправки</span> · ' : "") +
       "внесено: <b>" + esc(x.w) + "</b> · " + esc(x.at) + " · ФИО: " + esc(x.f) +
-      (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "") : "Не внесено.";
+      (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "") : "Не внесено. " + esc(frPrevTx(f, p));
   });
   if (!early) frBtns();
   frTable(f); frFixSync(); frSigOneDraw();
@@ -420,13 +452,122 @@ function frSave(k){
   if (!me) return;
   delete w.dataset.msg;
   /* прежнее неотправленное в ту же клетку — заменяем (кроме того, что уходит прямо сейчас) */
-  const q = ckj(FRQ, []).filter((x, i) => (i === 0 && frBusy) || !(x.id === f.id && x.k === k && x.d === day));
+  const q = ckj(FRQ, []).filter(x => frSending.indexOf(x.n) >= 0 || !(x.id === f.id && x.k === k && x.d === day));
   q.push({id: f.id, k, t, h, f: fio, w: me.name, d: day, at: Date.now(), n: Math.random()});
   cks(FRQ, q);
   buzz(14);
   frSetIn(k, t === "" ? null : {t: Number(t), h: h === "" ? null : Number(h)});
   frDraw(); frFlush();
 }
+
+/* «Обход»: все точки одним списком в порядке FR_WALK — цифра с табло, «Далее» на клавиатуре, в конце «Сохранить всё».
+   Пустое поле — пропустить (стереть внесённое — в карточке). У помещений один замер в день — он и в начале, и в конце. */
+const frWalkList = () => { const a = FR_WALK.map(frGet).filter(Boolean); return a.concat(FR.filter(f => a.indexOf(f) < 0)); };
+const frWk = f => f.room ? "s" : frWalk;
+/* какая смена открывается: с 22:00 до 14:00 (закрытие и утро) — конец; днём — начало, пока у всех не внесено */
+const frWalkDef = () => { const h = new Date(Date.now() + 5 * 3600e3).getUTCHours();
+  return h >= 22 || h < 14 || FR.filter(f => !f.room).every(f => frRec(f.id, frDayNow()).s) ? "e" : "s"; };
+function frWalkOn(k){
+  frWalk = k || frWalkDef(); frId = ""; frM = "";
+  const one = $("frOne"); one.innerHTML = ""; delete one.dataset.id;               // у карточки те же id (ФИО, подпись)
+  frSigOpen = ""; frDraw(); window.scrollTo({top: $("secFr").offsetTop - 12});
+}
+function frWalkOff(){
+  frWalk = ""; const w = $("frWalk"); if (w){ w.innerHTML = ""; delete w.dataset.k; }
+  frSigOpen = "";
+}
+const frWIn = (f, h) => $((h ? "frWH-" : "frWT-") + f.id);
+const frWDirty = f => { const t = frWIn(f), h = frWIn(f, 1); return !!t && (t.value !== t.dataset.v || (!!h && h.value !== h.dataset.v)); };
+function frWSet(f){
+  const x = frRec(f.id, frDayNow())[frWk(f)], t = frWIn(f), h = frWIn(f, 1);
+  t.value = t.dataset.v = x ? frFmt(x.t) : "";
+  if (h) h.value = h.dataset.v = x && x.h != null ? frFmt(x.h) : "";
+}
+/* что в строке сейчас: внесено / ждёт отправки / вне нормы / неверное число — и подсказка «прошлое» в пустом поле */
+function frWRow(f, err){
+  const day = frDayNow(), k = frWk(f), x = frRec(f.id, day)[k], t = frWIn(f), h = frWIn(f, 1), st = $("frWS-" + f.id), row = t.closest(".frwrow");
+  const p = frPrev(f, k, day);
+  t.placeholder = frPrevPh(p); if (h) h.placeholder = frPrevPh(p, 1);
+  const dirty = frWDirty(f), tv = t.value.trim().replace(/^[-−]$/, ""), hv = h ? h.value.trim() : "";
+  const tn = tv ? frNum(tv, -40, 40) : null, hn = hv ? frNum(hv, 0, 100) : null;
+  let m = "";
+  if (err) m = '<span class="bad">' + esc(err) + '</span>';
+  else if (dirty && (tv || hv)){
+    m = tv && tn === null ? '<span class="bad">Проверьте температуру — например, 4,1 или −18</span>' : hv && hn === null ? '<span class="bad">Влажность — число от 0 до 100</span>' :
+      !tv ? '<span class="bad">Сначала температура</span>' : (x ? "исправит внесённое" : "к сохранению") +
+      (frBad(f, {t: tn, h: hn}) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "");
+  } else if (dirty && x) m = "пустое поле — останется как было; стереть — в карточке холодильника";
+  else if (x) m = (x.pend ? '<span class="frpend">ждёт отправки</span> · ' : "✓ ") + "внесено " + esc(x.at || "") + " · " + esc(x.f) +
+    (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "");
+  st.innerHTML = m;
+  const th = row.querySelector(".frwth"), tx = x ? frFmt(x.t) : "";                  // схема, как в списке; на табло — внесённое
+  if (th && th.dataset.v !== tx){ th.dataset.v = tx; th.innerHTML = fridgeSvg(f, tx); }
+  row.classList.toggle("done", !!x && !dirty); row.classList.toggle("dirty", dirty && !!(tv || hv));
+}
+function frWBtn(){
+  const list = frWalkList(), day = frDayNow(), n = list.filter(f => { const t = frWIn(f), h = frWIn(f, 1); return frWDirty(f) && (t.value.trim() || (h && h.value.trim())); }).length;
+  const got = list.filter(f => frRec(f.id, day)[frWk(f)]).length, b = $("frWSave");
+  b.disabled = !n; b.textContent = n ? "Сохранить всё · " + n : got === list.length ? "Всё внесено ✓" : "Сохранить всё";
+  b.classList.toggle("done", !n && got === list.length);
+  $("frWGot").textContent = "внесено " + got + " из " + list.length;
+}
+function frWalkDraw(){
+  const box = $("frWalk"), day = frDayNow(), list = frWalkList(), key = frWalk + "|" + day;
+  if (box.dataset.k !== key){
+    box.dataset.k = key;
+    const fio = frFio(), last = list[list.length - 1];
+    let place = "", rows = "";
+    list.forEach(f => {
+      const pl = f.room ? f.n : frZn(f.z);
+      if (pl !== place){ place = pl; rows += '<h4 class="frwpl">' + esc(pl) + '</h4>'; }
+      const lab = f.room ? "Температура и влажность" : f.n, hint = h => f === last && (!f.room || h) ? "done" : "next";
+      rows += '<div class="frwrow' + (f.room ? " room" : "") + '" data-id="' + f.id + '"><div class="frwhd">' + (f.room ? "" : '<span class="frwth" aria-hidden="true"></span>') +
+        '<p class="frwn"><b>' + esc(lab) + '</b><span class="frw">' + esc([f.w, frNorm(f) ? "норма " + frNorm(f) : ""].filter(Boolean).join(" · ")) + '</span></p></div>' +
+        '<div class="frin' + (f.room ? " two" : "") + '"><button type="button" class="frpm" data-wpm="' + f.id + '" aria-label="Плюс или минус" tabindex="-1">±</button>' +
+        '<input id="frWT-' + f.id + '" type="text" inputmode="decimal" maxlength="6" autocomplete="off" enterkeyhint="' + hint(0) + '" aria-label="' + esc(f.n) + ': температура"><span class="fru">°C</span>' +
+        (f.room ? '<input id="frWH-' + f.id + '" type="text" inputmode="decimal" maxlength="5" autocomplete="off" enterkeyhint="' + hint(1) + '" aria-label="' + esc(f.n) + ': влажность"><span class="fru">%</span>' : "") +
+        '</div><p class="frwho" id="frWS-' + f.id + '" role="status"></p></div>';
+    });
+    box.innerHTML = '<div class="result tcard frwalk"><div class="tname"><em id="frWGot"></em><h3>Обход</h3></div><div class="frday frwb">' +
+      '<div class="modes frwk" role="group" aria-label="Смена">' + [["s", "Начало смены"], ["e", "Конец смены"]].map(([k, t]) =>
+        '<button type="button" data-wk="' + k + '" aria-pressed="' + (k === frWalk) + '">' + t + '</button>').join("") + '</div>' +
+      '<p class="frtoday">День — <b>' + frWdDay(day) + '</b>, вносить и править можно до 14:00.' + (frMorning() ? " <b>Сейчас утро — это ещё вчерашний день</b>: сюда конец его смены." : "") +
+      ' Смотрите на табло и вписывайте цифру — «Далее» на клавиатуре (на iPhone — стрелка над ней) переходит к следующему. Серым — прошлое показание, оно не вносится. Пустое поле — пропустить. У помещений один замер за день.</p>' +
+      '<label class="label" for="frFio">ФИО</label><select id="frFio"><option value="">— выберите —</option>' +
+        FR_FIO.map(x => '<option' + (x === fio ? " selected" : "") + '>' + x + '</option>').join("") + '</select><div id="frSigOne"></div>' + rows + '</div></div>' +
+      '<div class="frwfoot"><button type="button" class="wogo" id="frWSave">Сохранить всё</button><p class="frwho" id="frWMsg" role="status"></p>' +
+        '<button type="button" class="link" id="frWBack">← Выйти из обхода</button></div>';
+    list.forEach(frWSet);
+  } else list.forEach(f => { if (!frWDirty(f)) frWSet(f); });
+  list.forEach(f => frWRow(f));
+  frWBtn(); frSigOneDraw();
+}
+function frWalkSave(){
+  const day = frDayNow(), fio = $("frFio").value, msg = $("frWMsg"), items = [];
+  const say = (m, ok) => { msg.innerHTML = ok ? esc(m) : '<span class="bad">' + esc(m) + '</span>'; };
+  for (const f of frWalkList()){
+    if (!frWDirty(f)) continue;
+    const tv = frWIn(f).value.trim().replace(/^[-−]$/, ""), hv = f.room ? frWIn(f, 1).value.trim() : "";
+    if (!tv && !hv) continue;                                               // пустое — пропустить
+    const bad = m => { frWRow(f, m); frWIn(f).focus(); say("Проверьте: " + (f.room ? f.n + " — температура и влажность" : f.n) + "."); return true; };
+    if (!tv) return bad("Сначала температура.");
+    const t = frNum(tv, -40, 40);
+    if (t === null) return bad("Проверьте температуру — например, 4,1 или −18.");
+    const h = hv ? frNum(hv, 0, 100) : null;
+    if (hv && h === null) return bad("Проверьте влажность — число от 0 до 100.");
+    items.push({id: f.id, k: frWk(f), t: String(t), h: h === null ? "" : String(h)});
+  }
+  if (!items.length) return say("Нечего сохранять — впишите показания с табло.");
+  if (!fio){ $("frFio").focus(); return say("Выберите ФИО."); }
+  if (!me) return;
+  const q = ckj(FRQ, []).filter(x => frSending.indexOf(x.n) >= 0 || !items.some(it => it.id === x.id && it.k === x.k && x.d === day)), at = Date.now();
+  items.forEach(it => q.push(Object.assign(it, {f: fio, w: me.name, d: day, at, n: Math.random()})));
+  cks(FRQ, q); buzz(14);
+  items.forEach(it => frWSet(frGet(it.id)));
+  say("Сохранено: " + items.length + " ✓ — уходит в таблицу.", true);
+  frDraw(); frFlush();
+}
+const frWalkDirty = () => frWalk && frWalkList().some(f => { const t = frWIn(f), h = frWIn(f, 1); return frWDirty(f) && (t.value.trim() || (h && h.value.trim())); });
 
 /* QR: ссылка на холодильник; наклейка — одна или все на листе A4 */
 const frUrl = id => location.origin + location.pathname + "#fridge-" + id;
@@ -561,6 +702,53 @@ $("frOne").addEventListener("keydown", e => {
 $("frOne").addEventListener("change", e => {
   if (e.target.id === "frFio"){ try { localStorage.setItem(FRF, e.target.value); } catch (e2) {} frSigOpen = ""; frSigOneDraw(); }
   if (e.target.id === "frFxD" || e.target.id === "frFxK"){ delete $("frFxM").dataset.msg; frFixSync(); }   // выбрали другое — подсказка о нём
+});
+$("frWalkGo").addEventListener("click", () => { buzz(8); frWalkOn(); });
+$("frWalk").addEventListener("click", e => {
+  const wk = e.target.closest("button[data-wk]"), pm = e.target.closest("button[data-wpm]");
+  if (wk){
+    if (wk.dataset.wk === frWalk) return;
+    if (frWalkDirty() && !confirm("Не сохранённые показания пропадут. Переключить смену?")) return;
+    buzz(8); frWalk = wk.dataset.wk; delete $("frWalk").dataset.k; frDraw(); return;
+  }
+  if (pm){
+    const f = frGet(pm.dataset.wpm), t = frWIn(f), v = t.value.trim();
+    t.value = /^[-−]/.test(v) ? v.replace(/^[-−]\s*/, "") : "−" + v;
+    t.focus(); frWRow(f); frWBtn(); return;
+  }
+  if (e.target.closest("#frWSave")) return frWalkSave();
+  if (e.target.closest("#frWBack")){
+    if (frWalkDirty() && !confirm("Не сохранённые показания пропадут. Выйти из обхода?")) return;
+    buzz(8); frWalkOff(); frDraw(); window.scrollTo({top: $("secFr").offsetTop - 12});
+  }
+});
+$("frWalk").addEventListener("input", e => {
+  const t = e.target, row = t.closest && t.closest(".frwrow");
+  if (t.tagName !== "INPUT" || !row) return;
+  if (/^frWT-/.test(t.id) && /^\d[\d.,]*[-−]$/.test(t.value)) t.value = "−" + t.value.slice(0, -1);   // курсор встал перед минусом
+  frWRow(frGet(row.dataset.id)); frWBtn();
+  $("frWMsg").textContent = "";
+});
+$("frWalk").addEventListener("focusin", e => {
+  const t = e.target, row = t.closest && t.closest(".frwrow");                // морозильник: минус сразу в поле
+  if (!row || !/^frWT-/.test(t.id) || t.value || !(frGet(row.dataset.id) || {}).frz) return;
+  t.value = "−";
+  setTimeout(() => { try { if (t.value === "−") t.setSelectionRange(1, 1); } catch (e2) {} }, 0);
+});
+$("frWalk").addEventListener("focusout", e => {
+  const t = e.target, row = t.closest && t.closest(".frwrow");
+  if (row && /^frWT-/.test(t.id) && /^[-−]$/.test(t.value.trim())){ t.value = ""; frWRow(frGet(row.dataset.id)); frWBtn(); }
+});
+/* «Далее» на клавиатуре: следующее поле по порядку обхода; после последнего — «Сохранить всё» */
+$("frWalk").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.target.tagName !== "INPUT" || !e.target.closest(".frwrow")) return;
+  e.preventDefault();
+  const all = [...document.querySelectorAll("#frWalk .frwrow input")], i = all.indexOf(e.target), nx = all[i + 1];
+  if (nx){ nx.focus(); nx.scrollIntoView({block: "center", behavior: "smooth"}); }
+  else { e.target.blur(); $("frWSave").scrollIntoView({block: "center", behavior: "smooth"}); }
+});
+$("frWalk").addEventListener("change", e => {
+  if (e.target.id === "frFio"){ try { localStorage.setItem(FRF, e.target.value); } catch (e2) {} frSigOpen = ""; frSigOneDraw(); }
 });
 $("frLostX").addEventListener("click", () => { frLost = []; frDraw(); });
 $("frStick").addEventListener("click", () => { if (window.qrcode){ buzz(8); frDownload(frSheetCanvas(), "QR-holodilniki-A4.png"); } });
@@ -823,7 +1011,7 @@ function frSigOneDraw(){
     (frSigOpen === fio ? frSigPadHtml(fio) : "") : "";
   frSigPadInit(root.querySelector(".frsigpad"));
 }
-const frSigRedraw = () => frId ? frSigOneDraw() : frSigsDraw();
+const frSigRedraw = () => frId || frWalk ? frSigOneDraw() : frSigsDraw();
 async function frSigSave(box){
   const fio = box.dataset.fio, g = frSigPack(frSgPts), msg = box.querySelector(".frsgmsg"), b = box.querySelector("[data-sgsave]");
   if (!g){ msg.textContent = "Распишитесь в поле — пока это не подпись."; return; }
