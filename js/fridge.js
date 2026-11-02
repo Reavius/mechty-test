@@ -147,17 +147,16 @@ function frRec(id, day){
     v[q.k] = q.t === "" ? null : {t: Number(q.t), h: q.h === "" ? null : Number(q.h), f: q.f, w: q.w, at: ckTime(q.at), pend: 1};
   return v;
 }
-/* прошлое показание перед этой клеткой (день, начало/конец) — подсказка серым в пустом поле; не сохраняется и не вносится */
+/* прошлое показание той же смены — начало к началу, конец к концу (у помещений — прошлый замер): подсказка серым
+   в пустом поле, не сохраняется и не вносится. В первые дни месяца нужен прошлый месяц — догружается один раз */
+const frPrevM = m => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo - 2, 1)).toISOString().slice(0, 7); };
 function frPrev(f, k, day){
-  if (k === "e"){ const x = frRec(f.id, day).s; if (x) return {x, d: day, k: "s"}; }
   for (const m of Object.keys(frSt.m).sort().reverse()){
     const r = frSt.m[m][f.id] || {};
-    for (const d of Object.keys(r).filter(d => d < day).sort().reverse()){
-      const v = r[d];
-      if (v.e) return {x: v.e, d, k: "e"};
-      if (v.s) return {x: v.s, d, k: "s"};
-    }
+    for (const d of Object.keys(r).filter(d => d < day).sort().reverse()) if (r[d][k]) return {x: r[d][k], d, k};
   }
+  const pm = frPrevM(day.slice(0, 7));
+  if (pm >= FR_FROM && !frSt.m[pm] && !frAsk[pm] && frState !== "net"){ frAsk[pm] = 1; setTimeout(() => frLoad(pm), 0); }
   return null;
 }
 const frPrevPh = (p, hum) => p && (hum ? p.x.h != null : p.x.t != null) ? "прошлое " + (hum ? frFmt(p.x.h) : frSig(p.x.t)) : "—";
@@ -169,7 +168,7 @@ function frPut(d){
   if (d.fst) frSt.fst = d.fst;
   if (d.work) frSt.work = d.work;
   if (d.sigs) frSt.sigs = d.sigs;
-  const keep = [d.day.slice(0, 7), frCurM(), frM].filter(Boolean);       // на телефоне — текущий месяц и открытый
+  const keep = [d.day.slice(0, 7), frCurM(), frM, frPrevM(frCurM())].filter(Boolean);   // на телефоне — текущий, открытый и прошлый (подсказки)
   Object.keys(frSt.m).forEach(k => { if (keep.indexOf(k) < 0 && k !== d.m) delete frSt.m[k]; });
   cks(FRS, {day: frSt.day, fst: frSt.fst, work: frSt.work, sigs: frSt.sigs, m: {[frCurM()]: frSt.m[frCurM()] || {}}});
 }
@@ -499,6 +498,7 @@ function frWRow(f, err){
   } else if (dirty && x) m = "пустое поле — останется как было; стереть — в карточке холодильника";
   else if (x) m = (x.pend ? '<span class="frpend">ждёт отправки</span> · ' : "✓ ") + "внесено " + esc(x.at || "") + " · " + esc(x.f) +
     (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "");
+  else if (p) m = "серым — " + (f.room ? "прошлый замер" : k === "s" ? "прошлое начало смены" : "прошлый конец смены") + ", " + frWdDay(p.d);   // откуда подсказка
   st.innerHTML = m;
   const th = row.querySelector(".frwth"), tx = x ? frFmt(x.t) : "";                  // схема, как в списке; на табло — внесённое
   if (th && th.dataset.v !== tx){ th.dataset.v = tx; th.innerHTML = fridgeSvg(f, tx); }
@@ -532,7 +532,7 @@ function frWalkDraw(){
       '<div class="modes frwk" role="group" aria-label="Смена">' + [["s", "Начало смены"], ["e", "Конец смены"]].map(([k, t]) =>
         '<button type="button" data-wk="' + k + '" aria-pressed="' + (k === frWalk) + '">' + t + '</button>').join("") + '</div>' +
       '<p class="frtoday">День — <b>' + frWdDay(day) + '</b>, вносить и править можно до 14:00.' + (frMorning() ? " <b>Сейчас утро — это ещё вчерашний день</b>: сюда конец его смены." : "") +
-      ' Смотрите на табло и вписывайте цифру — «Далее» на клавиатуре (на iPhone — стрелка над ней) переходит к следующему. Серым — прошлое показание, оно не вносится. Пустое поле — пропустить. У помещений один замер за день.</p>' +
+      ' Смотрите на табло и вписывайте цифру — «Далее» на клавиатуре (на iPhone — стрелка над ней) переходит к следующему. Серым — прошлое показание той же смены (на открытии — прошлое начало, на закрытии — прошлый конец), оно не вносится. Пустое поле — пропустить. У помещений один замер за день.</p>' +
       '<label class="label" for="frFio">ФИО</label><select id="frFio"><option value="">— выберите —</option>' +
         FR_FIO.map(x => '<option' + (x === fio ? " selected" : "") + '>' + x + '</option>').join("") + '</select><div id="frSigOne"></div>' + rows + '</div></div>' +
       '<div class="frwfoot"><button type="button" class="wogo" id="frWSave">Сохранить всё</button><p class="frwho" id="frWMsg" role="status"></p>' +
