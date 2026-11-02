@@ -464,7 +464,9 @@ function frSave(k){
    Пустое поле — пропустить (стереть внесённое — в карточке). У помещений один замер в день — он и в начале, и в конце. */
 const frWalkList = () => { const a = FR_WALK.map(frGet).filter(Boolean); return a.concat(FR.filter(f => a.indexOf(f) < 0)); };
 const frWk = f => f.room ? "s" : frWalk;
-const frWalkDef = () => frMorning() || FR.filter(f => !f.room).every(f => frRec(f.id, frDayNow()).s) ? "e" : "s";
+/* какая смена открывается: с 22:00 до 14:00 (закрытие и утро) — конец; днём — начало, пока у всех не внесено */
+const frWalkDef = () => { const h = new Date(Date.now() + 5 * 3600e3).getUTCHours();
+  return h >= 22 || h < 14 || FR.filter(f => !f.room).every(f => frRec(f.id, frDayNow()).s) ? "e" : "s"; };
 function frWalkOn(k){
   frWalk = k || frWalkDef(); frId = ""; frM = "";
   const one = $("frOne"); one.innerHTML = ""; delete one.dataset.id;               // у карточки те же id (ФИО, подпись)
