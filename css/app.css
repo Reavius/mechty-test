@@ -1348,7 +1348,10 @@ html.navopen,html.navopen body{overflow:hidden}
 .frwpl{margin:24px 0 0;padding-bottom:6px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:800}
 .frwrow{padding:12px 0 10px;border-bottom:1px solid var(--line)}
 .frwrow:last-child{border-bottom:0}
-.frwn{margin:0 0 8px;font-size:14.5px;line-height:1.3}
+.frwhd{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.frwth{flex:none;width:92px}
+.frwth svg{display:block;width:100%;height:auto}
+.frwn{margin:0;font-size:14.5px;line-height:1.3;min-width:0}
 .frwn b{font-weight:700;overflow-wrap:anywhere}
 .frwn .frw{margin-top:1px}
 .frwrow .frin input{font-size:20px;padding:8px 6px}

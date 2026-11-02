@@ -500,6 +500,8 @@ function frWRow(f, err){
   else if (x) m = (x.pend ? '<span class="frpend">ждёт отправки</span> · ' : "✓ ") + "внесено " + esc(x.at || "") + " · " + esc(x.f) +
     (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "");
   st.innerHTML = m;
+  const th = row.querySelector(".frwth"), tx = x ? frFmt(x.t) : "";                  // схема, как в списке; на табло — внесённое
+  if (th && th.dataset.v !== tx){ th.dataset.v = tx; th.innerHTML = fridgeSvg(f, tx); }
   row.classList.toggle("done", !!x && !dirty); row.classList.toggle("dirty", dirty && !!(tv || hv));
 }
 function frWBtn(){
@@ -519,8 +521,8 @@ function frWalkDraw(){
       const pl = f.room ? f.n : frZn(f.z);
       if (pl !== place){ place = pl; rows += '<h4 class="frwpl">' + esc(pl) + '</h4>'; }
       const lab = f.room ? "Температура и влажность" : f.n, hint = h => f === last && (!f.room || h) ? "done" : "next";
-      rows += '<div class="frwrow' + (f.room ? " room" : "") + '" data-id="' + f.id + '"><p class="frwn"><b>' + esc(lab) + '</b>' +
-        '<span class="frw">' + esc([f.w, frNorm(f) ? "норма " + frNorm(f) : ""].filter(Boolean).join(" · ")) + '</span></p>' +
+      rows += '<div class="frwrow' + (f.room ? " room" : "") + '" data-id="' + f.id + '"><div class="frwhd">' + (f.room ? "" : '<span class="frwth" aria-hidden="true"></span>') +
+        '<p class="frwn"><b>' + esc(lab) + '</b><span class="frw">' + esc([f.w, frNorm(f) ? "норма " + frNorm(f) : ""].filter(Boolean).join(" · ")) + '</span></p></div>' +
         '<div class="frin' + (f.room ? " two" : "") + '"><button type="button" class="frpm" data-wpm="' + f.id + '" aria-label="Плюс или минус" tabindex="-1">±</button>' +
         '<input id="frWT-' + f.id + '" type="text" inputmode="decimal" maxlength="6" autocomplete="off" enterkeyhint="' + hint(0) + '" aria-label="' + esc(f.n) + ': температура"><span class="fru">°C</span>' +
         (f.room ? '<input id="frWH-' + f.id + '" type="text" inputmode="decimal" maxlength="5" autocomplete="off" enterkeyhint="' + hint(1) + '" aria-label="' + esc(f.n) + ': влажность"><span class="fru">%</span>' : "") +
