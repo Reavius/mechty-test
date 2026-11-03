@@ -1512,6 +1512,66 @@ function pubSeedRows(){
   });
   return {menu, items, groups};
 }
+/* состав, поменявшийся в файлах сайта после переноса в таблицу (решение бар-менеджера): что было в файлах до правки.
+   В таблице ещё прежний текст (его не правили) — «Обновить в таблице» ставит новый, в том же виде, что у остальных коктейлей.
+   Свой текст в таблице не трогаем без спроса — только показываем новый */
+const PUB_UPD = [
+  {id: "mandarin", on: "3 ноября", m: "апельсиновый ликёр, пюре мандарин, кордиал пало санто — манго — ваниль, игристое",
+    me: "orange liqueur, tangerine purée, palo santo — mango — vanilla cordial, sparkling wine",
+    c: "Ликёр крепкий выдержанный Трипл Сек; Пюре мандарин; Кордиал пало санто — манго — ваниль", v: 200},
+  {id: "tequila", on: "3 ноября", m: "текила, апероль, трипл сек, лайм, мёд, чили, сидр", me: "tequila, Aperol, triple sec, lime, honey, chili, cider",
+    c: "Текила «Хосе Куэрво Эспесиаль Сильвер»; Ликёр Апероль; Сок лайма; Сироп чили-мёд п/ф; Ликёр крепкий выдержанный Трипл Сек", v: 190}];
+const pubNrm = s => String(s == null ? "" : s).toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+function pubUpdPlan(){
+  if (!pubRaw) return [];
+  const card = {}, mv = {}, out = [];
+  PUB0.data.forEach(g => g.items.forEach(it => { card[it.id] = it; }));
+  PUB0.menu.forEach(c => c.secs.forEach(s => s.items.forEach(x => { if (x.c) mv[x.c] = x; })));
+  PUB_UPD.forEach(u => {
+    const it = card[u.id], en = PUB0.en[u.id] || [];
+    const nw = {m: it ? it.m : null, me: en[1] == null ? null : en[1], c: it ? (it.c || []).join("; ") : null, v: mv[u.id] ? mv[u.id].v : null};
+    const own = (cur, old) => String(cur).trim() !== "" && pubNrm(cur) !== pubNrm(old);          // в таблице не прежний и не новый — свой текст
+    pubRaw.items.filter(r => r[1] === u.id).forEach(r => {
+      const ch = [[4, "m", "состав"], [5, "me", "состав по-английски"], [6, "c", "полный состав для этикетки"]]
+        .filter(([i, k]) => nw[k] != null && pubNrm(r[i]) !== pubNrm(nw[k])).map(([i, k, lab]) => ({i, lab, from: r[i], to: nw[k], own: own(r[i], u[k])}));
+      if (ch.length) out.push({t: "c", key: r[1], name: r[2] || u.id, on: u.on, row: r, ch});
+    });
+    pubRaw.menu.filter(r => r[12] === u.id).forEach(r => {
+      const ch = [[7, "m", "описание"], [8, "me", "описание по-английски"]]
+        .filter(([i, k]) => String(r[i]).trim() !== "" && nw[k] != null && pubNrm(r[i]) !== pubNrm(nw[k])).map(([i, k, lab]) => ({i, lab, from: r[i], to: nw[k], own: own(r[i], u[k])}));   // пусто — берётся из «Карты»
+      if (nw.v != null && String(r[9]).trim() !== String(nw.v)) ch.push({i: 9, lab: "объём, мл", from: r[9], to: nw.v, own: String(r[9]).trim() !== "" && pubNum(r[9]) !== u.v});
+      if (ch.length) out.push({t: "m", key: r[15], name: r[5] || pubCardName(r[12]) || u.id, on: u.on, row: r, ch});
+    });
+  });
+  return out;
+}
+function pubUpdHtml(){
+  const plan = pubUpdPlan(), auto = plan.filter(x => x.ch.some(c => !c.own)), mine = plan.filter(x => x.ch.some(c => c.own));
+  if (!plan.length) return "";
+  const names = [...new Set(plan.map(x => x.name))].join(", "), li = (x, ownOnly) => x.ch.filter(c => !!c.own === ownOnly).map(c =>
+    '<li><b>' + esc(x.name) + '</b> <small>(' + (x.t === "c" ? "«Состав»" : "меню") + ', ' + esc(c.lab) + ')</small>: <s>' + esc(String(c.from) || "пусто") + '</s> → <b>' + esc(String(c.to)) + '</b></li>').join("");
+  return '<div class="pubupd">' + (auto.length ? '<p class="mgrsum">Рецепты обновлены ' + esc(plan[0].on) + ': <b>' + esc(names) + '</b> — в таблице прежний состав.</p>' +
+      '<ul class="pubupdl">' + auto.map(x => li(x, false)).join("") + '</ul><div class="refbtns"><button type="button" class="wogo" id="pubUpdGo">Обновить в таблице</button></div>' : "") +
+    (mine.length ? '<details class="pubupdmine"><summary>В таблице свой текст — не меняю без спроса (' + mine.reduce((a, x) => a + x.ch.filter(c => c.own).length, 0) + ')</summary>' +
+      '<ul class="pubupdl">' + mine.map(x => li(x, true)).join("") + '</ul><button type="button" class="link" id="pubUpdMine">Заменить и их на новый состав</button></details>' : "") +
+    '<p class="warn" id="pubUpdMsg" role="status"></p></div>';
+}
+async function pubUpdRun(withOwn, btn){
+  const plan = pubUpdPlan().map(x => Object.assign({}, x, {ch: x.ch.filter(c => withOwn || !c.own)})).filter(x => x.ch.length);
+  if (!plan.length || pubBusy) return;
+  pubBusy = true; btn.disabled = true; btn.textContent = "Обновляем…";
+  let bad = "";
+  for (const x of plan){
+    const row = x.row.slice();
+    x.ch.forEach(c => { row[c.i] = c.to; });
+    const d = await pubPost({mgr: "pubset", t: x.t, act: "set", key: x.key, row, base: x.row});
+    if (!d){ bad = "вход менеджера истёк"; break; }
+    if (!d.ok){ bad = pubErr(d); break; }
+  }
+  pubBusy = false;
+  if (bad){ btn.disabled = false; btn.textContent = "Повторить"; $("pubUpdMsg").textContent = bad; return; }
+  buzz(14); pubFetch(); await pubLoad(); pubDraw();
+}
 async function pubPost(body){
   let d = null;
   try {
@@ -1540,7 +1600,7 @@ function pubDraw(){
   $("pubQ").hidden = pubMode === "price"; $("pubFileL").hidden = pubMode !== "price";
   if (pubMode === "price") return pubPriceDraw();
   const q = $("pubQ").value.trim().toLowerCase().replace(/ё/g, "е"), hit = s => !q || String(s).toLowerCase().replace(/ё/g, "е").includes(q);
-  let html = "";
+  let html = q ? "" : pubUpdHtml();
   if (pubMode === "menu"){
     $("pubChs").innerHTML = [...new Set(pubRaw.menu.map(r => r[0]))].map(x => '<option value="' + esc(x) + '">').join("");
     $("pubSecs").innerHTML = [...new Set(pubRaw.menu.map(r => r[2]))].map(x => '<option value="' + esc(x) + '">').join("");
@@ -1628,6 +1688,7 @@ let pubT = 0;
 $("pubQ").addEventListener("input", () => { clearTimeout(pubT); pubT = setTimeout(pubDraw, 120); });
 $("pubWarn").addEventListener("click", e => { if (e.target.id === "pubRetry") pubLoad(); });
 $("pubList").addEventListener("click", async e => {
+  if (e.target.id === "pubUpdGo" || e.target.id === "pubUpdMine"){ if (e.target.id === "pubUpdMine" && !confirm("Заменить свой текст в таблице на новый состав?")) return; return pubUpdRun(e.target.id === "pubUpdMine", e.target); }
   if (e.target.id === "pubStGo" && !pubBusy){                            // тексты «Узнать больше» с сайта — в пустые ячейки «Карты»
     const rows = pubStMiss().map(r => ({id: r[1], v: pubStDef(r[1])}));
     pubBusy = true; e.target.disabled = true; e.target.textContent = "Переносим…";

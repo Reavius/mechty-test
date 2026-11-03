@@ -1370,3 +1370,10 @@ html.navopen,html.navopen body{overflow:hidden}
 small.salst{display:block;margin-top:3px}
 .frwo{margin:0 0 6px;font-size:12.5px;color:var(--muted)}
 .frwo b{color:var(--fg)}
+/* «Гостям»: состав поменялся в файлах сайта, а в таблице прежний — «Обновить в таблице» */
+.pubupd{margin:0 0 18px;padding:12px 14px;border:1px solid var(--flag);border-radius:12px}
+.pubupd .mgrsum{margin:0 0 8px}
+.pubupdl{margin:0 0 6px;padding-left:18px;font-size:13px;line-height:1.5}
+.pubupdl s{color:var(--muted)}
+.pubupdmine{margin-top:8px;font-size:13px}
+.pubupdmine summary{cursor:pointer;color:var(--muted)}
