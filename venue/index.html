@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>«Мечты» — кафе, клуб, мансарда</title>
+<meta name="description" content="Кафе, клуб, мансарда и VIP под одной крышей: афиша, бронь столов, банкеты, меню и карта бара.">
+<meta name="theme-color" content="#0E1014">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Manrope:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/venue.css">
+</head>
+<body>
+<div class="demo">Пример сайта: <b>даты, цены, адрес и телефон — для примера</b>. Всё меняется в админке без программиста.</div>
+<header class="vtop">
+  <div class="wrap vtop-in">
+    <a class="logo" href="#top"><img src="/icons/bolt.svg" alt=""><span><b id="lgName">МЕЧТЫ</b><small>кафе · клуб · мансарда</small></span></a>
+    <nav class="nav" aria-label="Разделы">
+      <a href="#afisha">Афиша</a><a href="#zones">Залы</a><a href="#banquet">Банкеты</a><a href="#menu">Меню</a><a href="#promo">Акции</a><a href="#photo">Фото</a><a href="#contacts">Контакты</a>
+    </nav>
+    <a class="btn small topbook" href="#book">Забронировать</a>
+    <button type="button" class="burger" id="burger" aria-label="Разделы" aria-expanded="false" aria-controls="drawer"><span></span></button>
+  </div>
+</header>
+<div class="drawer" id="drawer" aria-hidden="true">
+  <div class="dim" data-close></div>
+  <nav aria-label="Разделы">
+    <button type="button" class="dx" data-close aria-label="Закрыть">×</button>
+    <h3>Разделы</h3>
+    <a href="#afisha">Афиша <small>события</small></a><a href="#book">Бронь стола</a><a href="#zones">Залы</a><a href="#banquet">Банкеты и праздники</a>
+    <a href="#menu">Меню и карта бара</a><a href="#promo">Акции</a><a href="#news">Новости</a><a href="#photo">Фотоотчёты</a>
+    <a href="#cert">Сертификаты</a><a href="#sub">Подписка</a><a href="#reviews">Отзывы</a><a href="#jobs">Вакансии</a><a href="#contacts">Контакты</a>
+  </nav>
+</div>
+
+<main id="top">
+  <section class="hero">
+    <div class="hbg"></div>
+    <video id="hvid" muted loop playsinline preload="metadata" poster="/video/negroni.jpg" aria-hidden="true">
+      <source src="/video/negroni.av1.mp4" type='video/mp4; codecs="av01.0.04M.08"'>
+      <source src="/video/negroni.hevc.mp4" type='video/mp4; codecs="hvc1.1.6.L90.B0"'>
+      <source src="/video/negroni.mp4" type="video/mp4">
+    </video>
+    <div class="wrap">
+      <p class="kick" id="hKick">Кафе · Клуб · Мансарда · VIP</p>
+      <h1 id="hName">Мечты</h1>
+      <p class="lede" id="hTag"></p>
+      <div class="acts"><a class="btn" href="#book">Забронировать стол</a><a class="btn ghost" href="#afisha">Афиша</a></div>
+      <div id="hNext"></div>
+      <div class="nowbar" id="hNow"></div>
+    </div>
+  </section>
+
+  <section class="sec wrap" id="afisha">
+    <div class="sech"><div><p class="kick">Что будет</p><h2>Афиша</h2></div><div class="chips" id="evZones" role="group" aria-label="Зал"></div></div>
+    <div class="evs" id="evList"></div>
+    <p class="pastl" id="evPast"></p>
+  </section>
+
+  <section class="sec wrap" id="book">
+    <div class="sech"><div><p class="kick">Бронь</p><h2>Забронировать стол</h2><p class="sub">Заявка сразу уходит администратору — он перезвонит и подтвердит. Без предоплаты, кроме особых вечеров.</p></div></div>
+    <div class="card" id="bookBox">
+      <form class="form" id="bookF" novalidate>
+        <span class="fl">Зал</span><div class="chips" id="bkZones" role="group" aria-label="Зал"></div>
+        <div class="row three">
+          <div><label class="fl" for="bkDate">Дата</label><input class="in" type="date" id="bkDate" name="date" required></div>
+          <div><label class="fl" for="bkTime">Время</label><select class="in" id="bkTime" name="time"></select></div>
+          <div class="wide"><span class="fl">Гостей</span><div class="stepper"><button type="button" data-step="-1" aria-label="Меньше">−</button><input class="in" id="bkGuests" name="guests" inputmode="numeric" value="2" aria-label="Гостей"><button type="button" data-step="1" aria-label="Больше">+</button></div></div>
+        </div>
+        <div class="row">
+          <div><label class="fl" for="bkName">Имя</label><input class="in" id="bkName" name="name" autocomplete="name" required></div>
+          <div><label class="fl" for="bkPhone">Телефон</label><input class="in" id="bkPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7" required></div>
+        </div>
+        <label class="fl" for="bkCom">Пожелания</label><textarea class="in" id="bkCom" name="comment" placeholder="Например: у окна, день рождения, детский стул"></textarea>
+        <input type="hidden" name="event" id="bkEvent">
+        <label class="agree"><input type="checkbox" name="consent"> <span>Согласен на обработку персональных данных по <a href="/privacy.html" target="_blank">политике конфиденциальности</a></span></label>
+        <button class="btn" type="submit">Отправить заявку</button>
+        <p class="fmsg" role="status"></p>
+      </form>
+    </div>
+  </section>
+
+  <section class="sec wrap" id="zones">
+    <div class="sech"><div><p class="kick">Пространства</p><h2>Четыре зала</h2><p class="sub">Под одной крышей — от тихого кофе днём до танцпола на 250 гостей.</p></div></div>
+    <div class="zones" id="zoneList"></div>
+  </section>
+
+  <section class="sec wrap" id="banquet">
+    <div class="sech"><div><p class="kick">Праздники</p><h2>Банкеты и мероприятия</h2><p class="sub">Дни рождения, свадьбы, корпоративы и закрытые вечеринки — подберём зал, меню и программу.</p></div></div>
+    <div class="packs" id="packList"></div>
+    <div class="card" id="bqBox">
+      <form class="form" id="bqF" novalidate>
+        <div class="row three">
+          <div><label class="fl" for="bqDate">Дата</label><input class="in" type="date" id="bqDate" name="date"></div>
+          <div><label class="fl" for="bqGuests">Гостей</label><input class="in" id="bqGuests" name="guests" inputmode="numeric" placeholder="30"></div>
+          <div class="wide"><label class="fl" for="bqZone">Зал</label><select class="in" id="bqZone" name="zone"></select></div>
+        </div>
+        <label class="fl" for="bqFormat">Формат</label><select class="in" id="bqFormat" name="format"></select>
+        <div class="row">
+          <div><label class="fl" for="bqName">Имя</label><input class="in" id="bqName" name="name" autocomplete="name"></div>
+          <div><label class="fl" for="bqPhone">Телефон</label><input class="in" id="bqPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7"></div>
+        </div>
+        <label class="fl" for="bqCom">Расскажите о празднике</label><textarea class="in" id="bqCom" name="comment" placeholder="Повод, бюджет на гостя, пожелания по меню и музыке"></textarea>
+        <label class="agree"><input type="checkbox" name="consent"> <span>Согласен на обработку персональных данных по <a href="/privacy.html" target="_blank">политике конфиденциальности</a></span></label>
+        <button class="btn" type="submit">Обсудить праздник</button>
+        <p class="fmsg" role="status"></p>
+      </form>
+    </div>
+  </section>
+
+  <section class="sec wrap" id="menu">
+    <div class="sech"><div><p class="kick">Еда и напитки</p><h2>Меню</h2></div><div class="chips mtabs" id="mTabs" role="group" aria-label="Меню"></div></div>
+    <div class="chips mtabs" id="mSecs" role="group" aria-label="Раздел"></div>
+    <div class="card mlist" id="mList"></div>
+    <p class="mnote" id="mNote"></p>
+  </section>
+
+  <section class="sec wrap" id="promo">
+    <div class="sech"><div><p class="kick">Выгодно</p><h2>Акции</h2></div></div>
+    <div class="grid3" id="promoList"></div>
+  </section>
+
+  <section class="sec wrap" id="news">
+    <div class="sech"><div><p class="kick">Новое</p><h2>Новости</h2></div></div>
+    <div id="newsList"></div>
+  </section>
+
+  <section class="sec wrap" id="photo">
+    <div class="sech"><div><p class="kick">Как это было</p><h2>Фотоотчёты</h2><p class="sub">Ищите себя на фото с вечеринок — и делитесь ссылкой.</p></div></div>
+    <div class="albums" id="albList"></div>
+  </section>
+
+  <section class="sec wrap" id="cert">
+    <div class="sech"><div><p class="kick">Подарок</p><h2>Подарочный сертификат</h2><p class="sub">На кухню, бар, вход и банкеты. Действует полгода. Придёт по ссылке — можно переслать или распечатать.</p></div></div>
+    <div class="cert">
+      <div class="cprev" id="cPrev"><span class="ck">Подарочный сертификат · «Мечты»</span><span class="cs" id="cPrevSum">3 000 ₽</span><span class="cw" id="cPrevTo">Для самого близкого</span></div>
+      <div class="card"><form class="form" id="certF" novalidate>
+        <span class="fl">Сумма</span><div class="chips" id="cSums" role="group" aria-label="Сумма"></div>
+        <div class="row"><div><label class="fl" for="cAmount">Своя сумма, ₽</label><input class="in" id="cAmount" name="amount" inputmode="numeric" value="3000"></div>
+          <div><label class="fl" for="cTo">Кому</label><input class="in" id="cTo" name="to" placeholder="Имя получателя"></div></div>
+        <div class="row"><div><label class="fl" for="cFrom">От кого</label><input class="in" id="cFrom" name="from"></div>
+          <div><label class="fl" for="cWish">Пожелание</label><input class="in" id="cWish" name="wish" maxlength="120"></div></div>
+        <div class="row"><div><label class="fl" for="cName">Ваше имя</label><input class="in" id="cName" name="name" autocomplete="name"></div>
+          <div><label class="fl" for="cPhone">Телефон</label><input class="in" id="cPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7"></div></div>
+        <label class="agree"><input type="checkbox" name="consent"> <span>Согласен на обработку персональных данных по <a href="/privacy.html" target="_blank">политике конфиденциальности</a></span></label>
+        <button class="btn" type="submit">Оплатить и получить</button>
+        <p class="fmsg" role="status">В примере оплата не настоящая — сертификат выпускается сразу.</p>
+      </form></div>
+    </div>
+  </section>
+
+  <section class="sec wrap" id="sub">
+    <div class="sech"><div><p class="kick">Не пропустить</p><h2>Подписка на афишу</h2></div></div>
+    <div class="sub2">
+      <div class="card subc"><h3>Telegram-канал</h3><p>Анонсы, имена диджеев, фото — первыми.</p><a class="btn" id="tgBtn" href="#" target="_blank" rel="noopener">Открыть канал</a></div>
+      <div class="card subc"><h3>Письмо раз в неделю</h3><p>Афиша на выходные — на почту, без спама.</p>
+        <form id="subF" novalidate><div class="inl"><input class="in" name="email" type="email" placeholder="почта" autocomplete="email" aria-label="Почта"><button class="btn" type="submit">Подписаться</button></div>
+          <label class="agree"><input type="checkbox" name="consent"> <span>Согласен получать письма и на обработку почты по <a href="/privacy.html" target="_blank">политике</a></span></label><p class="fmsg" role="status"></p></form></div>
+    </div>
+  </section>
+
+  <section class="sec wrap" id="reviews">
+    <div class="sech"><div><p class="kick">Что говорят</p><h2>Отзывы</h2></div></div>
+    <div class="card rev"><p>Здесь будет рейтинг и последние отзывы с Яндекс Карт и 2ГИС — их подключают виджетом площадки, писать отзывы на сайте вручную не нужно.</p>
+      <div class="chips"><a class="btn small ghost" id="revY" target="_blank" rel="noopener" href="#">Яндекс Карты</a><a class="btn small ghost" id="rev2" target="_blank" rel="noopener" href="#">2ГИС</a></div></div>
+  </section>
+
+  <section class="sec wrap" id="jobs">
+    <div class="sech"><div><p class="kick">Команда</p><h2>Вакансии</h2><p class="sub">Растём и ищем людей, которые любят гостей.</p></div></div>
+    <div class="grid2" id="jobList"></div>
+    <div class="card" id="jobBox" hidden><form class="form" id="jobF" novalidate>
+      <label class="fl" for="jbVac">Вакансия</label><select class="in" id="jbVac" name="vacancy"></select>
+      <div class="row"><div><label class="fl" for="jbName">Имя</label><input class="in" id="jbName" name="name" autocomplete="name"></div>
+        <div><label class="fl" for="jbPhone">Телефон</label><input class="in" id="jbPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7"></div></div>
+      <label class="fl" for="jbAbout">О себе</label><textarea class="in" id="jbAbout" name="about" placeholder="Опыт, когда можете выходить"></textarea>
+      <label class="agree"><input type="checkbox" name="consent"> <span>Согласен на обработку персональных данных по <a href="/privacy.html" target="_blank">политике конфиденциальности</a></span></label>
+      <button class="btn" type="submit">Откликнуться</button><p class="fmsg" role="status"></p>
+    </form></div>
+  </section>
+
+  <section class="sec wrap" id="contacts">
+    <div class="sech"><div><p class="kick">Как найти</p><h2>Контакты</h2></div></div>
+    <div class="contacts">
+      <div class="card cinfo">
+        <p class="big" id="ctAddr"></p>
+        <a class="tel" id="ctTel" href="#"></a>
+        <table class="hours" id="ctHours"></table>
+        <p id="ctDress" class="sub"></p><p id="ctPark" class="sub"></p>
+        <div class="soc" id="ctSoc"></div>
+      </div>
+      <div class="card map" role="img" aria-label="Схема проезда">
+        <div class="pin"><b id="mapName">«Мечты»</b><i></i></div>
+        <div class="mapb"><a class="btn small" id="mapY" target="_blank" rel="noopener" href="#">Маршрут в Яндекс Картах</a><a class="btn small ghost" id="map2" target="_blank" rel="noopener" href="#">2ГИС</a></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span><span class="age">18+</span>Чрезмерное употребление алкоголя вредит вашему здоровью.</span>
+    <span><a href="/privacy.html">Политика конфиденциальности</a> · <a id="ftGuide" href="#" target="_blank" rel="noopener">Барный гид</a> · <a href="/admin.html">Вход для управляющего</a></span>
+  </div>
+</footer>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="shTitle"></div>
+<div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Фото"></div>
+<script src="/site.js" defer></script>
+</body>
+</html>
