@@ -2294,19 +2294,32 @@ function salRel(d){
   const sg = salSuggest(d);
   return !!sg && sg.comps.some(c => salBlank(c.ri)) || salWord(d.name);
 }
+/* принято подсказкой по техкарте или рецепту («техкарта «…»», «рецепт «…»»), а она с тех пор поменялась — то, что она даёт сейчас.
+   Заданное вручную («вручную», «по названию») не трогаем: менеджер мог поправить нарочно. Всё нашлось в справочнике —
+   «Обновить» сохраняет сразу; чего-то нет («без: …») — открывает форму с новым составом, недостающее менеджер добавит сам */
+const salSrcName = s => (String(s || "").match(/«(.+?)»/) || [])[1] || "";
+const salSameComps = (a, b) => a.length === b.length && a.every(x => b.some(y => y.ri === x.ri && Math.abs(y.q - x.q) <= 2e-5 + Math.abs(x.q) * 1e-3));
+function salStale(m, sg){
+  if (!m || m.none || !sg || !/^(техкарта|рецепт)/.test(String(m.src || ""))) return null;
+  if (incNorm(salSrcName(m.src)) !== incNorm(salSrcName(sg.src))) return null;
+  return salSameComps(m.comps, sg.comps) ? null : sg;
+}
 const salCompTxt = comps => comps.map(c => { const r = sal.ref[c.ri]; return mgrNum(Math.round(c.q * 10000) / 10000) + " " + useU(r[2]) + " " + r[1]; }).join(" + ");
 function salDraw(){
   if (!sal) return;
   if (!sal.sales.length){ $("salDish").innerHTML = '<p class="empty">За этот период продаж нет — загрузите отчёт R-Keeper или выберите другой период.</p>'; return; }
   const ds = sal.sales.map(d => Object.assign({}, d, {m: salMapOf(d)}));
-  ds.forEach(d => { if (!d.m) d.sug = salSuggest(d); d.rel = d.m ? salRelM(d.m) : !!d.sug && d.sug.comps.some(c => salBlank(c.ri)) || salWord(d.name); });
-  const ok = ds.filter(d => d.m && d.rel), sug = ds.filter(d => !d.m && d.sug && d.rel), no = ds.filter(d => !d.m && !d.sug && d.rel), other = ds.filter(d => !d.rel);
+  ds.forEach(d => { if (!d.m) d.sug = salSuggest(d); else d.st = salStale(d.m, salSuggest(d)); d.rel = d.m ? salRelM(d.m) : !!d.sug && d.sug.comps.some(c => salBlank(c.ri)) || salWord(d.name); });
+  const st = ds.filter(d => d.st && d.rel), ok = ds.filter(d => d.m && d.rel && !d.st), sug = ds.filter(d => !d.m && d.sug && d.rel), no = ds.filter(d => !d.m && !d.sug && d.rel), other = ds.filter(d => !d.rel);
   const line = d => {
     const key = salKey(d), open = sal.open === key, st = d.m ? (d.m.none ? "не учитывается" : salCompTxt(d.m.comps)) : d.sug ? salCompTxt(d.sug.comps) : "";
     return '<li class="' + (d.m ? "inc-code" : d.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(d.name) + (d.code ? ' <small>код ' + esc(d.code) + '</small>' : "") + '</span>' +
       '<small class="mgrwhy">продано ' + mgrNum(d.qty) + (st ? ' · <b>' + esc(st) + '</b>' : ' · <b>расход не задан</b>') +
         (d.sug && !d.m ? ' · ' + esc(d.sug.src) + (d.sug.miss.length ? " (без: " + esc(d.sug.miss.join(", ")) + ")" : "") : "") + '</small>' +
-      (open ? salForm(d) : '<div class="salbtns">' + (d.sug && !d.m && !d.sug.miss.length ? '<button type="button" class="link" data-ok="' + esc(key) + '">Верно</button>' : "") +
+      (d.st ? '<small class="mgrwhy salst">' + esc(salSrcName(d.st.src) ? "техкарта «" + salSrcName(d.st.src) + "» изменилась" : "техкарта изменилась") + ', по ней сейчас: <b>' + esc(salCompTxt(d.st.comps)) + '</b>' +
+        (d.st.miss.length ? " (без: " + esc(d.st.miss.join(", ")) + " — добавьте в форме)" : "") + '</small>' : "") +
+      (open ? salForm(sal.upf === key && d.st ? Object.assign({}, d, {m: {comps: d.st.comps}}) : d) : '<div class="salbtns">' + (d.sug && !d.m && !d.sug.miss.length ? '<button type="button" class="link" data-ok="' + esc(key) + '">Верно</button>' : "") +
+        (d.st ? '<button type="button" class="link" ' + (d.st.miss.length ? "data-upf" : "data-up") + '="' + esc(key) + '">Обновить по техкарте</button>' : "") +
         '<button type="button" class="link" data-ed="' + esc(key) + '">' + (d.m || d.sug ? "Изменить" : "Задать расход") + '</button>' +
         (!d.m || !d.m.none ? '<button type="button" class="link" data-no="' + esc(key) + '">Не учитывать</button>' : "") + '</div>') + '</div></li>';
   };
@@ -2315,6 +2328,8 @@ function salDraw(){
   $("salDish").innerHTML = '<div class="result tcard mgrt"><div class="tname"><em>' + esc($("salPerLab").textContent.split(" · ")[0]) + '</em><h3>Расход на блюдо</h3></div>' +
     '<p class="mgrsum salsum">Блюд с позициями ревизии: <b>' + (ds.length - other.length) + '</b> · продано порций ' + mgrNum(Math.round(ds.filter(d => d.rel).reduce((a, d) => a + d.qty, 0))) + ' · расход задан у ' + ok.length +
       (sug.length ? ' · <span class="incg">предложено ' + sug.length + '</span>' : "") + (no.length ? ' · не задан у ' + no.length : "") + '</p>' +
+    (st.length ? '<p class="mgrsum salsum salst">Техкарта изменилась — расход задан по старой: <b>' + st.length + '</b></p>' + (st.filter(d => !d.st.miss.length).length > 1 ? '<div class="refbtns salall"><button type="button" class="wogo" id="salUpAll">Обновить по техкартам (' + st.filter(d => !d.st.miss.length).length + ')</button></div>' : "") +
+      '<ul class="olist incl">' + st.map(line).join("") + '</ul>' : "") +
     (full.length ? '<div class="refbtns salall"><button type="button" class="wogo" id="salOkAll">Подтвердить все предложенные (' + full.length + ')</button></div>' : "") +
     (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
     (ok.length ? '<details class="incmapd salok"' + (sal.okOpen || ok.some(d => salKey(d) === sal.open) ? " open" : "") + '><summary>Расход задан (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
@@ -2373,10 +2388,16 @@ $("salDish").addEventListener("click", async e => {
     if (await salSave(list)) salDraw(); else b.disabled = false;
     return;
   }
-  if (b.dataset.ok){ const d = salDishOf(b.dataset.ok), s = d && salSuggest(d); if (s && await salSave([salPack(d, s.comps, s.src)])) salDraw(); return; }
+  if (b.dataset.ok || b.dataset.up){ const d = salDishOf(b.dataset.ok || b.dataset.up), s = d && salSuggest(d); if (s && await salSave([salPack(d, s.comps, s.src)])) salDraw(); return; }
+  if (b.id === "salUpAll"){
+    const list = sal.sales.map(d => ({d, m: salMapOf(d)})).filter(x => x.m).map(x => ({d: x.d, s: salStale(x.m, salSuggest(x.d))})).filter(x => x.s && !x.s.miss.length).map(x => salPack(x.d, x.s.comps, x.s.src));
+    b.disabled = true;
+    if (list.length && await salSave(list)) salDraw(); else b.disabled = false;
+    return;
+  }
   if (b.dataset.no){ const d = salDishOf(b.dataset.no); if (d && await salSave([salPack(d, [], "вручную", true)])) salDraw(); return; }
-  if (b.dataset.ed){ sal.open = b.dataset.ed; return salDraw(); }
-  if (b.dataset.cx){ sal.open = ""; return salDraw(); }
+  if (b.dataset.ed || b.dataset.upf){ sal.open = b.dataset.ed || b.dataset.upf; sal.upf = b.dataset.upf || ""; return salDraw(); }
+  if (b.dataset.cx){ sal.open = ""; sal.upf = ""; return salDraw(); }
   if (b.dataset.addc) salAddRow(b);
 });
 $("salDish").addEventListener("toggle", e => { if (sal && e.target.classList && e.target.classList.contains("salok")) sal.okOpen = e.target.open; }, true);
@@ -2448,14 +2469,17 @@ function zagDraw(){
   if (!sal) return;
   const zs = sal.ref.map((r, i) => ({ri: i, r})).filter(x => ZAG_SEC.test(String(x.r[0]).trim()) && x.r[9] === 1);
   if (!zs.length){ $("salZag").innerHTML = ""; return; }
-  zs.forEach(x => { x.m = sal.zag[x.ri] || null; x.none = !x.m && zagNone(x.r[1]); if (!x.m && !x.none) x.sug = zagSuggest(x.ri); });
-  const ok = zs.filter(x => x.m), sug = zs.filter(x => !x.m && x.sug), no = zs.filter(x => !x.m && !x.sug && !x.none), none = zs.filter(x => x.none);
+  zs.forEach(x => { x.m = sal.zag[x.ri] || null; x.none = !x.m && zagNone(x.r[1]); if (!x.m && !x.none) x.sug = zagSuggest(x.ri); else if (x.m) x.st = salStale(x.m, zagSuggest(x.ri)); });
+  const st = zs.filter(x => x.st), ok = zs.filter(x => x.m && !x.st), sug = zs.filter(x => !x.m && x.sug), no = zs.filter(x => !x.m && !x.sug && !x.none), none = zs.filter(x => x.none);
   const line = x => {
     const key = "z" + x.ri, open = sal.zopen === key, st = x.m ? salCompTxt(x.m.comps) : x.sug ? salCompTxt(x.sug.comps) : "";
     return '<li class="' + (x.m ? "inc-code" : x.sug ? "inc-guess" : "inc-no") + '"><div class="incr"><span class="refn">' + esc(x.r[1]) + ' <small>' + esc(x.r[0]) + '</small></span>' +
       '<small class="mgrwhy">на 1 ' + esc(useU(x.r[2])) + (st ? ': <b>' + esc(st) + '</b>' : x.none ? ' · считается как есть' : ' · <b>рецепта нет</b>') +
         (x.sug && !x.m ? ' · ' + esc(x.sug.src) + (x.sug.miss.length ? " (без: " + esc(x.sug.miss.join(", ")) + ")" : "") : "") + '</small>' +
-      (open ? salForm(x, true) : '<div class="salbtns">' + (x.sug && !x.m ? '<button type="button" class="link" data-zok="' + x.ri + '">Верно</button>' : "") +
+      (x.st ? '<small class="mgrwhy salst">рецепт «' + esc(salSrcName(x.st.src)) + '» изменился, по нему сейчас: <b>' + esc(salCompTxt(x.st.comps)) + '</b>' +
+        (x.st.miss.length ? " (без: " + esc(x.st.miss.join(", ")) + " — добавьте в форме)" : "") + '</small>' : "") +
+      (open ? salForm(sal.zupf === key && x.st ? Object.assign({}, x, {m: {comps: x.st.comps}}) : x, true) : '<div class="salbtns">' + (x.sug && !x.m ? '<button type="button" class="link" data-zok="' + x.ri + '">Верно</button>' : "") +
+        (x.st ? '<button type="button" class="link" ' + (x.st.miss.length ? 'data-zupf="' + key : 'data-zup="' + x.ri) + '">Обновить по рецепту</button>' : "") +
         '<button type="button" class="link" data-zed="' + key + '">' + (x.m || x.sug ? "Изменить" : "Задать рецепт") + '</button>' +
         (x.m ? '<button type="button" class="link" data-zno="' + x.ri + '">Убрать рецепт</button>' : "") + '</div>') + '</div></li>';
   };
@@ -2464,6 +2488,8 @@ function zagDraw(){
       (none.length ? ' · не нужен у ' + none.length : "") + '</p>' +
     '<p class="wnhint salnote">С рецептом остаток заготовки, её списания и продажи через неё во вкладке «Расход» раскладываются на сырьё — сироп, сделанный впрок, не покажется недостачей сахара. ' +
       'Предложения — из техкарт и калькулятора, новой карты и старой: проверьте состав и нажмите «Верно».</p>' +
+    (st.length ? '<p class="mgrsum salsum salst">Рецепт изменился — сохранён по старому: <b>' + st.length + '</b></p>' + (st.filter(x => !x.st.miss.length).length > 1 ? '<div class="refbtns"><button type="button" class="wogo" data-zupall="1">Обновить по рецептам (' + st.filter(x => !x.st.miss.length).length + ')</button></div>' : "") +
+      '<ul class="olist incl">' + st.map(line).join("") + '</ul>' : "") +
     (sug.length > 1 ? '<div class="refbtns"><button type="button" class="wogo" data-zall="1">Принять все предложенные (' + sug.length + ')</button></div>' : "") +
     (sug.length || no.length ? '<ul class="olist incl">' + sug.concat(no).map(line).join("") + '</ul>' : "") +
     (ok.length ? '<details class="incmapd salok zagok"' + (sal.zokOpen || ok.some(x => "z" + x.ri === sal.zopen) ? " open" : "") + '><summary>Рецепт есть (' + ok.length + ')</summary><ul class="olist incl">' + ok.map(line).join("") + '</ul></details>' : "") +
@@ -2496,11 +2522,20 @@ async function zagSaveAll(){
 $("salZag").addEventListener("click", async e => {
   const b = e.target.closest("button");
   if (!b || !sal) return;
-  if (b.dataset.zok){ const zi = +b.dataset.zok, s = zagSuggest(zi); if (s && await zagSave(zi, s.comps, s.src)) zagDraw(); return; }
+  if (b.dataset.zok || b.dataset.zup){ const zi = +(b.dataset.zok || b.dataset.zup), s = zagSuggest(zi); if (s && await zagSave(zi, s.comps, s.src)) zagDraw(); return; }
+  if (b.dataset.zupall){
+    const all = Object.keys(sal.zag).map(Number).map(zi => ({zi, s: salStale(sal.zag[zi], zagSuggest(zi))})).filter(x => x.s && !x.s.miss.length);
+    if (!all.length) return;
+    b.disabled = true;
+    const d = await pubPost({mgr: "zagset", zags: all.map(x => zagPack(x.zi, x.s.comps, x.s.src))});
+    if (!d || !d.ok){ b.disabled = false; if (d) $("zagMsg").textContent = pubErr(d); return; }
+    all.forEach(x => { sal.zag[x.zi] = {comps: x.s.comps, src: x.s.src}; });
+    buzz(14); perData = null; zagDraw(); return;
+  }
   if (b.dataset.zall){ b.disabled = true; if (await zagSaveAll()) zagDraw(); else b.disabled = false; return; }
   if (b.dataset.zno){ if (await zagSave(+b.dataset.zno, [], "")) zagDraw(); return; }
-  if (b.dataset.zed){ sal.zopen = b.dataset.zed; return zagDraw(); }
-  if (b.dataset.cx){ sal.zopen = ""; return zagDraw(); }
+  if (b.dataset.zed || b.dataset.zupf){ sal.zopen = b.dataset.zed || b.dataset.zupf; sal.zupf = b.dataset.zupf || ""; return zagDraw(); }
+  if (b.dataset.cx){ sal.zopen = ""; sal.zupf = ""; return zagDraw(); }
   if (b.dataset.addc) salAddRow(b);
 });
 $("salZag").addEventListener("toggle", e => {

@@ -1365,3 +1365,8 @@ html.navopen,html.navopen body{overflow:hidden}
 .frwfoot .frwho{margin:6px 0 2px}
 .frwfoot .frwho:empty{display:none}
 .frwfoot .link{margin-top:4px}
+/* «Расход на блюдо» и «Рецепты заготовок»: принято по техкарте (рецепту), а она с тех пор изменилась */
+.salst,.salst b{color:var(--flag)}
+small.salst{display:block;margin-top:3px}
+.frwo{margin:0 0 6px;font-size:12.5px;color:var(--muted)}
+.frwo b{color:var(--fg)}
