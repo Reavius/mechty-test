@@ -463,9 +463,9 @@ function frSave(k){
    Пустое поле — пропустить (стереть внесённое — в карточке). У помещений один замер в день — он и в начале, и в конце. */
 const frWalkList = () => { const a = FR_WALK.map(frGet).filter(Boolean); return a.concat(FR.filter(f => a.indexOf(f) < 0)); };
 const frWk = f => f.room ? "s" : frWalk;
-/* какая смена открывается: с 22:00 до 14:00 (закрытие и утро) — конец; днём — начало, пока у всех не внесено */
-const frWalkDef = () => { const h = new Date(Date.now() + 5 * 3600e3).getUTCHours();
-  return h >= 22 || h < 14 || FR.filter(f => !f.room).every(f => frRec(f.id, frDayNow()).s) ? "e" : "s"; };
+/* какая смена открывается: с 14:00 до 22:00 — начало (внесённое видно в полях, даже когда у всех уже внесено),
+   с 22:00 до 14:00 (закрытие и утро) — конец */
+const frWalkDef = () => { const h = new Date(Date.now() + 5 * 3600e3).getUTCHours(); return h >= 22 || h < 14 ? "e" : "s"; };
 function frWalkOn(k){
   frWalk = k || frWalkDef(); frId = ""; frM = "";
   const one = $("frOne"); one.innerHTML = ""; delete one.dataset.id;               // у карточки те же id (ФИО, подпись)
@@ -500,6 +500,9 @@ function frWRow(f, err){
     (frBad(f, x) ? ' · <span class="bad">вне нормы — сообщите менеджеру</span>' : "");
   else if (p) m = "серым — " + (f.room ? "прошлый замер" : k === "s" ? "прошлое начало смены" : "прошлый конец смены") + ", " + frWdDay(p.d);   // откуда подсказка
   st.innerHTML = m;
+  /* в конце смены — что внесли в начале (у помещений один замер — он и так в полях) */
+  const ow = $("frWO-" + f.id), o = !f.room && k === "e" ? frRec(f.id, day).s : null;
+  if (ow){ ow.hidden = !o; ow.innerHTML = o ? 'Начало смены: <b>' + esc(frSig(o.t)) + ' °C</b>' + (o.pend ? ' · <span class="frpend">ждёт отправки</span>' : " ✓") + " " + esc(o.at || "") + (o.f ? " · " + esc(o.f) : "") : ""; }
   const th = row.querySelector(".frwth"), tx = x ? frFmt(x.t) : "";                  // схема, как в списке; на табло — внесённое
   if (th && th.dataset.v !== tx){ th.dataset.v = tx; th.innerHTML = fridgeSvg(f, tx); }
   row.classList.toggle("done", !!x && !dirty); row.classList.toggle("dirty", dirty && !!(tv || hv));
@@ -523,6 +526,7 @@ function frWalkDraw(){
       const lab = f.room ? "Температура и влажность" : f.n, hint = h => f === last && (!f.room || h) ? "done" : "next";
       rows += '<div class="frwrow' + (f.room ? " room" : "") + '" data-id="' + f.id + '"><div class="frwhd">' + (f.room ? "" : '<span class="frwth" aria-hidden="true"></span>') +
         '<p class="frwn"><b>' + esc(lab) + '</b><span class="frw">' + esc([f.w, frNorm(f) ? "норма " + frNorm(f) : ""].filter(Boolean).join(" · ")) + '</span></p></div>' +
+        (f.room ? "" : '<p class="frwo" id="frWO-' + f.id + '"></p>') +
         '<div class="frin' + (f.room ? " two" : "") + '"><button type="button" class="frpm" data-wpm="' + f.id + '" aria-label="Плюс или минус" tabindex="-1">±</button>' +
         '<input id="frWT-' + f.id + '" type="text" inputmode="decimal" maxlength="6" autocomplete="off" enterkeyhint="' + hint(0) + '" aria-label="' + esc(f.n) + ': температура"><span class="fru">°C</span>' +
         (f.room ? '<input id="frWH-' + f.id + '" type="text" inputmode="decimal" maxlength="5" autocomplete="off" enterkeyhint="' + hint(1) + '" aria-label="' + esc(f.n) + ': влажность"><span class="fru">%</span>' : "") +
