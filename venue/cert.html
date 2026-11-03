@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Подарочный сертификат — «Мечты»</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Manrope:wght@400;600;700;800&display=swap">
-<link rel="stylesheet" href="/venue.css">
+<link rel="stylesheet" href="venue.css">
 <style>
   .cbig{aspect-ratio:16/10;max-width:640px;border-radius:22px;padding:26px;display:grid;grid-template-columns:1fr auto;gap:18px;align-content:space-between;
     background:linear-gradient(135deg,#2B2416 0%,#14161B 55%,#2A1F33 100%);border:1px solid #3A3222;position:relative;overflow:hidden}
@@ -25,7 +25,7 @@
 <body>
 <div class="demo noprint">Пример: оплата не настоящая — в рабочей версии здесь платёжная страница банка.</div>
 <main class="page">
-  <p class="kick noprint"><a href="/">← «Мечты»</a></p>
+  <p class="kick noprint"><a href="./">← «Мечты»</a></p>
   <h1 class="noprint">Ваш сертификат</h1>
   <div id="out"><p class="empty">Загружаем…</p></div>
   <div class="noprint" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
@@ -34,7 +34,7 @@
   </div>
   <p class="sub noprint" style="margin-top:14px">Сертификат действует до даты на нём. На месте покажите QR-код или назовите код — администратор отметит его как использованный.</p>
 </main>
-<script src="/vendor/qrcode.js"></script>
+<script src="vendor/qrcode.js"></script>
 <script>
 "use strict";
 const MON = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
@@ -46,7 +46,7 @@ addEventListener("DOMContentLoaded", async () => {                          // �
   if (!/^M-[0-9A-F]{6}-[0-9A-F]{4}$/.test(code)){ out.innerHTML = '<p class="empty">Нет кода сертификата в ссылке.</p>'; return; }
   const r = window.VENUE_LOCAL ? await window.VENUE_LOCAL("/api/cert/" + code) : await fetch("/api/cert/" + code).then(x => x.json()).catch(() => ({error: "Нет связи."}));
   if (!r.ok){ out.innerHTML = '<p class="empty">' + esc(r.error || "Сертификат не найден.") + '</p>'; return; }
-  const c = r.cert, q = qrcode(0, "M"); q.addData(location.origin + "/cert.html#" + c.code); q.make();
+  const c = r.cert, q = qrcode(0, "M"); q.addData(new URL("cert.html#" + c.code, location.href).href); q.make();
   out.innerHTML = '<div class="cbig"><span class="ck">Подарочный сертификат · «' + esc(r.info.name) + '»</span>' +
     '<div><div class="cs">' + rub(c.sum) + '</div><div class="cw">' + (c.to ? "Для: " + esc(c.to) : "Подарок") + (c.from ? " · от " + esc(c.from) : "") + '</div>' +
     (c.wish ? '<div class="cw">«' + esc(c.wish) + '»</div>' : "") + '</div><div class="qr"><img alt="QR-код сертификата" src="' + q.createDataURL(4, 0) + '"></div>' +

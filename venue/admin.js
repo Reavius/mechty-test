@@ -54,7 +54,7 @@ function draw(){
   }
   const n = Object.keys(BOX).reduce((a, k) => a + (k === "sub" ? 0 : newOf(k)), 0);
   const tabs = [["inbox", "Заявки", n]].concat(Object.keys(SCH).map(k => [k, SCH[k].t, 0])).concat([["info", "Контакты и часы", 0]]);
-  app.innerHTML = '<div class="adm"><div class="admh"><h1>«' + esc(D.site.info.name) + '» · админка</h1><span><a class="btn small ghost" href="/" target="_blank">Открыть сайт</a> ' + (window.VENUE_RESET ? '<button type="button" class="link" id="reset">Сбросить пример</button> ' : "") + '<button type="button" class="link" id="out">Выйти</button></span></div>' +
+  app.innerHTML = '<div class="adm"><div class="admh"><h1>«' + esc(D.site.info.name) + '» · админка</h1><span><a class="btn small ghost" href="./" target="_blank">Открыть сайт</a> ' + (window.VENUE_RESET ? '<button type="button" class="link" id="reset">Сбросить пример</button> ' : "") + '<button type="button" class="link" id="out">Выйти</button></span></div>' +
     (window.VENUE_LOCAL ? '<p class="hint">Онлайн-пример: заявки и правки хранятся только в этом браузере — у каждого свои. В рабочей версии они общие и приходят администратору.</p>' : "") +
     '<div class="atabs">' + tabs.map(([k, t, c]) => '<button type="button" class="chip" data-tab="' + k + '" aria-pressed="' + (k === tab) + '">' + esc(t) + (c ? '<i>' + c + '</i>' : "") + '</button>').join("") + '</div><div id="pane"></div></div>';
   $("out").onclick = async () => { await api("/api/admin/logout", {}); D = null; draw(); };
@@ -74,7 +74,7 @@ function drawInbox(){
       (r.comment || r.about || r.wish ? '<div class="am">«' + esc(r.comment || r.about || r.wish) + '»</div>' : "") +
       '<div class="am">пришла ' + esc(tTx(r.at)) + (r.stAt ? " · изменено " + esc(tTx(r.stAt)) : "") + '</div>' +
       (Object.keys(B.st).length > 1 ? '<div class="ab">' + Object.keys(B.st).filter(s => s !== r.st).map(s => '<button type="button" class="link" data-st="' + s + '" data-id="' + esc(r.id) + '">' + esc(B.st[s]) + '</button>').join("") +
-        (box === "cert" ? ' <a class="link" href="/cert.html#' + esc(r.code) + '" target="_blank">открыть сертификат</a>' : "") + '</div>' : "") + '</article>').join("")
+        (box === "cert" ? ' <a class="link" href="cert.html#' + esc(r.code) + '" target="_blank">открыть сертификат</a>' : "") + '</div>' : "") + '</article>').join("")
       : '<p class="empty">Заявок нет.</p>');
   $("pane").onclick = async e => {
     const b = e.target.closest("[data-box]"); if (b){ box = b.dataset.box; return drawInbox(); }

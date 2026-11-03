@@ -69,8 +69,8 @@ export const SEED = {
     { id: "n3", date: "2026-10-20", title: "Мансарда по пятницам и субботам", text: "Теперь мансарда открыта для всех в пятницу и субботу, в остальные дни — по брони." }
   ],
   albums: [
-    { id: "a1", date: "2026-10-31", title: "Хэллоуин", photos: ["/photos/pantera.webp", "/photos/negroni.webp", "/photos/pornstar.webp", "/photos/tropiki.webp", "/photos/campari.webp", "/photos/maitai.webp"] },
-    { id: "a2", date: "2026-10-24", title: "Суббота в клубе", photos: ["/photos/aperol.webp", "/photos/sarti.webp", "/photos/fiero.webp", "/photos/watermelon.webp", "/photos/bosford.webp"] }
+    { id: "a1", date: "2026-10-31", title: "Хэллоуин", photos: ["photos/pantera.webp", "photos/negroni.webp", "photos/pornstar.webp", "photos/tropiki.webp", "photos/campari.webp", "photos/maitai.webp"] },
+    { id: "a2", date: "2026-10-24", title: "Суббота в клубе", photos: ["photos/aperol.webp", "photos/sarti.webp", "photos/fiero.webp", "photos/watermelon.webp", "photos/bosford.webp"] }
   ],
   packages: [
     { id: "k1", title: "Фуршет", price: "от 2 500 ₽ / гость", text: "Закуски, канапе и напитки — для презентаций, встреч и коротких праздников." },

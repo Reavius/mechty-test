@@ -35,7 +35,7 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
   const consent = v => { if (v !== true) throw new Fail("Нужно согласие на обработку персональных данных."); };
   const today = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);   // день по местному времени (UTC+5) — как в барном гиде
   const uid = p => p + hex(rnd, 4);
-  const IMG = /^\/(uploads|photos)\/[\w.-]+$/, DATA_IMG = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+  const IMG = /^\/?(uploads|photos)\/[\w.-]+$/, DATA_IMG = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
   const okImg = v => IMG.test(v) || (dataImg && DATA_IMG.test(v) && v.length < 3e6);
 
   /* публичное: скрытое не уходит, события — по дате, прошедшие — отдельно */

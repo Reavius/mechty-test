@@ -89,7 +89,7 @@ $("sheet").addEventListener("click", async ev => {
   const e = all.find(x => x.id === (b.dataset.bk || b.dataset.ics || b.dataset.share));
   if (b.dataset.bk){ sheetClose(); bookFor(e.zone, e.date, e.id); return; }
   if (b.dataset.ics) return ics(e);
-  const url = location.origin + "/#event-" + e.id;
+  const url = location.href.split("#")[0] + "#event-" + e.id;
   if (navigator.share) { try { await navigator.share({title: e.title, url}); } catch (x) {} return; }
   try { await navigator.clipboard.writeText(url); $("shMsg").textContent = "Ссылка скопирована"; } catch (x) { $("shMsg").textContent = url; }
 });
@@ -181,7 +181,7 @@ function drawMenu(){
   if (!secs.some(s => s.n === mSec)) mSec = "";
   $("mSecs").innerHTML = secs.length > 1 ? ['<button type="button" class="chip" data-s="" aria-pressed="' + (!mSec) + '">Всё</button>'].concat(secs.map(s => '<button type="button" class="chip" data-s="' + esc(s.n) + '" aria-pressed="' + (s.n === mSec) + '">' + esc(s.n) + '</button>')).join("") : "";
   $("mList").innerHTML = secs.filter(s => !mSec || s.n === mSec).map(s => '<h3 class="msec">' + esc(s.n) + '</h3>' + s.items.map(x =>
-    '<div class="mi' + (x.img ? "" : " noimg") + '">' + (x.img ? '<img src="/' + esc(x.img) + '" alt="" loading="lazy">' : "") +
+    '<div class="mi' + (x.img ? "" : " noimg") + '">' + (x.img ? '<img src="' + esc(x.img) + '" alt="" loading="lazy">' : "") +
     '<div><div class="mn">' + esc(x.n) + '</div>' + (x.d ? '<div class="md">' + esc(x.d) + '</div>' : "") + '</div>' +
     '<div class="mp">' + (x.p != null ? rub(x.p) : "") + (x.v ? '<small>' + esc(x.v) + '</small>' : "") + '</div></div>').join("")).join("") || '<p class="empty">Скоро здесь будет меню.</p>';
   $("mNote").innerHTML = mTab === "kitchen" ? "Меню кухни в примере — для образца; настоящее вносится в админке." :
@@ -227,7 +227,7 @@ function certPrev(){
 }
 $("cSums").addEventListener("click", e => { const b = e.target.closest("[data-v]"); if (b){ $("cAmount").value = b.dataset.v; certPrev(); } });
 ["cAmount", "cTo", "cFrom"].forEach(id => $(id).addEventListener("input", certPrev));
-wire($("certF"), "/api/cert", d => { location.href = "/cert.html#" + d.code; }, () => ({amount: parseInt(String($("cAmount").value).replace(/\D/g, ""), 10) || 0}));
+wire($("certF"), "/api/cert", d => { location.href = "cert.html#" + d.code; }, () => ({amount: parseInt(String($("cAmount").value).replace(/\D/g, ""), 10) || 0}));
 
 /* подписка, вакансии */
 wire($("subF"), "/api/subscribe", (d, f) => { const m = f.querySelector(".fmsg"); f.reset(); m.className = "fmsg ok"; m.textContent = "Готово — первое письмо придёт в четверг."; });
