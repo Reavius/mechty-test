@@ -12,6 +12,7 @@ const rub = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + "
 let S = null, evZone = "", mTab = "kitchen", mSec = "", bkZone = "";
 
 async function api(p, body){
+  if (window.VENUE_LOCAL) return window.VENUE_LOCAL(p, body);                 // онлайн-пример: всё в этом браузере (venue/local.js)
   try {
     const r = await fetch(p, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
     const d = await r.json().catch(() => ({}));

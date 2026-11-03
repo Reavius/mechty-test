@@ -41,10 +41,10 @@ const MON = ["января","февраля","марта","апреля","мая
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const day = s => { const d = new Date(s + "T12:00:00Z"); return d.getUTCDate() + " " + MON[d.getUTCMonth()] + " " + d.getUTCFullYear(); };
 const rub = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
-(async () => {
+addEventListener("DOMContentLoaded", async () => {                          // после модулей онлайн-примера
   const code = decodeURIComponent(location.hash.slice(1)), out = document.getElementById("out");
   if (!/^M-[0-9A-F]{6}-[0-9A-F]{4}$/.test(code)){ out.innerHTML = '<p class="empty">Нет кода сертификата в ссылке.</p>'; return; }
-  const r = await fetch("/api/cert/" + code).then(x => x.json()).catch(() => ({error: "Нет связи."}));
+  const r = window.VENUE_LOCAL ? await window.VENUE_LOCAL("/api/cert/" + code) : await fetch("/api/cert/" + code).then(x => x.json()).catch(() => ({error: "Нет связи."}));
   if (!r.ok){ out.innerHTML = '<p class="empty">' + esc(r.error || "Сертификат не найден.") + '</p>'; return; }
   const c = r.cert, q = qrcode(0, "M"); q.addData(location.origin + "/cert.html#" + c.code); q.make();
   out.innerHTML = '<div class="cbig"><span class="ck">Подарочный сертификат · «' + esc(r.info.name) + '»</span>' +
@@ -57,7 +57,7 @@ const rub = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
     if (navigator.share) { try { await navigator.share({title: "Подарочный сертификат", url}); } catch (e) {} return; }
     try { await navigator.clipboard.writeText(url); document.getElementById("share").textContent = "Ссылка скопирована"; } catch (e) { prompt("Ссылка на сертификат", url); }
   };
-})();
+});
 </script>
 </body>
 </html>
