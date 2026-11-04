@@ -47,10 +47,10 @@ addEventListener("DOMContentLoaded", async () => {                          // �
   const r = window.VENUE_LOCAL ? await window.VENUE_LOCAL("/api/cert/" + code) : await fetch("/api/cert/" + code).then(x => x.json()).catch(() => ({error: "Нет связи."}));
   if (!r.ok){ out.innerHTML = '<p class="empty">' + esc(r.error || "Сертификат не найден.") + '</p>'; return; }
   const c = r.cert, q = qrcode(0, "M"); q.addData(new URL("cert.html#" + c.code, location.href).href); q.make();
-  out.innerHTML = '<div class="cbig"><span class="ck">Подарочный сертификат · «' + esc(r.info.name) + '»</span>' +
-    '<div><div class="cs">' + rub(c.sum) + '</div><div class="cw">' + (c.to ? "Для: " + esc(c.to) : "Подарок") + (c.from ? " · от " + esc(c.from) : "") + '</div>' +
+  out.innerHTML = '<div class="cbig"><span class="ck">Подарочный сертификат «' + esc(r.info.name) + '»</span>' +
+    '<div><div class="cs">' + rub(c.sum) + '</div><div class="cw">' + (c.to ? "Кому: " + esc(c.to) : "Подарок") + (c.from ? ", от: " + esc(c.from) : "") + '</div>' +
     (c.wish ? '<div class="cw">«' + esc(c.wish) + '»</div>' : "") + '</div><div class="qr"><img alt="QR-код сертификата" src="' + q.createDataURL(4, 0) + '"></div>' +
-    '<div class="cc"><span>Код <b>' + esc(c.code) + '</b></span><span>до ' + esc(day(c.till)) + '</span><span>' + esc(r.info.address) + " · " + esc(r.info.phone) + '</span></div></div>' +
+    '<div class="cc"><span>Код <b>' + esc(c.code) + '</b></span><span>до ' + esc(day(c.till)) + '</span><span>' + esc(r.info.address) + ", " + esc(r.info.phone) + '</span></div></div>' +
     (c.used ? '<span class="used">Использован</span>' : "");
   document.getElementById("share").onclick = async () => {
     const url = location.href;

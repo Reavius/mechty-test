@@ -36,14 +36,14 @@ function poster(e, big){
   const bg = "background:radial-gradient(120% 90% at 85% 10%," + z.color + "cc 0%,transparent 60%),radial-gradient(90% 80% at 0% 100%," + z.color + "55 0%,transparent 65%),#16181D";
   return '<div class="poster" style="' + bg + '">' + (e.img ? '<img src="' + esc(e.img) + '" alt="" loading="lazy">' : "") +
     '<span class="pz">' + esc(z.name || "Все залы") + '</span>' +
-    '<span class="pd"><span>' + WD[d.getUTCDay()] + " · " + esc(e.time || "") + '</span><b>' + d.getUTCDate() + '</b><span>' + MON3[d.getUTCMonth()] + '</span></span></div>';
+    '<span class="pd"><span>' + WD[d.getUTCDay()] + ", " + esc(e.time || "") + '</span><b>' + d.getUTCDate() + '</b><span>' + MON3[d.getUTCMonth()] + '</span></span></div>';
 }
 function drawEvents(){
   const zs = [{id: "", name: "Все"}].concat(S.zones.filter(z => S.events.some(e => e.zone === z.id)));
   $("evZones").innerHTML = zs.map(z => '<button type="button" class="chip" data-z="' + esc(z.id) + '" aria-pressed="' + (z.id === evZone) + '">' + esc(z.name) + '</button>').join("");
   const list = S.events.filter(e => !evZone || e.zone === evZone);
   $("evList").innerHTML = list.length ? list.map(e => '<button type="button" class="ev" data-ev="' + esc(e.id) + '">' + poster(e) +
-    '<div class="eb"><h3>' + esc(e.title) + '</h3><p>' + esc(dayTx(e.date)) + ", " + esc(e.time) + " · " + esc(e.price || "") + '</p></div></button>').join("")
+    '<div class="eb"><h3>' + esc(e.title) + '</h3><p>' + esc(dayTx(e.date)) + ", " + esc(e.time) + '</p>' + (e.price ? '<p class="epr">' + esc(e.price) + '</p>' : "") + '</div></button>').join("")
     : '<p class="empty">Скоро здесь появятся новые события.</p>';
   $("evPast").innerHTML = S.past.length ? "Прошли недавно: " + S.past.slice(0, 3).map(e => esc(e.title) + " (" + esc(dayTx(e.date)) + ")").join(", ") +
     (S.albums.length ? ' — <a href="#photo">фотоотчёты</a>' : "") : "";
@@ -54,8 +54,8 @@ $("evList").addEventListener("click", e => { const b = e.target.closest("[data-e
 function sheetOpen(e){
   const z = zoneOf(e.zone), sh = $("sheet");
   sh.innerHTML = '<div class="sb"><button type="button" class="x" data-x aria-label="Закрыть">×</button>' + poster(e, true) +
-    '<div class="sc"><h3 id="shTitle">' + esc(e.title) + '</h3><p class="meta">' + esc(WDF[dd(e.date).getUTCDay()]) + ", " + esc(dayTx(e.date)) + " · " + esc(e.time) +
-    " · " + esc(z.name || "") + (e.price ? " · " + esc(e.price) : "") + '</p><p>' + esc(e.text || "") + '</p>' +
+    '<div class="sc"><h3 id="shTitle">' + esc(e.title) + '</h3><p class="meta">' + esc(WDF[dd(e.date).getUTCDay()]) + ", " + esc(dayTx(e.date)) + ", " + esc(e.time) +
+    '<br>' + esc(z.name || "Все залы") + (e.price ? ", " + esc(e.price) : "") + '</p><p>' + esc(e.text || "") + '</p>' +
     '<div class="acts"><button type="button" class="btn" data-bk="' + esc(e.id) + '">Забронировать стол</button>' +
     '<button type="button" class="btn ghost" data-ics="' + esc(e.id) + '">В календарь</button><button type="button" class="btn ghost" data-share="' + esc(e.id) + '">Поделиться</button></div>' +
     '<p class="fmsg" id="shMsg" role="status"></p></div></div>';
@@ -204,11 +204,11 @@ function drawPromoNews(){
 let lbA = null, lbI = 0;
 function drawAlbums(){
   $("albList").innerHTML = S.albums.map(a => '<button type="button" class="alb" data-a="' + esc(a.id) + '"><img src="' + esc(a.photos[0] || "") + '" alt="" loading="lazy"><div><b>' + esc(a.title) + '</b><small>' +
-    esc(dayTx(a.date)) + " · " + a.photos.length + " фото</small></div></button>").join("") || '<p class="empty">Скоро здесь будут фото.</p>';
+    esc(dayTx(a.date)) + ", " + a.photos.length + " фото</small></div></button>").join("") || '<p class="empty">Скоро здесь будут фото.</p>';
 }
 function lbDraw(){
   const a = lbA, p = a.photos[lbI];
-  $("lb").innerHTML = '<span class="lbt">' + esc(a.title) + " · " + (lbI + 1) + " / " + a.photos.length + '</span><img src="' + esc(p) + '" alt="Фото ' + (lbI + 1) + '">' +
+  $("lb").innerHTML = '<span class="lbt">' + esc(a.title) + ", " + (lbI + 1) + " из " + a.photos.length + '</span><img src="' + esc(p) + '" alt="Фото ' + (lbI + 1) + '">' +
     '<button type="button" class="lx" data-lx aria-label="Закрыть">×</button><button type="button" class="lp" data-lp aria-label="Предыдущее">‹</button><button type="button" class="ln" data-ln aria-label="Следующее">›</button>';
 }
 const lbClose = () => { if (!$("lb").hidden){ $("lb").hidden = true; document.body.style.overflow = ""; } };
@@ -225,7 +225,7 @@ const SUMS = [2000, 3000, 5000, 10000];
 function certPrev(){
   const s = parseInt(String($("cAmount").value).replace(/\D/g, ""), 10) || 0;
   $("cPrevSum").textContent = s ? rub(s) : "— ₽";
-  $("cPrevTo").textContent = ($("cTo").value.trim() ? "Для: " + $("cTo").value.trim() : "Для самого близкого") + ($("cFrom").value.trim() ? " · от " + $("cFrom").value.trim() : "");
+  $("cPrevTo").textContent = ($("cTo").value.trim() ? "Кому: " + $("cTo").value.trim() : "Для самого близкого") + ($("cFrom").value.trim() ? ", от: " + $("cFrom").value.trim() : "");
   $("cSums").innerHTML = SUMS.map(v => '<button type="button" class="chip" data-v="' + v + '" aria-pressed="' + (v === s) + '">' + rub(v) + '</button>').join("");
 }
 $("cSums").addEventListener("click", e => { const b = e.target.closest("[data-v]"); if (b){ $("cAmount").value = b.dataset.v; certPrev(); } });
@@ -245,7 +245,7 @@ wire($("jobF"), "/api/job", (d, f) => doneBox(f, "Отклик отправле�
 /* контакты и шапка */
 function drawInfo(){
   const I = S.info, q = encodeURIComponent((I.city ? I.city + " " : "") + (I.mapq || I.name));
-  document.title = "«" + I.name + "» — " + (I.kicker || "").toLowerCase();
+  document.title = "«" + I.name + "»" + (I.kicker ? " — " + I.kicker : "");
   $("lgName").textContent = I.name.toUpperCase(); $("hName").textContent = I.name; $("hTag").textContent = I.tagline || "";
   $("ctAddr").textContent = (I.city ? I.city + ", " : "") + I.address; $("ctTel").textContent = I.phone; $("ctTel").href = "tel:" + I.phone.replace(/[^\d+]/g, "");
   $("ctHours").innerHTML = (I.hours || []).map(h => '<tr><td>' + esc(h.zone) + '</td><td>' + esc(h.text) + '</td></tr>').join("");
