@@ -7,7 +7,7 @@ const LPX = 16;                                    // точек на мм (≈ 
 /* значки: свои (лимон, ягоды) — из шаблонов бара, остальные — из набора i-*.png */
 const LICON = {limoncello:"lemon", vishnya:"berries", malina:"berries",
   pantera:"i-pear", pornstar:"i-plum", maracuya:"i-plum",
-  tropiki:"i-pineapple", maitai:"i-apricot", negroni:"i-orange", longisland:"i-lemon2",
+  tropiki:"i-pineapple", negroni:"i-orange", longisland:"i-lemon2",
   sexbeach:"i-orange", mandarin:"i-orange", granat:"berries", tequila:"i-lemon2", yuzu:"i-apricot", ananas:"i-pineapple",
   vnegroni:"berries", strudel:"i-apple", grushaberg:"i-pear",
   tarhun:"i-herb", kcitrus:"i-lemon2", malmar:"i-raspberry", feijoa:"i-apple", oblepiha:"i-grapes", ananaspf:"i-pineapple"};

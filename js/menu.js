@@ -10,10 +10,9 @@ const MENU = [
    {c: "pantera", v: 200, p: 630},
    {c: "pornstar", v: 200, p: 670},
    {c: "c-bosford", v: 150, p: 600},
-   {c: "tropiki", v: 180, p: 650},
-   {c: "maitai", v: 200, p: 670},
+   {c: "tropiki", v: 200, p: 650},
    {c: "sexbeach", v: 190, p: 650},
-   {c: "mandarin", v: 210, p: 650},
+   {c: "mandarin", v: 200, p: 650},
    {c: "granat", v: 100, p: 650},
    {c: "tequila", v: 200, p: 650},
    {c: "yuzu", v: 150, p: 650},
@@ -151,11 +150,11 @@ const MENU = [
    {n: "Таёжный", e: "Taiga tea", v: 550, p: 360}, {n: "Сладкий поцелуй", e: "Sweet Kiss", v: 550, p: 360},
    {n: "Гречишный", e: "Buckwheat tea", v: 550, p: 360}]},
   {ru: "Горячие напитки", en: "Hot drinks", items: [
-   {n: "Облепиха", e: "Sea buckthorn", c: "oblepiha", v: 500, p: 450},
-   {n: "Смородина маракуйя", e: "Blackcurrant & passion fruit", v: 500, p: 450},
-   {n: "Вишня", e: "Cherry", v: 500, p: 450},
-   {n: "Яблоко", e: "Apple", v: 500, p: 450},
-   {n: "Мандарин", e: "Tangerine", v: 500, p: 450}]}]}
+   {n: "Облепиха", e: "Sea buckthorn", c: "oblepiha", v: 500, p: 470},
+   {n: "Смородина маракуйя", e: "Blackcurrant & passion fruit", v: 500, p: 470},
+   {n: "Вишня", e: "Cherry", v: 500, p: 470},
+   {n: "Яблоко", e: "Apple", v: 500, p: 470},
+   {n: "Мандарин", e: "Tangerine", v: 500, p: 470}]}]}
 ];
 
 /* описания вин — по словам */
@@ -168,13 +167,12 @@ const CARD_EN = {
   pantera: ["Pink Panther", "pear vodka, Sarti, lime, soda"],
   pornstar: ["Pornstar", "vodka, vanilla, passion fruit, sparkling wine, egg white"],
   tropiki: ["Tropics", "OAKHEART Original Spiced Gold rum, passion fruit, pineapple, lime, vanilla, Sarti, Aperol, Angostura"],
-  maitai: ["Mai Tai", "OAKHEART Original Spiced Gold rum, amaretto, almond syrup, peach, pineapple, orange, lime"],
   sexbeach: ["Sex on the Beach", "vodka, orange, peach, cranberry"],
   mandarin: ["Tangerine Spritz", "orange liqueur, bianco vermouth, tangerine purée, palo santo — mango — vanilla cordial, sparkling wine"],
   granat: ["Pomegranate Tini", "gin, pomegranate, lime, sugar syrup"],
   tequila: ["Tequila Cider Spice", "tequila, rum, Aperol, triple sec, lime, honey, chili, cider"],
-  yuzu: ["Yuzu Peach", "vodka, peach soju, lime, ginger, sencha, yuzu, egg white"],
-  ananas: ["Pineapple Parsley", "pear vodka, shiso cordial, pineapple-parsley purée"],
+  yuzu: ["Yuzu Ginger", "vodka, peach soju, lime, ginger, sencha, yuzu, egg white"],
+  ananas: ["Parsley Pineapple", "pear vodka, shiso cordial, pineapple-parsley purée"],
   vnegroni: ["Cherry Negroni", "Campari, Martini Rosso vermouth, gin, cherry"],
   negroni: ["Negroni", "Campari, Martini Rosso vermouth, gin, orange"],
   longisland: ["Long Island", "vodka, gin, rum, tequila, triple sec, cola"],

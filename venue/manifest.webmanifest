@@ -1,0 +1,16 @@
+{
+  "name": "«Мечты» — кафе, клуб, мансарда",
+  "short_name": "Мечты",
+  "description": "Афиша, бронь стола по схеме зала, меню и карта бара заведения «Мечты».",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0E1014",
+  "theme_color": "#0E1014",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

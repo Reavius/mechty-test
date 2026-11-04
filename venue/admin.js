@@ -8,6 +8,7 @@ const tTx = s => { const d = new Date(s); return dTx(s) + ", " + String(d.getHou
 let D = null, tab = "inbox", box = "book", edit = null, onlyNew = false;
 
 async function api(p, body){
+  if (window.VENUE_LOCAL) return window.VENUE_LOCAL(p, body);                 // онлайн-пример: всё в этом браузере (venue/local.js)
   try {
     const r = await fetch(p, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
     const d = await r.json().catch(() => ({}));
@@ -33,13 +34,14 @@ const SCH = {
   vacancies: {t: "Вакансии", one: "вакансию", f: [["title", "Должность"], ["pay", "Оплата"], ["text", "Описание", "area"], ["hidden", "Скрыть с сайта", "check"]], sub: x => x.pay || ""}
 };
 const BOX = {
-  book: {t: "Брони", st: {new: "новая", ok: "подтверждена", no: "отменена"}, line: r => zoneName(r.zone) + " · " + dTx(r.date) + " " + r.time + " · " + r.guests + " гост." + (r.event ? " · " + evName(r.event) : "")},
+  book: {t: "Брони", st: {new: "новая", ok: "подтверждена", no: "отменена"}, line: r => zoneName(r.zone) + (r.table ? ", стол " + tableNo(r.zone, r.table) : "") + " · " + dTx(r.date) + " " + r.time + " · " + r.guests + " гост." + (r.event ? " · " + evName(r.event) : "")},
   banquet: {t: "Банкеты", st: {new: "новая", call: "созвонились", ok: "договорились", no: "отказ"}, line: r => (r.format || "") + " · " + dTx(r.date) + " · " + r.guests + " гост." + (r.zone ? " · " + zoneName(r.zone) : "")},
   cert: {t: "Сертификаты", st: {paid: "оплачен", used: "использован"}, line: r => r.sum + " ₽ · " + r.code + " · до " + dTx(r.till) + (r.to ? " · для: " + r.to : "")},
   job: {t: "Отклики", st: {new: "новый", call: "позвонили", no: "не подошёл"}, line: r => r.vacancy},
   sub: {t: "Подписки", st: {new: "подписан"}, line: r => r.email}
 };
 const zoneName = id => ((D && D.site.zones || []).find(z => z.id === id) || {}).name || "";
+const tableNo = (zone, id) => { const ts = ((D && D.site.plans || {})[zone] || {}).tables || [], i = ts.findIndex(t => t.id === id); return i >= 0 ? String(i + 1) + " (мест: " + ts[i].seats + ")" : id; };
 const evName = id => ((D && D.site.events || []).find(e => e.id === id) || {}).title || "";
 const newOf = k => (D.inbox[k] || []).filter(r => r.st === "new").length;
 
@@ -53,9 +55,11 @@ function draw(){
   }
   const n = Object.keys(BOX).reduce((a, k) => a + (k === "sub" ? 0 : newOf(k)), 0);
   const tabs = [["inbox", "Заявки", n]].concat(Object.keys(SCH).map(k => [k, SCH[k].t, 0])).concat([["info", "Контакты и часы", 0]]);
-  app.innerHTML = '<div class="adm"><div class="admh"><h1>«' + esc(D.site.info.name) + '» · админка</h1><span><a class="btn small ghost" href="/" target="_blank">Открыть сайт</a> <button type="button" class="link" id="out">Выйти</button></span></div>' +
+  app.innerHTML = '<div class="adm"><div class="admh"><h1>«' + esc(D.site.info.name) + '» · админка</h1><span><a class="btn small ghost" href="./" target="_blank">Открыть сайт</a> ' + (window.VENUE_RESET ? '<button type="button" class="link" id="reset">Сбросить пример</button> ' : "") + '<button type="button" class="link" id="out">Выйти</button></span></div>' +
+    (window.VENUE_LOCAL ? '<p class="hint">Онлайн-пример: заявки и правки хранятся только в этом браузере — у каждого свои. В рабочей версии они общие и приходят администратору.</p>' : "") +
     '<div class="atabs">' + tabs.map(([k, t, c]) => '<button type="button" class="chip" data-tab="' + k + '" aria-pressed="' + (k === tab) + '">' + esc(t) + (c ? '<i>' + c + '</i>' : "") + '</button>').join("") + '</div><div id="pane"></div></div>';
   $("out").onclick = async () => { await api("/api/admin/logout", {}); D = null; draw(); };
+  if ($("reset")) $("reset").onclick = () => { if (confirm("Вернуть пример к началу? Ваши заявки и правки в этом браузере удалятся.")){ window.VENUE_RESET(); location.reload(); } };
   app.querySelector(".atabs").onclick = e => { const b = e.target.closest("[data-tab]"); if (b){ tab = b.dataset.tab; edit = null; draw(); } };
   if (tab === "inbox") drawInbox(); else if (tab === "info") drawInfo(); else drawCol(tab);
 }
@@ -71,7 +75,7 @@ function drawInbox(){
       (r.comment || r.about || r.wish ? '<div class="am">«' + esc(r.comment || r.about || r.wish) + '»</div>' : "") +
       '<div class="am">пришла ' + esc(tTx(r.at)) + (r.stAt ? " · изменено " + esc(tTx(r.stAt)) : "") + '</div>' +
       (Object.keys(B.st).length > 1 ? '<div class="ab">' + Object.keys(B.st).filter(s => s !== r.st).map(s => '<button type="button" class="link" data-st="' + s + '" data-id="' + esc(r.id) + '">' + esc(B.st[s]) + '</button>').join("") +
-        (box === "cert" ? ' <a class="link" href="/cert.html#' + esc(r.code) + '" target="_blank">открыть сертификат</a>' : "") + '</div>' : "") + '</article>').join("")
+        (box === "cert" ? ' <a class="link" href="cert.html#' + esc(r.code) + '" target="_blank">открыть сертификат</a>' : "") + '</div>' : "") + '</article>').join("")
       : '<p class="empty">Заявок нет.</p>');
   $("pane").onclick = async e => {
     const b = e.target.closest("[data-box]"); if (b){ box = b.dataset.box; return drawInbox(); }
