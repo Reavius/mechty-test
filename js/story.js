@@ -103,7 +103,8 @@ const STFX = {
    video/<файл>.av1.mp4 — Android и компьютер, .hevc.mp4 — iPhone и Mac, .mp4 (H.264) — запасной: браузер берёт первый, который
    умеет; все — 768×432 и легче прежних в 2,5–4 раза (слабый интернет в баре). Первый кадр — <файл>.jpg */
 const STVID = {pantera: "pantera", pornstar: "pornstar", maitai: "maitai", "c-bosford": "bosford", tropiki: "tropiki", "c-watermelon": "watermelon",
-  "c-fiero": "fiero", "c-aperol": "aperol", "c-sarti": "sarti", "c-campari": "campari", negroni: "negroni"};
+  "c-fiero": "fiero", "c-aperol": "aperol", "c-sarti": "sarti", "c-campari": "campari", negroni: "negroni",
+  sexbeach: "sexbeach", tequila: "tequila", yuzu: "yuzu"};
 const STVID_SRC = [[".av1.mp4", 'video/mp4; codecs="av01.0.04M.08"'], [".hevc.mp4", 'video/mp4; codecs="hvc1.1.6.L90.B0"'], [".mp4", "video/mp4"]];
 /* телефон просит экономить трафик или сеть 2G — видео не грузим, остаётся первый кадр */
 const stLite = () => { const c = navigator.connection; return !!(c && (c.saveData || /2g$/.test(c.effectiveType || ""))); };
