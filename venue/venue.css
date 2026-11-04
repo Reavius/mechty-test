@@ -355,14 +355,6 @@ body.night .hero .hbg{background:radial-gradient(70% 55% at 30% 70%,rgba(255,79,
 .znote{margin:10px 0 0;font-size:14px;color:#B9B7B1;display:flex;flex-direction:column;gap:4px;min-height:20px}
 .znote b{color:var(--fg);font-weight:600}
 .znote .dep{color:var(--flag);font-weight:600}
-.dchips{display:flex;gap:8px;overflow-x:auto;margin:0 -20px;padding:2px 20px 8px;scrollbar-width:none}
-.dchips::-webkit-scrollbar{display:none}
-.dchip{flex:none;width:58px;padding:8px 0;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;color:var(--muted)}
-.dchip b{font-family:var(--display);font-size:24px;font-weight:600;line-height:1.05;color:var(--fg);font-variant-numeric:lining-nums}
-.dchip small{font-size:11.5px}
-.dchip[aria-pressed="true"]{border-color:var(--accent);background:rgba(201,162,75,.14)}
-.dchip[aria-pressed="true"] small{color:var(--accent)}
-.dchip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .done .how{margin:4px 0 16px}
 .done .how .chips{justify-content:center}
 .done b:focus{outline:none}
@@ -394,3 +386,66 @@ body.night .hero .hbg{background:radial-gradient(70% 55% at 30% 70%,rgba(255,79,
 .stars{--r:.9;font-size:22px;letter-spacing:2px;background:linear-gradient(90deg,var(--accent) calc(var(--r) * 100%),#3A3F48 0);-webkit-background-clip:text;background-clip:text;color:transparent}
 .stars::before{content:"★★★★★"}
 .rate small{color:var(--muted);width:100%}
+
+/* ── заставка входа (как у барного гида) ── */
+.vintro{display:none}
+html.intro-on .vintro{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;cursor:pointer}
+html.intro-on body{overflow:hidden}
+.vi-logo{width:min(80vw,460px);height:auto;overflow:visible;opacity:0}
+.vi-fill,.vi-glow{fill:#E8913C;opacity:0}
+.vi-line{stroke:#E8913C;stroke-width:1.6;stroke-linejoin:round}
+.vi-word{margin:0;font-size:12.5px;letter-spacing:.28em;color:var(--accent);font-weight:700;opacity:0}
+
+/* ── логотип: в шапке и на первом экране — с лёгкой подсветкой; ночью — неон ── */
+.logo svg{display:block;height:38px;width:auto;fill:#E8913C}
+.hero h1.neon{line-height:0;margin:6px 0 20px;text-shadow:none}
+.hero h1.neon svg{display:block;width:min(82vw,560px);height:auto;fill:#E8913C;transition:fill .6s,filter .6s}
+.hero h1.neon.lit,body.night .hero h1.neon.lit{text-shadow:none}
+.hero h1.neon.lit svg{filter:drop-shadow(0 0 2px rgba(255,205,150,.55)) drop-shadow(0 0 12px rgba(232,145,60,.42)) drop-shadow(0 0 32px rgba(232,145,60,.2))}
+body.night .hero h1.neon.lit svg{fill:#FFD6EA;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 9px #FF4FA3) drop-shadow(0 0 26px rgba(255,79,163,.55))}
+
+/* ── календарь брони ── */
+.cal{max-width:380px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.calh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.calh b{font-family:var(--display);font-size:23px;font-weight:600}
+.calnav{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer;padding:0}
+.calnav svg{width:18px;height:18px}
+.calnav:disabled{opacity:.28;cursor:default}
+.calnav:focus-visible,button.cd:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.calw,.calg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calw span{text-align:center;font-size:12px;color:var(--muted);padding:4px 0}
+.cd{aspect-ratio:1;display:grid;place-items:center;border-radius:10px;font-size:15px;font-weight:600;font-variant-numeric:lining-nums tabular-nums}
+.cd.off{color:#474C55;font-weight:500}
+.cd.pad{visibility:hidden}
+button.cd{border:1px solid transparent;background:#2A2F38;color:var(--fg);cursor:pointer;padding:0;transition:background .15s,border-color .15s}
+button.cd:hover{border-color:var(--accent)}
+button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
+.cd.today{text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:4px;text-decoration-thickness:2px}
+.calsel{margin:10px 2px 0;font-size:14px;font-weight:600}
+
+/* ── как нас найти ── */
+.place{display:grid;overflow:hidden}
+@media (min-width:820px){.place{grid-template-columns:1.3fr 1fr}}
+.pmap{background:#0F1216}
+.pmap svg{display:block;width:100%;height:100%;min-height:220px}
+.pm-st path{fill:none;stroke:#252C36;stroke-width:9;stroke-linecap:round}
+.pm-tx text{fill:#80858E;font:500 12px var(--sans);letter-spacing:.02em}
+.pm-lm circle{fill:#5A5F68}
+.pm-lm text{fill:#8E9299;font:500 11.5px var(--sans)}
+.pm-ring{fill:none;stroke:var(--accent);stroke-width:1.5;transform-box:fill-box;transform-origin:center;animation:pmr 2.8s ease-out infinite}
+@keyframes pmr{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.3);opacity:0}}
+.pm-dot{fill:var(--accent)}
+.pm-name{fill:#F4EBD3;font:600 26px var(--display)}
+.pm-floor{fill:#8E9299;font:500 12px var(--sans)}
+.pinfo{padding:22px 22px 24px;display:flex;flex-direction:column;justify-content:center}
+.pcity{margin:0;color:var(--accent);font-weight:600;font-size:14px}
+.paddr{margin:6px 0 0;font-family:var(--display);font-size:clamp(28px,6.5vw,36px);font-weight:600;line-height:1.08}
+.pfloor{margin:4px 0 14px;color:var(--muted)}
+.ptel{align-self:flex-start;font-size:22px;font-weight:700;color:var(--fg);text-decoration:none;margin-bottom:16px;font-variant-numeric:lining-nums}
+.ptel:hover{color:var(--accent)}
+.pacts{display:flex;gap:8px;flex-wrap:wrap}
+.psoc{display:flex;gap:18px;margin-top:16px}
+.psoc a{color:#B9B7B1;font-weight:600;font-size:14px;text-decoration:none;border-bottom:1px solid #3A3F48;padding-bottom:1px}
+.psoc a:hover{color:var(--fg);border-color:var(--accent)}
+.pnote{margin:14px 0 0;font-size:12.5px;color:#6E727A}
+@media (prefers-reduced-motion:reduce){.pm-ring{animation:none;opacity:.6}}

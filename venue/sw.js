@@ -1,7 +1,7 @@
 /* Сайт заведения «Мечты» — установка на телефон и работа без сети.
    Страницы, скрипты, стили — сначала из сети (всегда свежие), без сети — сохранённая копия.
    Фото и иконки — из сохранённых. Заявки (/api/) и видео не сохраняются. */
-const CACHE = "mechty-venue-v2";
+const CACHE = "mechty-venue-v3";
 const CORE = ["./", "index.html", "venue.css", "site.js", "vendor/gsap.min.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", e => {

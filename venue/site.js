@@ -185,8 +185,8 @@ function drawBook(){
   const ds = bookDates(z), want = bkWant && ds.includes(bkWant) ? bkWant : "";
   if (want) bkWant = "";
   if (want || !ds.includes($("bkDate").value)) $("bkDate").value = want || ds[0] || "";
-  $("bkDays").innerHTML = ds.length ? ds.map(iso => '<button type="button" class="dchip" data-d="' + iso + '" aria-pressed="' + (iso === $("bkDate").value) + '" aria-label="' + esc(WDF[dd(iso).getUTCDay()] + ", " + dayTx(iso)) + '"><small>' + wdOf(iso) + '</small><b>' + dd(iso).getUTCDate() + '</b><small>' + MON3[dd(iso).getUTCMonth()] + '</small></button>').join("")
-    : '<p class="empty">Ближайших дат нет — позвоните нам.</p>';
+  calDays = ds; calM = ($("bkDate").value || S.today).slice(0, 7);
+  drawCal();
   drawTimes(z);
   const was = $("bkRest").hidden;
   $("bkRest").hidden = false;
@@ -197,10 +197,38 @@ function drawTimes(z){
   $("bkTime").innerHTML = ts.map(t => '<option' + (t === pick ? " selected" : "") + '>' + t + '</option>').join("");
 }
 $("bkZones").addEventListener("click", e => { const b = e.target.closest("[data-z]"); if (b && b.dataset.z !== bkZone){ bkZone = b.dataset.z; drawBook(); } });
-$("bkDays").addEventListener("click", e => {
-  const b = e.target.closest("[data-d]"); if (!b) return;
-  $("bkDate").value = b.dataset.d;
-  $("bkDays").querySelectorAll("[data-d]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+/* календарь брони: месяц сеткой, можно выбрать только дни, когда зону бронируют */
+const MONN = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+const CHEV = d => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + (d < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7") + '" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+let calM = "", calDays = [];
+function drawCal(){
+  const box = $("bkCal");
+  if (!calDays.length){ box.innerHTML = '<p class="empty">Ближайших дат нет — позвоните нам.</p>'; return; }
+  const [y, m] = calM.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)), n = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const min = calDays[0].slice(0, 7), max = calDays[calDays.length - 1].slice(0, 7), sel = $("bkDate").value, ok = new Set(calDays);
+  let cells = "";
+  for (let i = 0; i < (first.getUTCDay() + 6) % 7; i++) cells += '<span class="cd pad"></span>';
+  for (let d = 1; d <= n; d++){
+    const iso = calM + "-" + String(d).padStart(2, "0"), cls = "cd" + (iso === S.today ? " today" : "");
+    cells += ok.has(iso) ? '<button type="button" class="' + cls + '" data-d="' + iso + '" aria-pressed="' + (iso === sel) + '" aria-label="' + esc(WDF[dd(iso).getUTCDay()] + ", " + dayTx(iso)) + '">' + d + '</button>'
+      : '<span class="' + cls + ' off" aria-hidden="true">' + d + '</span>';
+  }
+  box.innerHTML = '<div class="calh"><button type="button" class="calnav" data-m="-1" aria-label="Предыдущий месяц"' + (calM <= min ? " disabled" : "") + '>' + CHEV(-1) + '</button>' +
+    '<b aria-live="polite">' + MONN[m - 1] + " " + y + '</b><button type="button" class="calnav" data-m="1" aria-label="Следующий месяц"' + (calM >= max ? " disabled" : "") + '>' + CHEV(1) + '</button></div>' +
+    '<div class="calw" aria-hidden="true"><span>пн</span><span>вт</span><span>ср</span><span>чт</span><span>пт</span><span>сб</span><span>вс</span></div><div class="calg">' + cells + '</div>' +
+    (sel ? '<p class="calsel">' + esc(WDF[dd(sel).getUTCDay()].replace(/^./, c => c.toUpperCase()) + ", " + dayTx(sel)) + '</p>' : "");
+}
+$("bkCal").addEventListener("click", e => {
+  const nav = e.target.closest("[data-m]"), b = e.target.closest("[data-d]");
+  if (nav && !nav.disabled){
+    const [y, m] = calM.split("-").map(Number), t = new Date(Date.UTC(y, m - 1 + +nav.dataset.m, 1));
+    calM = t.toISOString().slice(0, 7); drawCal();
+    const f = $("bkCal").querySelector('[data-m="' + nav.dataset.m + '"]'); if (f && !f.disabled) f.focus();
+    return;
+  }
+  if (!b) return;
+  $("bkDate").value = b.dataset.d; drawCal();
+  const again = $("bkCal").querySelector('[data-d="' + b.dataset.d + '"]'); if (again) again.focus();
   drawTimes(bookable().find(x => x.id === bkZone));
 });
 document.querySelector("#bookF .stepper").addEventListener("click", e => {
@@ -271,7 +299,7 @@ function drawMenu(){
     '<div><div class="mn">' + esc(x.n) + '</div>' + (x.d ? '<div class="md">' + esc(x.d) + '</div>' : "") +
     (x.img && g ? '<a class="more" href="' + esc(g) + '#' + esc(x.id) + '" target="_blank" rel="noopener">Узнать больше</a>' : "") + '</div>' +
     '<div class="mp">' + (x.p != null ? rub(x.p) : "") + (x.v ? '<small>' + esc(x.v) + '</small>' : "") + '</div></div>').join("")).join("") || '<p class="empty">Скоро здесь будет меню.</p>';
-  $("mNote").innerHTML = mTab === "kitchen" ? "Меню кухни в примере — для образца; настоящее вносится в админке по разделам." :
+  $("mNote").innerHTML = mTab === "kitchen" ? "Если у вас есть аллергия на продукты, пожалуйста, сообщите об этом официанту." :
     'Карта бара — та же, что в <a href="' + esc(g) + '" target="_blank" rel="noopener">барном гиде</a>: «Узнать больше» открывает карточку коктейля — история, вкус и состав. Поменяли карту в гиде — здесь обновится само.';
 }
 $("menu").addEventListener("click", e => {
@@ -320,11 +348,13 @@ wire($("jobF"), "/api/job", (d, f) => doneBox(f, {title: "Спасибо!", text
 
 /* контакты, отзывы и шапка */
 function drawInfo(){
-  const I = S.info, addr = (I.city ? I.city + ", " : "") + I.address, q = encodeURIComponent(I.mapq || addr);
+  const I = S.info, addr = (I.city ? I.city + ", " : "") + I.address + (I.floor ? ", " + I.floor : ""), q = encodeURIComponent(I.mapq || addr);
   document.title = "«" + I.name + "»" + (I.kicker ? " — " + I.kicker : "");
-  $("lgName").textContent = I.name.toUpperCase(); $("hName").textContent = I.name; $("hTag").textContent = I.tagline || "";
-  $("ctAddr").textContent = addr; $("ctTel").textContent = I.phone; $("ctTel").href = "tel:" + I.phone.replace(/[^\d+]/g, "");
-  $("ctSoc").innerHTML = [I.tg ? '<a class="btn small ghost" href="' + esc(I.tg) + '" target="_blank" rel="noopener">Telegram</a>' : "", I.ig ? '<a class="btn small ghost" href="' + esc(I.ig) + '" target="_blank" rel="noopener">Instagram</a>' : ""].join("");
+  $("hNameTx").textContent = I.name; $("hTag").textContent = I.tagline || "";
+  $("ctCity").textContent = I.city ? I.city + ", самый центр" : "";
+  $("ctAddr").textContent = String(I.address || "").replace(/(^|\s)(ул|д|корп|стр|пр)\. /g, "$1$2.\u00a0").replace(/, (\d)/g, ",\u00a0$1");      /* «корп. 1» не разрывается */
+  $("ctFloor").textContent = I.floor || ""; $("ctTel").textContent = I.phone; $("ctTel").href = "tel:" + I.phone.replace(/[^\d+]/g, "");
+  $("ctSoc").innerHTML = [I.tg ? '<a href="' + esc(I.tg) + '" target="_blank" rel="noopener">Telegram</a>' : "", I.ig ? '<a href="' + esc(I.ig) + '" target="_blank" rel="noopener">Instagram</a>' : ""].join("");
   $("tgBtn").href = I.tg || "#"; $("ftGuide").href = I.guide || "#";
   $("mapY").href = $("revY").href = "https://yandex.ru/maps/?text=" + q; $("map2").href = $("rev2").href = "https://2gis.ru/search/" + q;
   const r = parseFloat(String(I.rating || "").replace(",", "."));
@@ -486,7 +516,33 @@ $("installBtn").addEventListener("click", async () => {
 });
 if ("serviceWorker" in navigator && location.protocol !== "file:") addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 
-/* ── одна заставка: неон названия зажигается, как вывеска (без «уменьшить движение») ── */
+/* ── заставка входа, как у барного гида: контур логотипа прорисовывается, заливка, свечение, блик (один раз за вкладку) ── */
+function intro(then){
+  const ov = $("vintro"), on = document.documentElement.classList.contains("intro-on");
+  if (!on || !window.gsap || RM()){ document.documentElement.classList.remove("intro-on"); then(); return; }
+  try { sessionStorage.setItem("mv-intro", 1); } catch (e) {}
+  const line = ov.querySelector(".vi-line");
+  line.setAttribute("d", $("mlogo").getAttribute("d"));
+  let done = false;
+  const len = line.getTotalLength(), end = () => { if (done) return; done = true; document.documentElement.classList.remove("intro-on"); then(); };
+  setTimeout(end, 5000);                                                         // если анимация не дошла (вкладка в фоне) — сайт всё равно открывается
+  gsap.set(line, {strokeDasharray: len, strokeDashoffset: len});
+  gsap.set([".vi-fill", ".vi-glow"], {opacity: 0});
+  const tl = gsap.timeline({defaults: {ease: "sine.inOut"}, onComplete: end});
+  tl.fromTo(".vi-logo", {scale: .94, opacity: 0}, {scale: 1, opacity: 1, duration: .5, ease: "power2.out", transformOrigin: "50% 50%"})
+    .to(line, {strokeDashoffset: 0, duration: 1.2, ease: "power1.inOut"}, "<")
+    .to(".vi-fill", {opacity: 1, duration: .55}, "-=.25")
+    .to(".vi-glow", {opacity: .5, duration: .6}, "<")
+    .to(line, {opacity: 0, duration: .4}, "<.2")
+    .fromTo(".vi-shine", {x: 0}, {x: 1000, duration: 1, ease: "power2.inOut"}, "-=.35")
+    .to(".vi-glow", {opacity: .22, duration: .8}, "<")
+    .fromTo(".vi-word", {opacity: 0, y: 10, letterSpacing: ".5em"}, {opacity: 1, y: 0, letterSpacing: ".28em", duration: .8, ease: "power3.out"}, "-=.8")
+    .to(ov, {opacity: 0, duration: .6, ease: "power2.inOut", delay: .35})
+    .to(".vi-logo", {scale: 1.05, duration: .6, ease: "power2.in"}, "<");
+  ov.addEventListener("click", () => tl.progress(1), {once: true});                // нажали — сразу к сайту
+}
+
+/* ── неон названия на первом экране зажигается, как вывеска (без «уменьшить движение») ── */
 function neonOn(){
   const t = $("hName");
   if (!window.gsap || matchMedia("(prefers-reduced-motion: reduce)").matches){ t.classList.add("lit"); return; }
@@ -504,5 +560,5 @@ function neonOn(){
   $("bqDate").min = S.today;
   drawInfo(); drawEvents(); drawBook(); drawZones(); drawBanquet(); drawMenu(); drawPromoNews(); drawAlbums(); drawStories(); drawQuiz();
   live(); setInterval(live, 30000);
-  heroVideo(); neonOn(); route();
+  heroVideo(); intro(neonOn); route();
 })();
