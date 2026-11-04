@@ -23,6 +23,10 @@ const BOXES = Object.keys(BOX_ST);
 export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, dataImg = false }){
   let site = store.get("site", null);
   if (!site){ site = JSON.parse(JSON.stringify(seed)); store.set("site", site); }
+  /* сохранено до появления схем залов и расписания — дополняется из примера */
+  const add = [["plans", site, seed], ["sched", site.info, seed.info]].filter(([k, to, from]) => to && from && from[k] && !to[k]);
+  add.forEach(([k, to, from]) => { to[k] = JSON.parse(JSON.stringify(from[k])); });
+  if (add.length) store.set("site", site);
   const inbox = store.get("inbox", null) || {};
   for (const k of BOXES) if (!Array.isArray(inbox[k])) inbox[k] = [];
   const saveSite = () => store.set("site", site), saveInbox = () => store.set("inbox", inbox);
@@ -45,16 +49,30 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
     return { ok: true, info: site.info, zones: vis(site.zones), events: ev.filter(e => e.date >= t), past: ev.filter(e => e.date < t).reverse(),
       promos: vis(site.promos).filter(p => !p.until || p.until >= t), news: vis(site.news).slice().sort((a, b) => b.date.localeCompare(a.date)),
       albums: vis(site.albums).slice().sort((a, b) => b.date.localeCompare(a.date)), packages: vis(site.packages), kitchen: vis(site.kitchen),
-      vacancies: vis(site.vacancies), bar: bar(), today: t };
+      vacancies: vis(site.vacancies), plans: site.plans || {}, bar: bar(), today: t };
   }
+  /* занятые столы зала на дату: брони (кроме отменённых) + в примере — часть столов «занята» для наглядности
+     (одинаково для всех: от даты и номера стола) */
+  const tableOf = (zone, id) => (((site.plans || {})[zone] || {}).tables || []).find(t => t.id === id);
+  function busyTables(zone, date){
+    const out = new Set(inbox.book.filter(r => r.zone === zone && r.date === date && r.table && r.st !== "no").map(r => r.table));
+    if (site.info.demoBusy !== false) for (const t of (((site.plans || {})[zone] || {}).tables || [])){
+      let h = 7; for (const c of date + t.id) h = (h * 31 + c.charCodeAt(0)) % 1000003;
+      if (h % 10 < 3) out.add(t.id);
+    }
+    return [...out];
+  }
+  function busy(b){ return { ok: true, busy: busyTables(str(b.zone, 20), day(b.date)) }; }
 
   /* заявки гостей */
   const zoneName = id => ((site.zones || []).find(z => z.id === id) || {}).name || "";
   function addBook(b){
     const z = str(b.zone, 20), r = { id: uid("b"), at: new Date().toISOString(), st: "new",
       zone: need(zoneName(z) ? z : "", "Выберите зал."), date: day(b.date), time: str(b.time, 5), guests: Math.round(+b.guests || 0),
-      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), comment: str(b.comment, 500), event: str(b.event, 20) };
+      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), comment: str(b.comment, 500), event: str(b.event, 20), table: str(b.table, 10) };
     if (r.date < today()) throw new Fail("Эта дата уже прошла.");
+    if (r.table && !tableOf(r.zone, r.table)) throw new Fail("Такого стола в этом зале нет — выберите на схеме.");
+    if (r.table && busyTables(r.zone, r.date).includes(r.table)) throw new Fail("Этот стол на эту дату уже заняли — выберите другой.");
     if (!/^\d{2}:\d{2}$/.test(r.time)) throw new Fail("Выберите время.");
     if (!(r.guests >= 1 && r.guests <= 300)) throw new Fail("Сколько будет гостей?");
     consent(b.consent);
@@ -124,7 +142,7 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
   function adminSave(b){
     const col = str(b.col, 20);
     if (col === "info"){
-      const it = b.item || {}, out = {};
+      const it = b.item || {}, out = Object.assign({}, site.info);                    // расписание и схемы — не из этой формы, сохраняются
       for (const k of INFO) out[k] = str(it[k], k === "tagline" || k === "dress" ? 400 : 200);
       out.hours = (Array.isArray(it.hours) ? it.hours : []).slice(0, 10).map(h => ({ zone: str(h && h.zone, 40), text: str(h && h.text, 120) })).filter(h => h.zone || h.text);
       site.info = out; saveSite(); return { ok: true };
@@ -160,7 +178,7 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
 
   const API = {
     "GET /api/site": publicSite,
-    "POST /api/book": addBook, "POST /api/banquet": addBanquet, "POST /api/cert": addCert, "POST /api/job": addJob, "POST /api/subscribe": addSub
+    "POST /api/book": addBook, "POST /api/busy": busy, "POST /api/banquet": addBanquet, "POST /api/cert": addCert, "POST /api/job": addJob, "POST /api/subscribe": addSub
   };
   const ADMIN = {
     "GET /api/admin/all": () => ({ ok: true, site, inbox }),

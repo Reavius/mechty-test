@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { SEED } from "./seed.mjs";
 import { venueCore, Fail } from "./core.mjs";
-import { readMenu } from "../table/menufile.mjs";
+import { readBar } from "./barfile.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.join(HERE, ".."), DATA = path.join(HERE, "data"), UP = path.join(DATA, "uploads");
 const PORT = +(process.argv.slice(2).find(a => /^\d+$/.test(a)) || process.env.PORT || 8090);
@@ -35,7 +35,7 @@ let barMenu = null, barAt = 0;
 function bar(){
   try {
     const t = Math.max(...["js/menu.js", "js/data.js"].map(f => fs.statSync(path.join(ROOT, f)).mtimeMs));
-    if (!barMenu || t !== barAt){ barMenu = readMenu(ROOT).menu; barAt = t; }
+    if (!barMenu || t !== barAt){ barMenu = readBar(ROOT); barAt = t; }
   } catch (e) { barMenu = barMenu || []; }
   return barMenu;
 }
@@ -51,10 +51,10 @@ const V = venueCore({ seed: SEED, bar, upload, rnd: n => crypto.randomBytes(n),
 /* ── HTTP ── */
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml",
-  ".mp4": "video/mp4", ".ico": "image/x-icon", ".ics": "text/calendar; charset=utf-8" };
-/* из папки сайта бара — только картинки, видео, иконки и QR-библиотека; всё остальное — из venue/ */
-const SHARED = [/^\/photos\/[\w.-]+$/, /^\/video\/[\w.-]+$/, /^\/icons\/[\w.-]+$/, /^\/vendor\/qrcode\.js$/];
-const PAGES = new Set(["/index.html", "/admin.html", "/cert.html", "/privacy.html", "/site.js", "/admin.js", "/venue.css"]);
+  ".mp4": "video/mp4", ".ico": "image/x-icon", ".ics": "text/calendar; charset=utf-8", ".webmanifest": "application/manifest+json" };
+/* из папки сайта бара — только картинки, видео, иконки, QR-библиотека и GSAP; всё остальное — из venue/ */
+const SHARED = [/^\/photos\/[\w.-]+$/, /^\/video\/[\w.-]+$/, /^\/icons\/[\w.-]+$/, /^\/vendor\/(qrcode|gsap\.min)\.js$/];
+const PAGES = new Set(["/index.html", "/admin.html", "/cert.html", "/privacy.html", "/site.js", "/admin.js", "/venue.css", "/sw.js", "/manifest.webmanifest"]);
 function fileFor(p){
   if (p === "/") p = "/index.html";
   if (/^\/uploads\/[\w.-]+$/.test(p)) return path.join(UP, p.slice(9));

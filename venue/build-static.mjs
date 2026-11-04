@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readMenu } from "../table/menufile.mjs";
+import { readBar } from "./barfile.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.join(HERE, "..");
 const OUT = path.resolve(process.argv[2] || path.join(ROOT, "venue-online"));
@@ -34,16 +34,17 @@ for (const f of ["index.html", "admin.html", "cert.html", "privacy.html"]){
   }
   put(f, s);
 }
-for (const f of ["venue.css", "site.js", "admin.js", "local.js"]) copy(path.join(HERE, f), f);
+for (const f of ["venue.css", "site.js", "admin.js", "local.js", "sw.js", "manifest.webmanifest"]) copy(path.join(HERE, f), f);
 copy(path.join(HERE, "core.mjs"), "core.js");                                  // .js — любой хостинг отдаёт как JavaScript
 copy(path.join(HERE, "seed.mjs"), "seed.js");
-put("bar-data.js", "/* Карта бара — снимок из барного гида на момент сборки */\nexport const BAR = " + JSON.stringify(readMenu(ROOT).menu) + ";\n");
+put("bar-data.js", "/* Карта бара — снимок из барного гида на момент сборки */\nexport const BAR = " + JSON.stringify(readBar(ROOT)) + ";\n");
 for (const f of fs.readdirSync(path.join(ROOT, "photos"))) if (/\.webp$/.test(f)) copy(path.join(ROOT, "photos", f), "photos/" + f);
 for (const f of fs.readdirSync(path.join(ROOT, "video"))) if (/^negroni\./.test(f)) copy(path.join(ROOT, "video", f), "video/" + f);
 for (const f of fs.readdirSync(path.join(ROOT, "icons"))) copy(path.join(ROOT, "icons", f), "icons/" + f);
 copy(path.join(ROOT, "vendor", "qrcode.js"), "vendor/qrcode.js");
+copy(path.join(ROOT, "vendor", "gsap.min.js"), "vendor/gsap.min.js");
 put(".nojekyll", "");                                                           // GitHub Pages: отдать файлы как есть
-put("_headers", "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: same-origin\n  X-Robots-Tag: noindex\n");
+put("_headers", "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: same-origin\n  X-Robots-Tag: noindex\n/sw.js\n  Cache-Control: no-cache\n");
 const n = (function count(d){ return fs.readdirSync(d, { withFileTypes: true }).filter(e => e.name !== ".git").reduce((a, e) => a + (e.isDirectory() ? count(path.join(d, e.name)) : 1), 0); })(OUT);
 console.log("Онлайн-пример собран: " + OUT + " (" + n + " файлов). " + (fs.existsSync(path.join(OUT, ".git"))
   ? "Это репозиторий — закоммитьте и отправьте: GitHub Pages обновит сайт сам."

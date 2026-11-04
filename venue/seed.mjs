@@ -16,6 +16,13 @@ export const SEED = {
     guide: "https://mechty-bar.netlify.app/",
     dress: "Дресс-код в клубе — smart casual. Вход в клуб — с 18 лет, с паспортом.",
     parking: "Парковка во дворе и на соседней улице.",
+    /* часы по дням для строки «Сейчас в Мечтах»: d — дни недели (0 — вс), до раньше «с» — до утра следующего дня */
+    sched: [
+      { zone: "Кафе", d: [0, 1, 2, 3, 4, 5, 6], from: "13:00", to: "23:00" },
+      { zone: "Клуб", d: [4, 0], from: "20:00", to: "02:00" },
+      { zone: "Клуб", d: [5, 6], from: "20:00", to: "06:00" },
+      { zone: "Мансарда", d: [5, 6], from: "20:00", to: "04:00" }
+    ],
     hours: [
       { zone: "Кафе", text: "ежедневно 13:00–23:00" },
       { zone: "Клуб", text: "чт, вс 20:00–02:00 · пт, сб 20:00–06:00" },
@@ -37,6 +44,24 @@ export const SEED = {
       text: "Отдельная комната с персональным обслуживанием — для компании, которой нужна своя территория.",
       feats: "Отдельный вход в зал, Свой винный шкаф, Депозит" }
   ],
+  /* схемы залов для брони стола (условные — по настоящему залу их рисуют один раз): поле 100 × 64,
+     area — стойка, танцпол, сцена; tables — столы: id, x, y (центр), seats, shape round | rect | sofa */
+  plans: {
+    cafe: { area: [{ t: "bar", x: 4, y: 4, w: 30, h: 9, n: "Бар" }, { t: "door", x: 86, y: 58, w: 10, h: 4, n: "Вход" }, { t: "window", x: 96, y: 6, w: 2, h: 44, n: "" }],
+      tables: [{ id: "c1", x: 84, y: 12, seats: 2, shape: "round" }, { id: "c2", x: 84, y: 26, seats: 2, shape: "round" }, { id: "c3", x: 84, y: 40, seats: 2, shape: "round" },
+        { id: "c4", x: 62, y: 16, seats: 4, shape: "rect" }, { id: "c5", x: 62, y: 34, seats: 4, shape: "rect" }, { id: "c6", x: 40, y: 26, seats: 6, shape: "rect" },
+        { id: "c7", x: 40, y: 46, seats: 4, shape: "rect" }, { id: "c8", x: 14, y: 30, seats: 4, shape: "sofa" }, { id: "c9", x: 14, y: 50, seats: 6, shape: "sofa" }, { id: "c10", x: 62, y: 52, seats: 2, shape: "round" }] },
+    club: { area: [{ t: "stage", x: 34, y: 3, w: 32, h: 8, n: "Сцена" }, { t: "floor", x: 30, y: 14, w: 40, h: 28, n: "Танцпол" }, { t: "bar", x: 3, y: 55, w: 24, h: 6, n: "Бар" },
+        { t: "bar", x: 73, y: 55, w: 24, h: 6, n: "Бар" }, { t: "door", x: 45, y: 59, w: 10, h: 4, n: "Вход" }],
+      tables: [{ id: "k1", x: 9, y: 10, seats: 6, shape: "sofa" }, { id: "k2", x: 9, y: 26, seats: 6, shape: "sofa" }, { id: "k3", x: 9, y: 42, seats: 8, shape: "sofa" },
+        { id: "k4", x: 91, y: 10, seats: 6, shape: "sofa" }, { id: "k5", x: 91, y: 26, seats: 6, shape: "sofa" }, { id: "k6", x: 91, y: 42, seats: 8, shape: "sofa" },
+        { id: "k7", x: 22, y: 46, seats: 4, shape: "round" }, { id: "k8", x: 78, y: 46, seats: 4, shape: "round" }, { id: "k9", x: 38, y: 50, seats: 4, shape: "round" }, { id: "k10", x: 62, y: 50, seats: 4, shape: "round" }] },
+    mans: { area: [{ t: "stage", x: 38, y: 3, w: 24, h: 8, n: "Караоке" }, { t: "bar", x: 72, y: 52, w: 24, h: 8, n: "Бар" }, { t: "door", x: 4, y: 59, w: 10, h: 4, n: "Вход" }],
+      tables: [{ id: "m1", x: 14, y: 16, seats: 6, shape: "sofa" }, { id: "m2", x: 86, y: 16, seats: 6, shape: "sofa" }, { id: "m3", x: 30, y: 32, seats: 4, shape: "round" },
+        { id: "m4", x: 50, y: 30, seats: 8, shape: "rect" }, { id: "m5", x: 70, y: 32, seats: 4, shape: "round" }, { id: "m6", x: 14, y: 44, seats: 6, shape: "sofa" }, { id: "m7", x: 46, y: 50, seats: 4, shape: "rect" }] },
+    vip: { area: [{ t: "bar", x: 70, y: 4, w: 26, h: 8, n: "Свой бар" }, { t: "door", x: 4, y: 59, w: 10, h: 4, n: "Вход" }],
+      tables: [{ id: "v1", x: 40, y: 32, seats: 10, shape: "rect" }, { id: "v2", x: 82, y: 40, seats: 6, shape: "sofa" }] }
+  },
   events: [
     { id: "e1", date: "2026-11-05", time: "20:00", zone: "cafe", title: "Джазовый четверг", price: "вход свободный",
       text: "Живая музыка в кафе: стандарты, босса-нова и немного импровизации. Приходите на ужин — столы лучше забронировать." },

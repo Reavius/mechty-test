@@ -34,13 +34,14 @@ const SCH = {
   vacancies: {t: "Вакансии", one: "вакансию", f: [["title", "Должность"], ["pay", "Оплата"], ["text", "Описание", "area"], ["hidden", "Скрыть с сайта", "check"]], sub: x => x.pay || ""}
 };
 const BOX = {
-  book: {t: "Брони", st: {new: "новая", ok: "подтверждена", no: "отменена"}, line: r => zoneName(r.zone) + " · " + dTx(r.date) + " " + r.time + " · " + r.guests + " гост." + (r.event ? " · " + evName(r.event) : "")},
+  book: {t: "Брони", st: {new: "новая", ok: "подтверждена", no: "отменена"}, line: r => zoneName(r.zone) + (r.table ? ", стол " + tableNo(r.zone, r.table) : "") + " · " + dTx(r.date) + " " + r.time + " · " + r.guests + " гост." + (r.event ? " · " + evName(r.event) : "")},
   banquet: {t: "Банкеты", st: {new: "новая", call: "созвонились", ok: "договорились", no: "отказ"}, line: r => (r.format || "") + " · " + dTx(r.date) + " · " + r.guests + " гост." + (r.zone ? " · " + zoneName(r.zone) : "")},
   cert: {t: "Сертификаты", st: {paid: "оплачен", used: "использован"}, line: r => r.sum + " ₽ · " + r.code + " · до " + dTx(r.till) + (r.to ? " · для: " + r.to : "")},
   job: {t: "Отклики", st: {new: "новый", call: "позвонили", no: "не подошёл"}, line: r => r.vacancy},
   sub: {t: "Подписки", st: {new: "подписан"}, line: r => r.email}
 };
 const zoneName = id => ((D && D.site.zones || []).find(z => z.id === id) || {}).name || "";
+const tableNo = (zone, id) => { const ts = ((D && D.site.plans || {})[zone] || {}).tables || [], i = ts.findIndex(t => t.id === id); return i >= 0 ? String(i + 1) + " (мест: " + ts[i].seats + ")" : id; };
 const evName = id => ((D && D.site.events || []).find(e => e.id === id) || {}).title || "";
 const newOf = k => (D.inbox[k] || []).filter(r => r.st === "new").length;
 
