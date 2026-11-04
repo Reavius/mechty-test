@@ -13,8 +13,8 @@ const store = {
     catch (e) { if (e && /quota/i.test(e.name + e.message)) throw new Fail("В браузере кончилось место для фото — в онлайн-примере они хранятся здесь. Уберите пару фото."); }
   }
 };
-/* пример написан 4 ноября 2026; чтобы афиша онлайн-примера не устаревала, даты сдвигаются на целые недели
-   к сегодняшней (джаз остаётся по четвергам); Новый год — всегда 31 декабря */
+/* пример написан 4 ноября 2026; чтобы афиша онлайн-примера не устаревала, даты событий и новостей сдвигаются на целые
+   недели к сегодняшней (джаз остаётся по четвергам); Новый год — всегда 31 декабря; фотоотчёты — настоящие, не сдвигаются */
 const SEED_DAY = Date.parse("2026-11-04"), WEEK = 7 * 864e5;
 function fresh(seed){
   const s = JSON.parse(JSON.stringify(seed)), t = Date.parse(new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10));
@@ -27,7 +27,6 @@ function fresh(seed){
   };
   for (const e of s.events || []) e.date = mv(e.date);
   for (const n of s.news || []) n.date = mv(n.date);
-  for (const a of s.albums || []) a.date = mv(a.date);
   for (const p of s.promos || []) p.until = mv(p.until);
   return s;
 }

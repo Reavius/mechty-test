@@ -1,7 +1,7 @@
 /* Сайт заведения «Мечты» — установка на телефон и работа без сети.
    Страницы, скрипты, стили — сначала из сети (всегда свежие), без сети — сохранённая копия.
    Фото и иконки — из сохранённых. Заявки (/api/) и видео не сохраняются. */
-const CACHE = "mechty-venue-v1";
+const CACHE = "mechty-venue-v2";
 const CORE = ["./", "index.html", "venue.css", "site.js", "vendor/gsap.min.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", e => {
@@ -12,7 +12,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   const r = e.request, u = new URL(r.url);
-  if (r.method !== "GET" || u.origin !== location.origin || /\/api\//.test(u.pathname) || /\/video\//.test(u.pathname) || r.headers.has("range")) return;
+  if (r.method !== "GET" || u.origin !== location.origin || /\/api\//.test(u.pathname) || /\/video\/|\.mp4$/.test(u.pathname) || r.headers.has("range")) return;
   const asset = /\/(photos|icons|uploads)\/|\.(webp|png|jpe?g|svg)$/.test(u.pathname);
   if (asset){
     e.respondWith(caches.match(r).then(hit => hit || fetch(r).then(res => { if (res.ok){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(r, cp)); } return res; })));

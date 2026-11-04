@@ -186,11 +186,16 @@ textarea.in{min-height:84px;resize:vertical}
 /* фото */
 .albums{display:grid;gap:12px;grid-template-columns:1fr 1fr}
 @media (min-width:700px){.albums{grid-template-columns:repeat(4,1fr)}}
-.alb{padding:0;border:1px solid var(--line);background:var(--surface);border-radius:14px;overflow:hidden;cursor:pointer;text-align:left;color:var(--fg)}
-.alb img{aspect-ratio:1;object-fit:cover;width:100%}
-.alb div{padding:10px 12px}
-.alb b{display:block;font-size:14px}
-.alb small{color:var(--muted)}
+.alb{display:block;padding:0;border:1px solid var(--line);background:var(--surface);border-radius:14px;overflow:hidden;cursor:pointer;text-align:left;color:var(--fg);text-decoration:none;transition:border-color .15s}
+.alb:hover{border-color:var(--accent)}
+.alb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.acov{position:relative;aspect-ratio:1;display:grid;place-items:center;overflow:hidden;background:radial-gradient(120% 90% at 85% 10%,color-mix(in srgb,var(--z) 75%,transparent) 0%,transparent 60%),radial-gradient(90% 80% at 0% 100%,color-mix(in srgb,var(--z) 35%,transparent) 0%,transparent 65%),#16181D}
+.acov img{width:100%;height:100%;object-fit:cover}
+.adate{font-family:var(--display);font-weight:600;color:#fff;text-align:center;line-height:.9;font-size:16px}
+.adate b{display:block;font-size:68px;font-weight:600;font-variant-numeric:lining-nums}
+.ainf{padding:10px 12px}
+.ainf b{display:block;font-size:14px}
+.ainf small{color:var(--muted)}
 .lb{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.92);display:grid;place-items:center}
 .lb img{max-width:94vw;max-height:80vh;border-radius:10px;object-fit:contain}
 .lb .lbt{position:absolute;top:14px;left:16px;right:60px;color:#ddd;font-size:14px}
@@ -226,15 +231,21 @@ textarea.in{min-height:84px;resize:vertical}
 .hours{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
 .hours td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .hours td:first-child{color:var(--muted);width:40%}
-.map{position:relative;min-height:280px;overflow:hidden;background:#12161C;
-  background-image:linear-gradient(rgba(201,162,75,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(201,162,75,.06) 1px,transparent 1px);background-size:34px 34px}
-.map::before,.map::after{content:"";position:absolute;background:#1C222B}
-.map::before{left:-10%;right:-10%;top:58%;height:26px;transform:rotate(-8deg)}
-.map::after{top:-10%;bottom:-10%;left:38%;width:22px;transform:rotate(12deg)}
-.map .pin{position:absolute;left:50%;top:46%;transform:translate(-50%,-100%);z-index:1;display:flex;flex-direction:column;align-items:center}
-.map .pin b{background:var(--accent);color:#16130B;padding:6px 10px;border-radius:10px;font-weight:800;font-size:13px;white-space:nowrap}
-.map .pin i{width:14px;height:14px;background:var(--accent);transform:rotate(45deg);margin-top:-8px}
-.map .mapb{position:absolute;left:14px;right:14px;bottom:14px;z-index:1;display:flex;gap:8px;flex-wrap:wrap}
+.map{position:relative;overflow:hidden;background:#12161C;display:flex;flex-direction:column}
+.map svg{display:block;width:100%;height:auto;aspect-ratio:4/3}
+.map .mg{fill:#12161C}
+.map .mb rect{fill:#181D24}
+.map .mhere{fill:rgba(201,162,75,.16);stroke:var(--accent);stroke-width:1.2}
+.map .ms *{fill:#262C36}
+.map .mt text{fill:#8E9299;font:600 11px var(--sans)}
+.map .ml circle{fill:#5A5F68}
+.map .ml text{fill:#A3A7AE;font:500 10.5px var(--sans)}
+.map .mpin circle{fill:var(--accent)}
+.map .mpin .dot{fill:#16130B}
+.map .mpin rect{fill:var(--accent)}
+.map .mpin text{fill:#16130B;font:700 11px var(--sans)}
+.map .mnote2{fill:#6E727A;font:500 9.5px var(--sans)}
+.map .mapb{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px 14px;border-top:1px solid var(--line)}
 .soc{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 
 /* подвал */
@@ -245,8 +256,7 @@ textarea.in{min-height:84px;resize:vertical}
 .flinks{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center}
 .flinks .link{color:var(--muted);font-weight:600;font-size:13px;text-decoration:underline}
 .ev p.epr{color:#CFCCC5;margin-top:2px}
-/* схема на телефоне: номера и места крупнее — иначе не прочитать */
-@media (max-width:560px){.plan .pt text{font-size:3.9px}.plan .pt text.ps{font-size:2.7px}.plan .pa text{font-size:3px}}
+
 
 /* страницы: сертификат, политика, админка */
 .page{max-width:760px;margin:0 auto;padding:40px 20px 80px}
@@ -308,41 +318,6 @@ body.night .hero .hbg{background:radial-gradient(70% 55% at 30% 70%,rgba(255,79,
 .sbody .spr{margin:0 0 16px;color:var(--accent);font-weight:700}
 .sacts{display:flex;gap:10px;flex-wrap:wrap;pointer-events:auto}
 
-/* ── схема зала ── */
-.plan{max-width:640px}
-.plan svg{display:block;width:100%;height:auto;background:#121419;border:1px solid var(--line);border-radius:14px;margin-top:2px}
-.plan .pw{fill:none;stroke:#2C313A;stroke-width:.35}
-.plan .pa rect{fill:#1A1E25;stroke:none}
-.plan .pa text{fill:#7D818A;font-family:var(--sans);font-size:2.4px;text-anchor:middle;pointer-events:none}
-.plan .pa.bar rect{fill:rgba(201,162,75,.16);stroke:rgba(201,162,75,.55);stroke-width:.3}
-.plan .pa.bar text{fill:#C9A24B}
-.plan .pa.stage rect{fill:rgba(255,79,163,.12);stroke:rgba(255,79,163,.45);stroke-width:.3}
-.plan .pa.stage text{fill:#E58BB8}
-.plan .pa.floor rect{fill:rgba(255,255,255,.025);stroke:#3A3F48;stroke-width:.3;stroke-dasharray:1.2 1}
-.plan .pa.door rect{fill:#121419;stroke:#5A5F68;stroke-width:.35}
-.plan .pa.window rect{fill:#24303D}
-.plan .pt circle,.plan .pt rect{fill:#22262E;stroke:var(--accent);stroke-width:.45;transition:fill .15s}
-.plan .pt text{fill:var(--fg);font-family:var(--sans);font-size:3px;font-weight:700;text-anchor:middle;pointer-events:none}
-.plan .pt text.ps{fill:#8E9299;font-size:2px;font-weight:500}
-.plan .pt.free{cursor:pointer}
-.plan .pt.free:hover circle,.plan .pt.free:hover rect{fill:rgba(201,162,75,.28)}
-.plan .pt:focus{outline:none}
-.plan .pt.free:focus-visible circle,.plan .pt.free:focus-visible rect,.plan .pt.sel:focus-visible circle,.plan .pt.sel:focus-visible rect{stroke:#fff;stroke-width:.8}
-.plan .pt.sel circle,.plan .pt.sel rect{fill:var(--accent);stroke:#F3D58E}
-.plan .pt.sel text{fill:#16130B}
-.plan .pt.sel text.ps{fill:var(--accent);font-weight:700}
-.plan .pt.busy{cursor:not-allowed}
-.plan .pt.busy circle,.plan .pt.busy rect{fill:#191C22;stroke:#353A43;stroke-dasharray:.8 .6}
-.plan .pt.busy text{fill:#545962}
-.pleg{display:flex;gap:16px;margin:8px 0 0;font-size:12.5px;color:var(--muted)}
-.pleg span{display:inline-flex;align-items:center;gap:6px}
-.pleg span::before{content:"";width:12px;height:12px;border-radius:50%;border:1.5px solid var(--accent);background:#22262E}
-.pleg .g-busy::before{border:1.5px dashed #4A4F58;background:#191C22}
-.pleg .g-sel::before{background:var(--accent);border-color:#F3D58E}
-.plantx{margin:6px 0 0;font-size:13.5px;color:var(--muted);min-height:20px}
-.plantx b{color:var(--flag);font-weight:700}
-.plantx small{display:block;font-size:12.5px;margin-top:2px;color:#6E727A}
-
 /* ── подбор коктейля ── */
 .quiz{padding:22px}
 .qstep{display:flex;gap:6px;margin-bottom:16px}
@@ -374,3 +349,48 @@ body.night .hero .hbg{background:radial-gradient(70% 55% at 30% 70%,rgba(255,79,
 
 /* крупные числа — ровными цифрами: у Cormorant «старинные» цифры уходят под строку и налезают на подпись */
 .poster .pd b,.sav b,.sbg .sbig,.cprev .cs{font-variant-numeric:lining-nums}
+
+/* ── бронь: зона → правило зоны → дата и время ── */
+.chip.big{padding:11px 18px;font-size:14.5px}
+.znote{margin:10px 0 0;font-size:14px;color:#B9B7B1;display:flex;flex-direction:column;gap:4px;min-height:20px}
+.znote b{color:var(--fg);font-weight:600}
+.znote .dep{color:var(--flag);font-weight:600}
+.dchips{display:flex;gap:8px;overflow-x:auto;margin:0 -20px;padding:2px 20px 8px;scrollbar-width:none}
+.dchips::-webkit-scrollbar{display:none}
+.dchip{flex:none;width:58px;padding:8px 0;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;color:var(--muted)}
+.dchip b{font-family:var(--display);font-size:24px;font-weight:600;line-height:1.05;color:var(--fg);font-variant-numeric:lining-nums}
+.dchip small{font-size:11.5px}
+.dchip[aria-pressed="true"]{border-color:var(--accent);background:rgba(201,162,75,.14)}
+.dchip[aria-pressed="true"] small{color:var(--accent)}
+.dchip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.done .how{margin:4px 0 16px}
+.done .how .chips{justify-content:center}
+.done b:focus{outline:none}
+
+/* ── залы с фото ── */
+.zone .zart{aspect-ratio:4/3;background:radial-gradient(130% 120% at 100% 0%,color-mix(in srgb,var(--z) 70%,transparent) 0%,transparent 60%),radial-gradient(80% 90% at 0% 100%,color-mix(in srgb,var(--z) 28%,transparent) 0%,transparent 70%),#16181D}
+.zone .zart.ph::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,11,14,0) 45%,rgba(10,11,14,.88) 100%)}
+.zone .zart img{object-position:50% 58%}
+.zone .zart h3{z-index:1}
+.zone .zm .dep{color:var(--flag);font-weight:700}
+
+/* ── меню: кухня и бар, разделы сверху и снизу ── */
+.mnav{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.mnav.bottom{margin:14px 0 0}
+.mnav .mtabs{margin:0}
+.mi.tall{grid-template-columns:52px 1fr auto;align-items:start}
+.mi.tall img{width:52px;height:96px;object-fit:contain;border-radius:0;background:none}
+.mi .more{display:inline-block;margin-top:6px;font-size:13px;font-weight:700;color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(201,162,75,.5)}
+
+/* ── акции, Telegram, отзывы ── */
+.promo .ptx{white-space:pre-line}
+.promo small.pnote{color:var(--muted);font-weight:500;font-size:12.5px}
+@media (max-width:699px){#promoList .promo+.promo{margin-top:12px}}
+.tgc{padding:24px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#16202C 0%,#171A20 70%)}
+.tgc h2{margin:0 0 6px}
+.tgc p{margin:0;color:var(--muted);max-width:520px}
+.rate{display:flex;align-items:baseline;gap:4px 12px;flex-wrap:wrap;width:100%}
+.rate b{font-family:var(--display);font-size:56px;font-weight:600;line-height:1;font-variant-numeric:lining-nums}
+.stars{--r:.9;font-size:22px;letter-spacing:2px;background:linear-gradient(90deg,var(--accent) calc(var(--r) * 100%),#3A3F48 0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stars::before{content:"★★★★★"}
+.rate small{color:var(--muted);width:100%}

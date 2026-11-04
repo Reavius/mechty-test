@@ -23,7 +23,7 @@ const copy = (from, rel) => put(rel, fs.readFileSync(from));
 
 /* страницы: модуль онлайн-примера — перед скриптом страницы; не для поисковиков; лента — про хранение в браузере */
 const RIBBON = '<div class="demo">Онлайн-пример: <b>заявки и правки сохраняются только в этом браузере</b> — у каждого свои. Даты, цены, адрес и телефон — для примера.</div>';
-for (const f of ["index.html", "admin.html", "cert.html", "privacy.html"]){
+for (const f of ["index.html", "admin.html", "privacy.html"]){
   let s = fs.readFileSync(path.join(HERE, f), "utf8");
   if (!/<meta name="robots"/.test(s)) s = s.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<meta name="robots" content="noindex, nofollow">');
   if (f !== "privacy.html") s = s.replace(/<div class="demo[^"]*">[\s\S]*?<\/div>/, RIBBON);
@@ -39,7 +39,7 @@ copy(path.join(HERE, "core.mjs"), "core.js");                                  /
 copy(path.join(HERE, "seed.mjs"), "seed.js");
 put("bar-data.js", "/* Карта бара — снимок из барного гида на момент сборки */\nexport const BAR = " + JSON.stringify(readBar(ROOT)) + ";\n");
 for (const f of fs.readdirSync(path.join(ROOT, "photos"))) if (/\.webp$/.test(f)) copy(path.join(ROOT, "photos", f), "photos/" + f);
-for (const f of fs.readdirSync(path.join(ROOT, "video"))) if (/^negroni\./.test(f)) copy(path.join(ROOT, "video", f), "video/" + f);
+for (const f of fs.readdirSync(path.join(HERE, "media"))) copy(path.join(HERE, "media", f), "media/" + f);   // фото залов, видео первого экрана
 for (const f of fs.readdirSync(path.join(ROOT, "icons"))) copy(path.join(ROOT, "icons", f), "icons/" + f);
 copy(path.join(ROOT, "vendor", "qrcode.js"), "vendor/qrcode.js");
 copy(path.join(ROOT, "vendor", "gsap.min.js"), "vendor/gsap.min.js");

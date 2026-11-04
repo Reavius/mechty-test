@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* Сайт заведения «Мечты» — локальный пример (этот компьютер и Wi-Fi). Запуск из папки сайта:
      node venue/server.mjs            порт 8090; другой: node venue/server.mjs 8095
-   Гостям — главная (/), событие (/#event-…), сертификат (/cert.html#КОД), политика (/privacy.html).
-   Управляющему — /admin.html: заявки (брони, банкеты, сертификаты, отклики, подписки) и правка всех разделов.
+   Гостям — главная (/), событие (/#event-…), политика (/privacy.html).
+   Управляющему — /admin.html: заявки (брони, банкеты, отклики) и правка всех разделов.
    Пароль админки — в окне, где запущен сервер (и в venue/data/admin.txt).
    Данные — venue/data/ (site.json — содержимое, inbox.json — заявки, uploads/ — фото); в репозиторий не кладутся.
    Первый запуск — содержимое из venue/seed.mjs. Карта бара — из файлов барного гида (js/menu.js, js/data.js). */
@@ -54,12 +54,13 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
   ".mp4": "video/mp4", ".ico": "image/x-icon", ".ics": "text/calendar; charset=utf-8", ".webmanifest": "application/manifest+json" };
 /* из папки сайта бара — только картинки, видео, иконки, QR-библиотека и GSAP; всё остальное — из venue/ */
 const SHARED = [/^\/photos\/[\w.-]+$/, /^\/video\/[\w.-]+$/, /^\/icons\/[\w.-]+$/, /^\/vendor\/(qrcode|gsap\.min)\.js$/];
-const PAGES = new Set(["/index.html", "/admin.html", "/cert.html", "/privacy.html", "/site.js", "/admin.js", "/venue.css", "/sw.js", "/manifest.webmanifest"]);
+const PAGES = new Set(["/index.html", "/admin.html", "/privacy.html", "/site.js", "/admin.js", "/venue.css", "/sw.js", "/manifest.webmanifest"]);
 function fileFor(p){
   if (p === "/") p = "/index.html";
   if (/^\/uploads\/[\w.-]+$/.test(p)) return path.join(UP, p.slice(9));
   if (SHARED.some(re => re.test(p))) return path.join(ROOT, p);
   if (PAGES.has(p)) return path.join(HERE, p);
+  if (/^\/media\/[\w.-]+$/.test(p)) return path.join(HERE, p);             // фото залов и видео первого экрана — venue/media
   return null;
 }
 const isAdmin = req => same((/(?:^|;\s*)vadm=([\w-]+)/.exec(req.headers.cookie || "") || [])[1], TOKEN);
