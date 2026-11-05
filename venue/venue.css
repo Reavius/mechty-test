@@ -520,3 +520,10 @@ button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
   .pmap .pm-tx text{font-size:28px}.pmap .pm-hn text{font-size:27px}.pmap .pm-lm text{font-size:28px}
   .pmap .pm-card .pm-name{font-size:46px}.pmap .pm-card .pm-floor{font-size:25px}
 }
+/* плакаты событий — фото с вечеров: лица ближе к верху кадра */
+.poster img{object-position:50% 28%}
+.poster::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,transparent 35%,transparent 55%,rgba(0,0,0,.55) 100%)}
+.poster .pz,.poster .pd{z-index:1}
+/* шторка события: крестик поверх плаката, плакат — на всю ширину */
+.sheet .sb{position:relative}
+.sheet .x{position:absolute;top:10px;right:10px;margin:0;float:none}

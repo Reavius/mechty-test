@@ -67,6 +67,8 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
     const t = hm(r.time);
     if (t < 0) throw new Fail("Выберите время.");
     if ((z.from && t < hm(z.from)) || (z.to && t > hm(z.to))) throw new Fail("Бронь в «" + z.name + "» — с " + z.from + " до " + z.to + ".");
+    const now = new Date(Date.now() + 5 * 3600e3), nowM = now.getUTCHours() * 60 + now.getUTCMinutes();
+    if (r.date === today() && t < nowM + 30) throw new Fail("На сегодня бронь — не раньше чем через 30 минут. Выберите время позже.");
     if (!(r.guests >= 1 && r.guests <= 300)) throw new Fail("Сколько будет гостей?");
     consent(b.consent);
     inbox.book.unshift(r); saveInbox();

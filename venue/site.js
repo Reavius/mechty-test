@@ -8,6 +8,8 @@ const WD = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"], WDF = ["в�
 const dd = s => new Date(s + "T12:00:00Z");
 const dayTx = s => dd(s).getUTCDate() + " " + MON[dd(s).getUTCMonth()];
 const wdOf = s => WD[dd(s).getUTCDay()];
+const ufa = () => { const d = new Date(Date.now() + 5 * 3600e3); return {iso: d.toISOString().slice(0, 10), wd: d.getUTCDay(), h: d.getUTCHours(), mins: d.getUTCHours() * 60 + d.getUTCMinutes()}; };
+const tm = e => e.time ? ", " + e.time : "";                                     // у события без времени — только день
 const rub = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
 let S = null, mTab = "kitchen", mSec = "", bkZone = "", bkWant = "";
 
@@ -35,12 +37,12 @@ function poster(e, big){
   const bg = "background:radial-gradient(120% 90% at 85% 10%," + z.color + "cc 0%,transparent 60%),radial-gradient(90% 80% at 0% 100%," + z.color + "55 0%,transparent 65%),#16181D";
   return '<div class="poster" style="' + bg + '">' + (e.img ? '<img src="' + esc(e.img) + '" alt="" loading="lazy">' : "") +
     '<span class="pz">' + esc(z.name || "Все залы") + '</span>' +
-    '<span class="pd"><span>' + WD[d.getUTCDay()] + ", " + esc(e.time || "") + '</span><b>' + d.getUTCDate() + '</b><span>' + MON3[d.getUTCMonth()] + '</span></span></div>';
+    '<span class="pd"><span>' + WD[d.getUTCDay()] + esc(tm(e)) + '</span><b>' + d.getUTCDate() + '</b><span>' + MON3[d.getUTCMonth()] + '</span></span></div>';
 }
 function drawEvents(){
   const list = S.events;
   $("evList").innerHTML = list.length ? list.map(e => '<button type="button" class="ev" data-ev="' + esc(e.id) + '">' + poster(e) +
-    '<div class="eb"><h3>' + esc(e.title) + '</h3><p>' + esc(dayTx(e.date)) + ", " + esc(e.time) + '</p>' + (e.price ? '<p class="epr">' + esc(e.price) + '</p>' : "") + '</div></button>').join("")
+    '<div class="eb"><h3>' + esc(e.title) + '</h3><p>' + esc(dayTx(e.date)) + esc(tm(e)) + '</p>' + (e.price ? '<p class="epr">' + esc(e.price) + '</p>' : "") + '</div></button>').join("")
     : '<p class="empty">Скоро здесь появятся новые события.</p>';
   $("evPast").innerHTML = S.past.length ? "Прошли недавно: " + S.past.slice(0, 3).map(e => esc(e.title) + " (" + esc(dayTx(e.date)) + ")").join(", ") +
     (S.albums.length ? ' — <a href="#photo">фотоотчёты</a>' : "") : "";
@@ -50,7 +52,7 @@ $("evList").addEventListener("click", e => { const b = e.target.closest("[data-e
 function sheetOpen(e){
   const z = zoneOf(e.zone), sh = $("sheet");
   sh.innerHTML = '<div class="sb"><button type="button" class="x" data-x aria-label="Закрыть">×</button>' + poster(e, true) +
-    '<div class="sc"><h3 id="shTitle">' + esc(e.title) + '</h3><p class="meta">' + esc(WDF[dd(e.date).getUTCDay()]) + ", " + esc(dayTx(e.date)) + ", " + esc(e.time) +
+    '<div class="sc"><h3 id="shTitle">' + esc(e.title) + '</h3><p class="meta">' + esc(WDF[dd(e.date).getUTCDay()]) + ", " + esc(dayTx(e.date)) + esc(tm(e)) +
     '<br>' + esc(z.name || "Все залы") + (e.price ? ", " + esc(e.price) : "") + '</p><p>' + esc(e.text || "") + '</p>' +
     '<div class="acts"><button type="button" class="btn" data-bk="' + esc(e.id) + '">Забронировать стол</button>' +
     '<button type="button" class="btn ghost" data-ics="' + esc(e.id) + '">В календарь</button><button type="button" class="btn ghost" data-share="' + esc(e.id) + '">Поделиться</button></div>' +
@@ -72,8 +74,8 @@ function route(){
 window.addEventListener("hashchange", route);
 /* событие в календарь телефона: файл .ics, время местное */
 function ics(e){
-  const t = (e.time || "20:00").replace(":", ""), d = e.date.replace(/-/g, "");
-  const txt = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Mechty//RU", "BEGIN:VEVENT", "UID:" + e.id + "@mechty", "DTSTART:" + d + "T" + t + "00", "DURATION:PT4H",
+  const t = (e.time || "").replace(":", ""), d = e.date.replace(/-/g, "");
+  const txt = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Mechty//RU", "BEGIN:VEVENT", "UID:" + e.id + "@mechty", ...(t ? ["DTSTART:" + d + "T" + t + "00", "DURATION:PT4H"] : ["DTSTART;VALUE=DATE:" + d]),
     "SUMMARY:" + e.title.replace(/[,;\n]/g, " "), "LOCATION:" + (S.info.name + ", " + S.info.address).replace(/[,;\n]/g, " "), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   const a = document.createElement("a");
   a.href = "data:text/calendar;charset=utf-8," + encodeURIComponent(txt); a.download = "mechty-" + e.date + ".ics";
@@ -160,7 +162,8 @@ const nameIn = n => n === n.toUpperCase() ? n : n.toLowerCase();                
 function bookTimes(z, iso){
   const a = hmin(z.from || "14:00"), b = hmin(z.to || "23:00"), out = [];
   let min = -1;
-  if (iso === S.today){ const n = new Date(); min = n.getHours() * 60 + n.getMinutes() + 30; }   // сегодня — не раньше чем через полчаса
+  const u = ufa();
+  if (iso === u.iso) min = u.mins + 30;                                          // сегодня — не раньше чем через 30 минут (19:59 → с 20:30)
   for (let m = a; m <= b; m += 15) if (m >= min) out.push(mmhh(m));            // шаг 15 минут: 19:00, 19:15, 19:30, 19:45
   return out;
 }
@@ -370,7 +373,7 @@ function heroVideo(){
   v.play().catch(() => {});
 }
 
-const evAt = e => new Date(e.date + "T" + (e.time || "20:00") + ":00");
+const evAt = e => new Date(e.date + "T" + (e.time || "23:59") + ":00");     // без времени — событие идёт весь день
 /* «через 40 мин», «через 2 ч 10 мин», «сегодня в 22:00», «завтра в 22:00»; дальше — null (покажем дату) */
 function relTx(t, now){
   const m = Math.round((t - now) / 60000);
@@ -382,7 +385,7 @@ function relTx(t, now){
 }
 /* ── живая строка на первом экране: где сегодня принимаем бронь, ближайшее событие; ночью (после 20:00) — неон ── */
 function live(){
-  const now = new Date(), wd = now.getDay(), mins = now.getHours() * 60 + now.getMinutes(), parts = [], open = [], later = [];
+  const now = new Date(), u = ufa(), wd = u.wd, mins = u.mins, parts = [], open = [], later = [];
   bookable().forEach(z => {
     if (!daysOf(z.days).includes(wd)) return;
     const a = hmin(z.from), b = hmin(z.to);
@@ -399,10 +402,14 @@ function live(){
   }
   const html = parts.join("");
   if ($("live").innerHTML !== html) $("live").innerHTML = html;
-  const n = S.events.find(e => evAt(e) > now) || S.events[0], rt = n && relTx(evAt(n), now);       // ближайшее событие — со временем «через …»
+  const n = S.events.find(e => evAt(e) > now) || S.events[0];
+  let rt = n && n.time ? relTx(evAt(n), now) : null;
+  if (n && !n.time){ const k = Math.round((dd(n.date) - dd(ufa().iso)) / 864e5); rt = k === 0 ? "сегодня" : k === 1 ? "завтра" : null; }       // ближайшее событие — со временем «через …»
   const nx = n ? '<a class="nextev" href="#event-' + esc(n.id) + '"><em>Ближайшее</em> ' + esc(rt || wdOf(n.date) + ", " + dayTx(n.date)) + " — " + esc(n.title) + "</a>" : "";
   if ($("hNext").innerHTML !== nx) $("hNext").innerHTML = nx;
-  const h = now.getHours(), night = h >= 20 || h < 6;
+  const h = u.h, night = h >= 20 || h < 6;
+  const z = bkZone && bookable().find(x => x.id === bkZone);                     // открытая форма брони: время «сегодня» сдвигается само
+  if (z && !$("bkRest").hidden && $("bkDate").value === u.iso) drawTimes(z);
   document.body.classList.toggle("night", night);
   document.querySelector('meta[name="theme-color"]').content = night ? "#120A12" : "#0E1014";
 }
@@ -423,7 +430,7 @@ function stDraw(){
   box.innerHTML = '<div class="sbars">' + S.events.slice(0, 10).map((x, i) => '<span><i class="' + (i < stI ? "full" : i === stI ? "run" : "") + '"></i></span>').join("") + '</div>' +
     '<button type="button" class="sx" data-sx aria-label="Закрыть">×</button>' +
     '<div class="sbg">' + (e.img ? '<img src="' + esc(e.img) + '" alt="">' : '<span class="sbig" aria-hidden="true">' + dd(e.date).getUTCDate() + '</span>') + '</div>' +
-    '<div class="sbody"><p class="szone">' + esc(z.name || "") + '</p><p class="sdate">' + esc(WDF[dd(e.date).getUTCDay()]) + ', ' + esc(dayTx(e.date)) + ', ' + esc(e.time) + '</p>' +
+    '<div class="sbody"><p class="szone">' + esc(z.name || "") + '</p><p class="sdate">' + esc(WDF[dd(e.date).getUTCDay()]) + ', ' + esc(dayTx(e.date)) + esc(tm(e)) + '</p>' +
     '<h3>' + esc(e.title) + '</h3><p class="stx">' + esc(e.text || "") + '</p><p class="spr">' + esc(e.price || "") + '</p>' +
     '<div class="sacts"><button type="button" class="btn" data-sbk>Забронировать стол</button><button type="button" class="btn ghost" data-smore>Подробнее</button></div></div>' +
     '<button type="button" class="stap prev" data-sp aria-label="Предыдущее"></button><button type="button" class="stap next" data-sn aria-label="Следующее"></button>';

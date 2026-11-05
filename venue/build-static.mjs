@@ -23,7 +23,7 @@ const put = (rel, data) => { fs.mkdirSync(path.dirname(path.join(OUT, rel)), { r
 const copy = (from, rel) => put(rel, fs.readFileSync(from));
 
 /* страницы: модуль онлайн-примера — перед скриптом страницы; не для поисковиков; лента — про хранение в браузере */
-const RIBBON = '<div class="demo">Онлайн-пример: <b>заявки и правки сохраняются только в этом браузере</b> — у каждого свои. Даты, цены, адрес и телефон — для примера.</div>';
+const RIBBON = '<div class="demo">Онлайн-пример: <b>заявки и правки сохраняются только в этом браузере</b> — у каждого свои.</div>';
 for (const f of ["index.html", "admin.html", "privacy.html"]){
   let s = fs.readFileSync(path.join(HERE, f), "utf8");
   if (!/<meta name="robots"/.test(s)) s = s.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<meta name="robots" content="noindex, nofollow">');
