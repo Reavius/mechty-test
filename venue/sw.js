@@ -1,7 +1,7 @@
 /* Сайт заведения «Мечты» — установка на телефон и работа без сети.
-   Страницы, скрипты, стили — сначала из сети (всегда свежие), без сети — сохранённая копия.
+   Страницы, скрипты, стили — сначала из сети (всегда свежие, мимо кэша браузера), без сети — сохранённая копия.
    Фото и иконки — из сохранённых. Заявки (/api/) и видео не сохраняются. */
-const CACHE = "mechty-venue-v3";
+const CACHE = "mechty-venue-v4";
 const CORE = ["./", "index.html", "venue.css", "site.js", "vendor/gsap.min.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", e => {
@@ -18,7 +18,7 @@ self.addEventListener("fetch", e => {
     e.respondWith(caches.match(r).then(hit => hit || fetch(r).then(res => { if (res.ok){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(r, cp)); } return res; })));
     return;
   }
-  e.respondWith(fetch(r).then(res => {
+  e.respondWith(fetch(r.url, {cache: "no-cache", credentials: "same-origin"}).then(res => {          // всегда сверяемся с сервером — без старых копий
     if (res.ok && res.type === "basic"){ const cp = res.clone(); caches.open(CACHE).then(c => c.put(r, cp)); }
     return res;
   }).catch(() => caches.match(r, {ignoreSearch: true}).then(hit => hit || (r.mode === "navigate" ? caches.match("index.html") : Response.error()))));

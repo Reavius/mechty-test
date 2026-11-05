@@ -174,14 +174,16 @@ function bookDates(z){
 }
 function drawBook(){
   const zs = bookable(), z = zs.find(x => x.id === bkZone);
-  $("bkZones").innerHTML = zs.map(x => '<button type="button" class="chip big" data-z="' + esc(x.id) + '" aria-pressed="' + (x.id === bkZone) + '">' + esc(x.name) + '</button>').join("");
+  $("bkZones").innerHTML = zs.map(x => '<button type="button" data-z="' + esc(x.id) + '" aria-pressed="' + (x.id === bkZone) + '">' + esc(x.name) + '</button>').join("");
+  $("bkZones").style.setProperty("--n", zs.length);
   const off = S.zones.filter(x => x.nobook).map(x => "«" + x.name + "»");
   if (!z){
     $("bkRest").hidden = true;
-    $("bkNote").innerHTML = "У каждой зоны свои дни и часы брони." + (off.length ? " " + esc(off.join(", ")) + " не бронируется — туда приходите без брони." : "");
+    $("bkNote").innerHTML = '<span>У каждой зоны свои дни и часы брони.' + (off.length ? " " + esc(off.join(", ")) + " не бронируется — туда приходите без брони." : "") + '</span>';
     return;
   }
-  $("bkNote").innerHTML = '<b>' + esc(ruleTx(z)) + '.</b>' + (z.deposit ? '<span class="dep">Зона с депозитом — сумму подскажет администратор.</span>' : "") + (z.text ? '<span>' + esc(z.text) + '</span>' : "");
+  $("bkNote").innerHTML = '<b>' + esc(ruleTx(z)) + '</b>' + (z.text ? '<span>' + esc(z.text) + '</span>' : "") +
+    (z.deposit ? '<span class="dep">Зона с депозитом — сумму подскажет администратор.</span>' : "");
   const ds = bookDates(z), want = bkWant && ds.includes(bkWant) ? bkWant : "";
   if (want) bkWant = "";
   if (want || !ds.includes($("bkDate").value)) $("bkDate").value = want || ds[0] || "";

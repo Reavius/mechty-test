@@ -74,23 +74,27 @@ try { if (!sessionStorage.getItem("mv-intro") && !matchMedia("(prefers-reduced-m
   <section class="sec wrap" id="book">
     <div class="sech"><div><h2>Забронировать стол</h2><p class="sub">Сначала выберите зону — покажем дни и время, когда её можно забронировать.</p></div></div>
     <div class="card" id="bookBox">
-      <form class="form" id="bookF" novalidate>
-        <span class="fl" id="bkZl">Зона</span><div class="chips" id="bkZones" role="group" aria-labelledby="bkZl"></div>
-        <p class="znote" id="bkNote" role="status"></p>
+      <form class="form bform" id="bookF" novalidate>
+        <p class="bstep" id="bkZl"><span class="bn">1</span>Зона</p>
+        <div class="seg" id="bkZones" role="group" aria-labelledby="bkZl"></div>
+        <div class="zinfo" id="bkNote" role="status"></div>
         <div id="bkRest" hidden>
-          <span class="fl" id="bkDl">Дата</span><div class="cal" id="bkCal" role="group" aria-labelledby="bkDl"></div><input type="hidden" name="date" id="bkDate">
-          <div class="row">
+          <p class="bstep" id="bkDl"><span class="bn">2</span>Дата</p>
+          <div class="cal" id="bkCal" role="group" aria-labelledby="bkDl"></div><input type="hidden" name="date" id="bkDate">
+          <p class="bstep"><span class="bn">3</span>Время и гости</p>
+          <div class="bgrid">
             <div><label class="fl" for="bkTime">Время</label><select class="in" id="bkTime" name="time"></select></div>
-            <div><span class="fl">Гостей</span><div class="stepper"><button type="button" data-step="-1" aria-label="Меньше">−</button><input class="in" id="bkGuests" name="guests" inputmode="numeric" value="2" aria-label="Гостей"><button type="button" data-step="1" aria-label="Больше">+</button></div></div>
+            <div><span class="fl" id="bkGl">Гостей</span><div class="stepper" role="group" aria-labelledby="bkGl"><button type="button" data-step="-1" aria-label="Меньше гостей">−</button><input class="in" id="bkGuests" name="guests" inputmode="numeric" value="2" aria-label="Гостей"><button type="button" data-step="1" aria-label="Больше гостей">+</button></div></div>
           </div>
-          <div class="row">
+          <p class="bstep"><span class="bn">4</span>Ваши данные</p>
+          <div class="bgrid">
             <div><label class="fl" for="bkName">Имя</label><input class="in" id="bkName" name="name" autocomplete="name" required></div>
             <div><label class="fl" for="bkPhone">Телефон</label><input class="in" id="bkPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7" required></div>
           </div>
           <label class="fl" for="bkCom">Пожелания</label><textarea class="in" id="bkCom" name="comment" placeholder="Например: день рождения, детский стул, нужен торт"></textarea>
           <input type="hidden" name="event" id="bkEvent">
           <label class="agree"><input type="checkbox" name="consent"> <span>Согласен на обработку персональных данных по <a href="privacy.html" target="_blank">политике конфиденциальности</a></span></label>
-          <button class="btn" type="submit">Забронировать</button>
+          <button class="btn wide" type="submit">Забронировать</button>
           <p class="fmsg" role="status"></p>
         </div>
       </form>
@@ -181,18 +185,22 @@ try { if (!sessionStorage.getItem("mv-intro") && !matchMedia("(prefers-reduced-m
     <div class="sech"><div><h2>Как нас найти</h2></div></div>
     <div class="card place">
       <div class="pmap">
-        <svg viewBox="0 0 400 260" role="img" aria-label="Схема: «Мечты» — на улице Мустая Карима, между улицей Ленина и Хакимовской мечетью, севернее Коммунистической улицы">
-          <defs><radialGradient id="pmBg" cx="43%" cy="30%" r="80%"><stop offset="0" stop-color="#1A1F27"/><stop offset="1" stop-color="#0F1216"/></radialGradient>
-            <radialGradient id="pmGlow"><stop offset="0" stop-color="#C9A24B" stop-opacity=".45"/><stop offset="1" stop-color="#C9A24B" stop-opacity="0"/></radialGradient></defs>
-          <rect width="400" height="260" fill="url(#pmBg)"/>
-          <g class="pm-st"><path d="M0 18H400"/><path d="M118 0V260"/><path d="M356 0V260"/><path d="M0 226L400 210"/></g>
-          <g class="pm-tx"><text transform="translate(111 200) rotate(-90)">ул. Мустая Карима</text><text transform="translate(349 120) rotate(-90)">ул. Ленина</text>
-            <text transform="translate(236 212) rotate(-2.3)" text-anchor="middle">Коммунистическая ул.</text></g>
-          <g class="pm-lm"><circle cx="58" cy="74" r="3"/><text x="58" y="94" text-anchor="middle">Хакимовская</text><text x="58" y="108" text-anchor="middle">мечеть</text></g>
-          <circle cx="176" cy="72" r="56" fill="url(#pmGlow)"/>
-          <circle class="pm-ring" cx="176" cy="72" r="12"/>
-          <circle class="pm-dot" cx="176" cy="72" r="5.5"/>
-          <text class="pm-name" x="196" y="72">Мечты</text><text class="pm-floor" x="197" y="90">2 этаж</text>
+        <svg viewBox="0 0 444 448" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Схема: «Мечты» — улица Мустая Карима, 6, корпус 1, 2 этаж; рядом Хакимовская мечеть, Арт-квадрат, Be Fine и Солнышко, между улицей Ленина и Коммунистической улицей">
+          <defs><radialGradient id="pmBg" cx="43%" cy="40%" r="75%"><stop offset="0" stop-color="#171C23"/><stop offset="1" stop-color="#0E1115"/></radialGradient>
+            <radialGradient id="pmGlow"><stop offset="0" stop-color="#C9A24B" stop-opacity=".42"/><stop offset="1" stop-color="#C9A24B" stop-opacity="0"/></radialGradient></defs>
+          <rect width="444" height="448" fill="url(#pmBg)"/>
+          <g class="pm-b"><rect x="150" y="68" width="55" height="57" rx="3"/><rect x="212" y="70" width="88" height="80" rx="3"/><rect x="306" y="68" width="82" height="67" rx="3"/><rect x="240" y="160" width="90" height="70" rx="3"/><rect x="338" y="150" width="42" height="75" rx="3"/><rect x="146" y="222" width="79" height="108" rx="3"/><rect x="232" y="240" width="90" height="90" rx="3"/><rect x="330" y="238" width="42" height="92" rx="3"/><rect x="140" y="338" width="95" height="52" rx="3"/><rect x="245" y="340" width="110" height="62" rx="3"/><rect x="18" y="70" width="90" height="80" rx="3"/><rect x="18" y="160" width="88" height="90" rx="3"/><rect x="18" y="262" width="86" height="73" rx="3"/><rect x="18" y="345" width="82" height="26" rx="3"/><rect x="410" y="60" width="40" height="150" rx="3"/><rect x="400" y="222" width="50" height="118" rx="3"/><rect x="0" y="410" width="150" height="40" rx="3"/><rect x="150" y="0" width="140" height="46" rx="3"/><rect x="300" y="0" width="105" height="46" rx="3"/><rect x="175" y="436" width="165" height="14" rx="3"/></g>
+          <rect class="pm-here" x="148" y="150" width="84" height="62" rx="4"/>
+          <g class="pm-st2"><path d="M128 56H412"/></g>
+          <g class="pm-st"><path d="M138 -5L116 453" stroke-width="18"/><path d="M418 -5L364 453" stroke-width="22"/><path d="M-5 370L449 455" stroke-width="20"/></g>
+          <g class="pm-tx"><text transform="translate(125 300) rotate(-87.2)" text-anchor="middle" dominant-baseline="middle">ул. Мустая Карима</text>
+            <text transform="translate(389 245) rotate(-83.1)" text-anchor="middle" dominant-baseline="middle">ул. Ленина</text>
+            <text transform="translate(236 413) rotate(10.6)" text-anchor="middle" dominant-baseline="middle">Коммунистическая ул.</text></g>
+          <g class="pm-lm"><circle cx="62" cy="98" r="3"/><text x="62" y="115" text-anchor="middle">Хакимовская</text><text x="62" y="128" text-anchor="middle">мечеть</text><circle cx="198" cy="38" r="3"/><text x="205" y="42">Арт-квадрат</text><circle cx="178" cy="98" r="3"/><text x="185" y="102">Рисо</text><circle cx="262" cy="124" r="3"/><text x="269" y="128">Be Fine</text><circle cx="322" cy="100" r="3"/><text x="329" y="104">Кшиштоф</text><circle cx="246" cy="262" r="3"/><text x="253" y="266">Солнышко</text><circle cx="348" cy="280" r="3"/><text x="355" y="284">МВД</text><circle cx="72" cy="312" r="3"/><text x="79" y="316">Дустар</text><circle cx="92" cy="374" r="3"/><text x="85" y="378" text-anchor="end">Rostics</text></g>
+          <circle cx="190" cy="186" r="62" fill="url(#pmGlow)"/>
+          <circle class="pm-ring" cx="190" cy="186" r="12"/>
+          <circle class="pm-dot" cx="190" cy="186" r="6"/>
+          <g class="pm-card"><rect x="204" y="164" width="92" height="42" rx="8"/><text class="pm-name" x="213" y="184">Мечты</text><text class="pm-floor" x="214" y="199">2 этаж</text></g>
         </svg>
       </div>
       <div class="pinfo">

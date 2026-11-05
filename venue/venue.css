@@ -449,3 +449,43 @@ button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
 .psoc a:hover{color:var(--fg);border-color:var(--accent)}
 .pnote{margin:14px 0 0;font-size:12.5px;color:#6E727A}
 @media (prefers-reduced-motion:reduce){.pm-ring{animation:none;opacity:.6}}
+
+/* ── панель брони: шаги 1–4, зона — переключателем на всю ширину ── */
+#bookBox{max-width:680px}
+.bform .bstep{display:flex;align-items:center;gap:10px;margin:26px 0 12px;font-weight:700;font-size:15.5px;color:var(--fg)}
+.bform .bstep:first-child{margin-top:0}
+.bn{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;background:rgba(201,162,75,.16);color:var(--accent);font-variant-numeric:lining-nums}
+.seg{display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:4px;padding:4px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
+.seg button{min-height:46px;padding:10px 6px;border:0;border-radius:10px;background:transparent;color:#B9B7B1;font-weight:700;font-size:15px;cursor:pointer;transition:background .15s,color .15s}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#16130B}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zinfo{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid var(--line);font-size:14px;line-height:1.5;color:#A9ADB4;display:flex;flex-direction:column;gap:3px}
+.zinfo b{color:var(--fg);font-weight:600}
+.zinfo .dep{color:var(--flag);font-weight:600}
+.bform .cal{max-width:440px;padding:0;border:0;background:none}
+.bform .calh{margin-bottom:8px}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bgrid .fl{margin-top:0}
+@media (max-width:420px){.bgrid{grid-template-columns:1fr}}
+.bform .stepper{display:grid;grid-template-columns:46px 1fr 46px;gap:8px}
+.bform .stepper .in{min-width:0}
+.bform .stepper button{width:auto;color:var(--fg)}
+.bform .agree{margin-top:20px}
+.btn.wide{width:100%;padding:15px 20px;font-size:16px;margin-top:6px}
+
+/* ── подробная схема «Как нас найти» (по карте): кварталы, улицы, ориентиры ── */
+.pmap{max-height:470px;overflow:hidden}
+.pm-b rect{fill:#1A1F27;stroke:#20262F;stroke-width:1}
+.pm-here{fill:rgba(201,162,75,.13);stroke:rgba(201,162,75,.6);stroke-width:1.2}
+.pm-st2 path{fill:none;stroke:#222831;stroke-width:9;stroke-linecap:round}
+.pm-st path{fill:none;stroke:#2B323C;stroke-linecap:butt}
+.pm-tx text{fill:#8E939C;font:600 11px var(--sans);letter-spacing:.02em}
+.pm-lm circle{fill:#6E737C}
+.pm-lm text{fill:#A3A7AE;font:500 11px var(--sans)}
+.pm-card rect{fill:rgba(14,16,20,.82);stroke:rgba(201,162,75,.4);stroke-width:1}
+.pm-card .pm-name{font-size:20px}
+.bform #bkRest > .bstep:first-child{margin-top:26px}
+.pmap{max-height:none}
+.pmap svg{height:auto;min-height:0;aspect-ratio:444/448}
+@media (min-width:820px){.place{grid-template-columns:1fr 1fr;align-items:center}}

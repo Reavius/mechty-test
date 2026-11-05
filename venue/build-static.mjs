@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 import { readBar } from "./barfile.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.join(HERE, "..");
@@ -45,6 +46,14 @@ copy(path.join(ROOT, "vendor", "qrcode.js"), "vendor/qrcode.js");
 copy(path.join(ROOT, "vendor", "gsap.min.js"), "vendor/gsap.min.js");
 put(".nojekyll", "");                                                           // GitHub Pages: отдать файлы как есть
 put("_headers", "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: same-origin\n  X-Robots-Tag: noindex\n/sw.js\n  Cache-Control: no-cache\n");
+/* метка версии у своих скриптов и стилей: телефон с прежней версией в кэше сразу берёт новые файлы, а не через 10 минут
+   (столько GitHub Pages разрешает браузеру хранить файлы) */
+const VER = crypto.createHash("sha1").update(["site.js", "venue.css", "local.js", "core.js", "seed.js", "bar-data.js", "admin.js"].map(f => fs.readFileSync(path.join(OUT, f))).join("")).digest("hex").slice(0, 8);
+for (const f of ["index.html", "admin.html", "privacy.html"]){
+  const s = fs.readFileSync(path.join(OUT, f), "utf8").replace(/(src|href)="((?:site|admin|local)\.js|venue\.css|vendor\/(?:gsap\.min|qrcode)\.js)"/g, (m, a, u) => a + '="' + u + "?v=" + VER + '"');
+  put(f, s);
+}
+put("local.js", fs.readFileSync(path.join(OUT, "local.js"), "utf8").replace(/from "\.\/(core|seed|bar-data)\.js"/g, (m, f) => 'from "./' + f + ".js?v=" + VER + '"'));
 const n = (function count(d){ return fs.readdirSync(d, { withFileTypes: true }).filter(e => e.name !== ".git").reduce((a, e) => a + (e.isDirectory() ? count(path.join(d, e.name)) : 1), 0); })(OUT);
 console.log("Онлайн-пример собран: " + OUT + " (" + n + " файлов). " + (fs.existsSync(path.join(OUT, ".git"))
   ? "Это репозиторий — закоммитьте и отправьте: GitHub Pages обновит сайт сам."
