@@ -9,7 +9,7 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{scroll-behavior:smooth;scroll-padding-top:72px}
+html{scroll-behavior:smooth;scroll-padding-top:104px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:var(--accent)}
@@ -527,3 +527,17 @@ button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
 /* шторка события: крестик поверх плаката, плакат — на всю ширину */
 .sheet .sb{position:relative}
 .sheet .x{position:absolute;top:10px;right:10px;margin:0;float:none}
+
+/* ── демо-версия: полоса сверху висит всегда, окно при каждом заходе ── */
+.demo.dsite{position:sticky;top:0;z-index:32;height:32px;line-height:32px;padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;background:#3A2A12;color:#F2C99A;border-bottom:1px solid #5A4220}
+.demo.dsite b{color:#FFE2B3}
+.dsite ~ .vtop{top:32px}
+.dmodal{position:fixed;inset:0;z-index:95;display:grid;place-items:center;padding:20px;background:rgba(5,6,8,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.dmb{width:min(440px,100%);padding:26px 24px 22px;border-radius:20px;background:var(--surface);border:1px solid #3A3222;box-shadow:0 30px 80px rgba(0,0,0,.5);text-align:center}
+.dml{display:block;width:140px;height:auto;margin:0 auto 14px;fill:#E8913C}
+.dmb h2{margin:0 0 10px;font-family:var(--display);font-weight:600;font-size:32px;line-height:1.05}
+.dmb p{margin:0 0 12px;color:#B9B7B1;font-size:15px}
+.dmb .dmp{color:var(--fg)}
+.dmb .dmp a{color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap}
+.dmb .btn{margin-top:6px}
+@media (max-width:380px){.dsite .dmore{display:none}}

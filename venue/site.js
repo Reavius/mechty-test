@@ -551,6 +551,26 @@ function intro(then){
   ov.addEventListener("click", () => tl.progress(1), {once: true});                // нажали — сразу к сайту
 }
 
+/* ── окно «Это демо-версия сайта» — при каждом заходе на сайт, закрывается кнопкой «Ознакомлен» ── */
+function demoNote(then){
+  const m = $("dmodal"), ok = $("dmOk"), tel = $("dmTel"), ret = document.activeElement;
+  tel.textContent = S.info.phone; tel.href = "tel:" + S.info.phone.replace(/[^\d+]/g, "");
+  m.hidden = false; document.body.style.overflow = "hidden";
+  if (window.gsap && !RM()) gsap.from(m.querySelector(".dmb"), {y: 24, opacity: 0, duration: .45, ease: "power2.out"});
+  ok.focus({preventScroll: true});
+  const keys = e => {                                                            // фокус — только внутри окна
+    if (e.key !== "Tab") return;
+    const f = [tel, ok], i = f.indexOf(document.activeElement);
+    e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  };
+  m.addEventListener("keydown", keys);
+  ok.addEventListener("click", () => {
+    m.removeEventListener("keydown", keys); m.hidden = true; document.body.style.overflow = "";
+    if (ret && ret.focus && ret !== document.body) ret.focus({preventScroll: true});
+    then();
+  }, {once: true});
+}
+
 /* ── неон названия на первом экране зажигается, как вывеска (без «уменьшить движение») ── */
 function neonOn(){
   const t = $("hName");
@@ -569,5 +589,5 @@ function neonOn(){
   $("bqDate").min = S.today;
   drawInfo(); drawEvents(); drawBook(); drawZones(); drawBanquet(); drawMenu(); drawPromoNews(); drawAlbums(); drawStories(); drawQuiz();
   live(); setInterval(live, 30000);
-  heroVideo(); intro(neonOn); route();
+  heroVideo(); intro(() => demoNote(neonOn)); route();
 })();

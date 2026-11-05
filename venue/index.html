@@ -25,7 +25,7 @@ try { if (!sessionStorage.getItem("mv-intro") && !matchMedia("(prefers-reduced-m
     <rect class="vi-shine" x="-160" y="-20" width="130" height="320" fill="url(#viShine)" clip-path="url(#viClip)" transform="skewX(-20)"/></svg>
   <p class="vi-word">кафе, бар, вечеринки</p>
 </div>
-<div class="demo">Пример сайта: <b>всё меняется в админке без программиста</b>.</div>
+<div class="demo dsite"><b>Демо-версия сайта</b><span class="dmore">: бронь и заявки пока не работают</span></div>
 <header class="vtop">
   <div class="wrap vtop-in">
     <a class="logo" href="#top" aria-label="«Мечты» — наверх"><svg viewBox="0 0 746 275" aria-hidden="true"><use href="#mlogo"/></svg></a>
@@ -217,6 +217,15 @@ try { if (!sessionStorage.getItem("mv-intro") && !matchMedia("(prefers-reduced-m
   </div>
 </footer>
 
+<div class="dmodal" id="dmodal" hidden role="dialog" aria-modal="true" aria-labelledby="dmT" aria-describedby="dmX">
+  <div class="dmb">
+    <svg class="dml" viewBox="0 0 746 275" aria-hidden="true"><use href="#mlogo"/></svg>
+    <h2 id="dmT">Это демо-версия сайта</h2>
+    <p id="dmX">Сайт пока показывает, как всё будет выглядеть. Функционал нерабочий: бронь стола, заявки на банкеты и отклики никуда не отправляются.</p>
+    <p class="dmp">Чтобы забронировать стол, позвоните: <a id="dmTel" href="#"></a></p>
+    <button type="button" class="btn wide" id="dmOk">Ознакомлен</button>
+  </div>
+</div>
 <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="shTitle"></div>
 <div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Фото"></div>
 <div class="story" id="story" hidden role="dialog" aria-modal="true" aria-label="Сторис"></div>

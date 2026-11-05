@@ -23,11 +23,12 @@ const put = (rel, data) => { fs.mkdirSync(path.dirname(path.join(OUT, rel)), { r
 const copy = (from, rel) => put(rel, fs.readFileSync(from));
 
 /* страницы: модуль онлайн-примера — перед скриптом страницы; не для поисковиков; лента — про хранение в браузере */
-const RIBBON = '<div class="demo">Онлайн-пример: <b>заявки и правки сохраняются только в этом браузере</b> — у каждого свои.</div>';
+const RIBBON = f => f === "index.html" ? '<div class="demo dsite"><b>Демо-версия сайта</b><span class="dmore">: бронь и заявки пока не работают</span></div>'
+  : '<div class="demo">Онлайн-пример: <b>заявки и правки сохраняются только в этом браузере</b> — у каждого свои.</div>';
 for (const f of ["index.html", "admin.html", "privacy.html"]){
   let s = fs.readFileSync(path.join(HERE, f), "utf8");
   if (!/<meta name="robots"/.test(s)) s = s.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<meta name="robots" content="noindex, nofollow">');
-  if (f !== "privacy.html") s = s.replace(/<div class="demo[^"]*">[\s\S]*?<\/div>/, RIBBON);
+  if (f !== "privacy.html") s = s.replace(/<div class="demo[^"]*">[\s\S]*?<\/div>/, RIBBON(f));
   const at = s.search(/<script src="(site|admin)\.js" defer><\/script>|<script src="vendor\/qrcode\.js"><\/script>/);
   if (f !== "privacy.html"){
     if (at < 0) throw new Error("Не нашёл, куда подключить онлайн-пример: " + f);
