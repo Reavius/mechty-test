@@ -541,3 +541,8 @@ button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
 .dmb .dmp a{color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap}
 .dmb .btn{margin-top:6px}
 @media (max-width:380px){.dsite .dmore{display:none}}
+
+/* ── водяной знак «ДЕМО» по всему сайту — против копирования демо-версии; клики проходят насквозь ── */
+.wm{position:fixed;inset:0;z-index:90;pointer-events:none;user-select:none;-webkit-user-select:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150' viewBox='0 0 240 150'%3E%3Cg fill='%23fff' font-family='Manrope,Arial,sans-serif' font-size='26' font-weight='800' letter-spacing='3'%3E%3Ctext x='18' y='52' transform='rotate%28-22 70 45%29'%3E%D0%94%D0%95%D0%9C%D0%9E%3C/text%3E%3Ctext x='138' y='127' transform='rotate%28-22 190 120%29'%3E%D0%94%D0%95%D0%9C%D0%9E%3C/text%3E%3C/g%3E%3C/svg%3E");background-size:240px 150px;opacity:.07}
+@media print{.wm{position:fixed;opacity:.15;filter:invert(1)}}
