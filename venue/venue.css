@@ -489,3 +489,34 @@ button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
 .pmap{max-height:none}
 .pmap svg{height:auto;min-height:0;aspect-ratio:444/448}
 @media (min-width:820px){.place{grid-template-columns:1fr 1fr;align-items:center}}
+
+/* ── шторка разделов: значок слева от названия ── */
+.drawer nav a{justify-content:flex-start;gap:14px}
+.drawer nav a .di{flex:none;width:22px;height:22px;fill:none;stroke:var(--accent);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.drawer nav a:hover .di{stroke:var(--accent-2)}
+
+/* ── схема по карте заведения (1179 × 1230, север сверху): подписи крупнее на телефоне, мельче на компьютере ── */
+.pmap svg{aspect-ratio:1179/1230}
+.pmap .pm-b rect{fill:#1A1F27;stroke:#232A33;stroke-width:2}
+.pmap .pm-pl rect{fill:#151A20;stroke:#232A33;stroke-width:2;stroke-dasharray:10 8}
+.pmap .pm-gr rect{fill:#13221A}
+.pmap .pm-here{fill:rgba(201,162,75,.14);stroke:rgba(201,162,75,.65);stroke-width:3}
+.pmap .pm-dr path{fill:none;stroke:#1F252D;stroke-width:16;stroke-linecap:round;stroke-linejoin:round}
+.pmap .pm-st path{fill:none;stroke:#2B323C;stroke-linecap:butt}
+.pmap .pm-zb path{fill:none;stroke:#3A414C;stroke-width:16;stroke-dasharray:5 5}
+.pmap .pm-tx text{fill:#8E939C;font:600 40px var(--sans);letter-spacing:.02em}
+.pmap .pm-hn text{fill:#525862;font:600 36px var(--sans)}
+.pmap .pm-lm circle{fill:#6E737C}
+.pmap .pm-lm .bus{fill:none;stroke:#6E737C;stroke-width:3}
+.pmap .pm-lm text{fill:#A3A7AE;font:500 33px var(--sans)}
+.pmap .pm-ring{stroke-width:4}
+.pmap .pm-card rect{fill:rgba(14,16,20,.86);stroke:rgba(201,162,75,.45);stroke-width:2}
+.pmap .pm-card .pm-name{fill:#F4EBD3;font:600 58px var(--display)}
+.pmap .pm-card .pm-floor{fill:#8E9299;font:500 30px var(--sans)}
+.pmap .pm-n circle{fill:rgba(14,16,20,.7);stroke:#3A414C;stroke-width:2}
+.pmap .pm-n path,.pmap .pm-n text{fill:#8E939C}
+.pmap .pm-n text{font:700 20px var(--sans)}
+@media (min-width:820px){
+  .pmap .pm-tx text{font-size:28px}.pmap .pm-hn text{font-size:27px}.pmap .pm-lm text{font-size:28px}
+  .pmap .pm-card .pm-name{font-size:46px}.pmap .pm-card .pm-floor{font-size:25px}
+}

@@ -161,7 +161,7 @@ function bookTimes(z, iso){
   const a = hmin(z.from || "14:00"), b = hmin(z.to || "23:00"), out = [];
   let min = -1;
   if (iso === S.today){ const n = new Date(); min = n.getHours() * 60 + n.getMinutes() + 30; }   // сегодня — не раньше чем через полчаса
-  for (let m = a; m <= b; m += 30) if (m >= min) out.push(mmhh(m));
+  for (let m = a; m <= b; m += 15) if (m >= min) out.push(mmhh(m));            // шаг 15 минут: 19:00, 19:15, 19:30, 19:45
   return out;
 }
 function bookDates(z){
