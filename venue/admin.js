@@ -49,9 +49,10 @@ const newOf = k => (D.inbox[k] || []).filter(r => r.st === "new").length;
 function draw(){
   const app = $("app");
   if (!D){
-    app.innerHTML = '<form class="card login" id="lf"><h1 style="font-family:var(--display);font-size:36px;margin:0 0 6px">Вход</h1><p class="hint">Пароль — в окне, где запущен сервер.</p>' +
-      '<input class="in" type="password" name="pw" autocomplete="current-password" placeholder="Пароль" aria-label="Пароль"><button class="btn" style="margin-top:12px;width:100%">Войти</button><p class="fmsg bad" id="lm"></p></form>';
-    $("lf").onsubmit = async e => { e.preventDefault(); const d = await api("/api/admin/login", {pw: e.target.pw.value}); if (d.error){ $("lm").textContent = d.error; return; } reload(); };
+    app.innerHTML = '<form class="card login" id="lf"><h1 style="font-family:var(--display);font-size:36px;margin:0 0 6px">Вход</h1><p class="hint">Пароль редактора — у управляющего. Пять слов через пробел; регистр не важен.</p>' +
+      '<input class="in" type="password" name="pw" autocomplete="current-password" autocapitalize="none" spellcheck="false" placeholder="Пароль редактора" aria-label="Пароль редактора"><button class="btn" style="margin-top:12px;width:100%">Войти</button><p class="fmsg bad" id="lm"></p></form>';
+    $("lf").onsubmit = async e => { e.preventDefault(); const b = e.target.querySelector("button"); b.disabled = true; $("lm").textContent = "";
+      const d = await api("/api/admin/login", {pw: e.target.pw.value}); b.disabled = false; if (d.error){ $("lm").textContent = d.error; e.target.pw.select(); return; } reload(); };
     return;
   }
   const n = Object.keys(BOX).reduce((a, k) => a + newOf(k), 0);
