@@ -28,10 +28,10 @@ const SOC = {tg: "https://t.me/clubmechti", ig: "https://www.instagram.com/clubm
 const SUI = {
   ru: {back: "Назад", story: "История", taste: "Вкус", about: "О составе", comp: "Состав", abv: "Крепость", vol: "Объём", al: "Аллергены",
     next: "Состав и детали", prev: "История и вкус", qr: "QR-код", qrTitle: "QR-код коктейля", qrHint: "Наведите камеру — откроется эта карточка",
-    dl: "Скачать", close: "Закрыть", tg: "Telegram бара", ig: "Instagram бара", page: "Страница"},
+    dl: "Скачать", close: "Закрыть", tg: "Telegram бара", ig: "Instagram бара", page: "Страница", sndOn: "Включить звук", sndOff: "Выключить звук"},
   en: {back: "Back", story: "Story", taste: "Taste", about: "Composition", comp: "Ingredients", abv: "Strength", vol: "Volume", al: "Allergens",
     next: "Ingredients & details", prev: "Story & taste", qr: "QR code", qrTitle: "Cocktail QR code", qrHint: "Point your camera — this card will open",
-    dl: "Download", close: "Close", tg: "Bar on Telegram", ig: "Bar on Instagram", page: "Page"}
+    dl: "Download", close: "Close", tg: "Bar on Telegram", ig: "Bar on Instagram", page: "Page", sndOn: "Sound on", sndOff: "Sound off"}
 };
 const su = k => SUI[LANG][k];
 const ST_ICON = {
@@ -104,7 +104,10 @@ const STFX = {
    умеет; все — 768×432 и легче прежних в 2,5–4 раза (слабый интернет в баре). Первый кадр — <файл>.jpg */
 const STVID = {pantera: "pantera", pornstar: "pornstar", maitai: "maitai", "c-bosford": "bosford", tropiki: "tropiki", "c-watermelon": "watermelon",
   "c-fiero": "fiero", "c-aperol": "aperol", "c-sarti": "sarti", "c-campari": "campari", negroni: "negroni",
-  sexbeach: "sexbeach", tequila: "tequila", yuzu: "yuzu", mandarin: "mandarin", granat: "granat", vnegroni: "vnegroni"};
+  sexbeach: "sexbeach", tequila: "tequila", yuzu: "yuzu", mandarin: "mandarin", granat: "granat", vnegroni: "vnegroni", ananas: "ananas"};
+/* ролики со звуком: петля только вперёд (конец плавно перетекает в начало), звук включает гость кнопкой —
+   без нажатия браузер звук не даёт. У Петрушки Ананас — сценка с репликами героев. */
+const STVID_SND = {ananas: 1};
 const STVID_SRC = [[".av1.mp4", 'video/mp4; codecs="av01.0.04M.08"'], [".hevc.mp4", 'video/mp4; codecs="hvc1.1.6.L90.B0"'], [".mp4", "video/mp4"]];
 /* телефон просит экономить трафик или сеть 2G — видео не грузим, остаётся первый кадр */
 const stLite = () => { const c = navigator.connection; return !!(c && (c.saveData || /2g$/.test(c.effectiveType || ""))); };
@@ -185,6 +188,17 @@ function stVidPlay(){
   const p = v.play();
   if (p && p.catch) p.catch(() => {});
 }
+/* звук ролика: по умолчанию выключен; включили — видео играет со звуком (даже при «уменьшить движение» — гость сам нажал) */
+const ST_SND = on => '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h3.5L12 5v14l-4.5-4H4z"/>' +
+  (on ? '<path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+      : '<path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>') + '</svg>';
+function stSound(on){
+  const b = $("stSnd"), v = $("stVid");
+  if (!b || !v) return;
+  v.muted = !on; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+  b.innerHTML = ST_SND(on); b.setAttribute("aria-label", su(on ? "sndOff" : "sndOn")); b.title = su(on ? "sndOff" : "sndOn");
+  if (on){ const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+}
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && stFx && stId && !stFx.raf && !stReduce()) stFx.raf = requestAnimationFrame(stFxLoop);
   if (!document.hidden && stId) stVidPlay();
@@ -195,7 +209,8 @@ function stBuild(){
   stEl.className = "story"; stEl.id = "story"; stEl.hidden = true;
   stEl.setAttribute("role", "dialog"); stEl.setAttribute("aria-modal", "true"); stEl.setAttribute("aria-labelledby", "stName");
   stEl.innerHTML = '<div class="stph"><canvas class="stbg" id="stBg" aria-hidden="true"></canvas><div class="stglass" id="stGlass"><img id="stImg" alt="" decoding="async"></div>' +
-    '<video class="stvid" id="stVid" muted playsinline loop preload="none" disablepictureinpicture disableremoteplayback aria-hidden="true" hidden></video></div>' +
+    '<video class="stvid" id="stVid" muted playsinline loop preload="none" disablepictureinpicture disableremoteplayback aria-hidden="true" hidden></video>' +
+    '<button type="button" class="stsnd" id="stSnd" aria-pressed="false" hidden></button></div>' +
     '<div class="stpanel"><button type="button" class="stback" id="stBack">' + ST_ICON.back + '<span></span></button>' +
     '<p class="stkick" id="stKick"></p><h2 id="stName"></h2>' +
     '<div class="stpages" id="stPages"></div>' +
@@ -210,6 +225,7 @@ function stBuild(){
   document.body.appendChild(stDim);
   document.body.appendChild(stEl);
   $("stBack").addEventListener("click", storyBack);
+  $("stSnd").addEventListener("click", () => stSound(!$("stSnd").classList.contains("on")));
   $("stQr").addEventListener("click", stQr);
   $("stNext").addEventListener("click", () => stGo(stPage() ? 0 : 1));
   $("stDots").addEventListener("click", e => { const b = e.target.closest("button[data-pg]"); if (b) stGo(+b.dataset.pg); });
@@ -256,6 +272,7 @@ function stDraw(it){
   $("stGlass").style.aspectRatio = pw ? pw + " / 360" : "";                // рамка ровно по фото — бокал стоит на стойке
   const sv = STVID[it.id] ? "video/" + STVID[it.id] : "", vid = $("stVid");
   $("stBg").hidden = $("stGlass").hidden = !!sv; vid.hidden = !sv;
+  $("stSnd").hidden = !(sv && STVID_SND[it.id] && !stLite()); stSound(false);
   if (sv){                                                                   // видео вместо сцены с пузырьками
     stFxStop(); stFx = null;
     if (vid.dataset.src !== sv){
@@ -311,7 +328,7 @@ function storyOpen(id, from){
 }
 function storyClose(){
   if (!stId || !stEl) return;
-  const from = stFrom, done = () => { stEl.hidden = true; stDim.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; $("stVid").pause(); };
+  const from = stFrom, done = () => { stEl.hidden = true; stDim.hidden = true; document.documentElement.classList.remove("stopen"); stFxStop(); stFx = null; stSound(false); $("stVid").pause(); };
   stId = ""; stFrom = null; stPushed = false;
   if (stQrEl) stQrEl.hidden = true;
   if (!stReduce() && stEl.animate){
