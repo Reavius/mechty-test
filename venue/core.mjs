@@ -1,5 +1,5 @@
 /* Сайт заведения — логика без привязки к месту хранения: одна и та же для сервера (venue/server.mjs, данные в файлах)
-   и для онлайн-примера на Netlify (venue/local.js, данные в браузере). Хранилище, загрузка фото и карта бара —
+   и для онлайн-примера (venue/local.js, данные в браузере). Хранилище, загрузка фото и карта бара —
    снаружи: store.get/set(имя), upload(dataURL) → адрес, bar() → карта бара из барного гида. */
 export class Fail extends Error {}
 
@@ -8,25 +8,25 @@ const webRnd = n => globalThis.crypto.getRandomValues(new Uint8Array(n));
 
 export const COLS = {
   events: ["title", "date", "time", "zone", "price", "text", "img", "hidden"],
-  promos: ["title", "until", "text", "img", "hidden"],
+  promos: ["title", "until", "text", "note", "img", "hidden"],
   news: ["title", "date", "text", "img", "hidden"],
-  albums: ["title", "date", "photos", "hidden"],
-  zones: ["name", "cap", "hours", "text", "feats", "color", "img", "hidden"],
-  packages: ["title", "price", "text", "hidden"],
-  kitchen: ["sec", "name", "desc", "out", "price", "hidden"],
-  vacancies: ["title", "pay", "text", "hidden"]
+  albums: ["title", "date", "by", "url", "img", "photos", "hidden"],
+  zones: ["name", "text", "feats", "days", "from", "to", "deposit", "nobook", "color", "img", "hidden"],
+  packages: ["title", "text", "hidden"],
+  kitchen: ["sec", "name", "desc", "out", "price", "hidden"]
 };
-const INFO = ["name", "kicker", "tagline", "address", "city", "phone", "mapq", "tg", "ig", "guide", "dress", "parking"];
-const BOX_ST = { book: ["new", "ok", "no"], banquet: ["new", "call", "ok", "no"], cert: ["paid", "used"], job: ["new", "call", "no"], sub: ["new"] };
+const INFO = ["name", "kicker", "tagline", "city", "address", "floor", "phone", "mapq", "rating", "tg", "ig", "guide"];
+const BOX_ST = { book: ["new", "ok", "no"], banquet: ["new", "call", "ok", "no"], job: ["new", "call", "no"] };
 const BOXES = Object.keys(BOX_ST);
+export const CONTACT = { call: "звонок", sms: "СМС", tg: "Telegram", wa: "WhatsApp" };
+/* дни брони: «чт, пт, сб, вс» → [4, 5, 6, 0] */
+const WDAY = { "вс": 0, "пн": 1, "вт": 2, "ср": 3, "чт": 4, "пт": 5, "сб": 6 };
+export const daysOf = s => [...new Set(String(s || "").toLowerCase().split(/[^а-яё]+/).map(w => WDAY[w.slice(0, 2)]).filter(n => n != null))];
 
 export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, dataImg = false }){
   let site = store.get("site", null);
-  if (!site){ site = JSON.parse(JSON.stringify(seed)); store.set("site", site); }
-  /* сохранено до появления схем залов и расписания — дополняется из примера */
-  const add = [["plans", site, seed], ["sched", site.info, seed.info]].filter(([k, to, from]) => to && from && from[k] && !to[k]);
-  add.forEach(([k, to, from]) => { to[k] = JSON.parse(JSON.stringify(from[k])); });
-  if (add.length) store.set("site", site);
+  /* нет сохранённого или пример сменился (ver) — начинаем с примера; заявки не трогаем */
+  if (!site || (seed.ver || 0) > (site.ver || 0)){ site = JSON.parse(JSON.stringify(seed)); store.set("site", site); }
   const inbox = store.get("inbox", null) || {};
   for (const k of BOXES) if (!Array.isArray(inbox[k])) inbox[k] = [];
   const saveSite = () => store.set("site", site), saveInbox = () => store.set("inbox", inbox);
@@ -37,10 +37,11 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
   const phone = v => { const s = str(v, 40); if ((s.match(/\d/g) || []).length < 10) throw new Fail("Проверьте телефон — нужно 10–11 цифр."); return s; };
   const day = (v, msg) => { const s = str(v, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || isNaN(Date.parse(s))) throw new Fail(msg || "Выберите дату."); return s; };
   const consent = v => { if (v !== true) throw new Fail("Нужно согласие на обработку персональных данных."); };
-  const today = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);   // день по местному времени (UTC+5) — как в барном гиде
+  const today = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);   // день по местному времени (Уфа, UTC+5)
   const uid = p => p + hex(rnd, 4);
-  const IMG = /^\/?(uploads|photos)\/[\w.-]+$/, DATA_IMG = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+  const IMG = /^\/?(uploads|photos|media)\/[\w.-]+$/, DATA_IMG = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
   const okImg = v => IMG.test(v) || (dataImg && DATA_IMG.test(v) && v.length < 3e6);
+  const hm = s => { const m = /^(\d{2}):(\d{2})$/.exec(s || ""); return m ? +m[1] * 60 + +m[2] : -1; };
 
   /* публичное: скрытое не уходит, события — по дате, прошедшие — отдельно */
   const vis = a => (a || []).filter(x => !x.hidden);
@@ -49,35 +50,29 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
     return { ok: true, info: site.info, zones: vis(site.zones), events: ev.filter(e => e.date >= t), past: ev.filter(e => e.date < t).reverse(),
       promos: vis(site.promos).filter(p => !p.until || p.until >= t), news: vis(site.news).slice().sort((a, b) => b.date.localeCompare(a.date)),
       albums: vis(site.albums).slice().sort((a, b) => b.date.localeCompare(a.date)), packages: vis(site.packages), kitchen: vis(site.kitchen),
-      vacancies: vis(site.vacancies), plans: site.plans || {}, bar: bar(), today: t };
+      bar: bar(), today: t };
   }
-  /* занятые столы зала на дату: брони (кроме отменённых) + в примере — часть столов «занята» для наглядности
-     (одинаково для всех: от даты и номера стола) */
-  const tableOf = (zone, id) => (((site.plans || {})[zone] || {}).tables || []).find(t => t.id === id);
-  function busyTables(zone, date){
-    const out = new Set(inbox.book.filter(r => r.zone === zone && r.date === date && r.table && r.st !== "no").map(r => r.table));
-    if (site.info.demoBusy !== false) for (const t of (((site.plans || {})[zone] || {}).tables || [])){
-      let h = 7; for (const c of date + t.id) h = (h * 31 + c.charCodeAt(0)) % 1000003;
-      if (h % 10 < 3) out.add(t.id);
-    }
-    return [...out];
-  }
-  function busy(b){ return { ok: true, busy: busyTables(str(b.zone, 20), day(b.date)) }; }
 
   /* заявки гостей */
-  const zoneName = id => ((site.zones || []).find(z => z.id === id) || {}).name || "";
+  const zoneOf = id => (site.zones || []).find(z => z.id === id && !z.hidden);
   function addBook(b){
-    const z = str(b.zone, 20), r = { id: uid("b"), at: new Date().toISOString(), st: "new",
-      zone: need(zoneName(z) ? z : "", "Выберите зал."), date: day(b.date), time: str(b.time, 5), guests: Math.round(+b.guests || 0),
-      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), comment: str(b.comment, 500), event: str(b.event, 20), table: str(b.table, 10) };
+    const z = zoneOf(str(b.zone, 20));
+    if (!z) throw new Fail("Выберите зону.");
+    if (z.nobook) throw new Fail("«" + z.name + "» не бронируется — выберите другую зону.");
+    const r = { id: uid("b"), at: new Date().toISOString(), st: "new", zone: z.id, date: day(b.date), time: str(b.time, 5), guests: Math.round(+b.guests || 0),
+      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), comment: str(b.comment, 500), event: str(b.event, 20) };
     if (r.date < today()) throw new Fail("Эта дата уже прошла.");
-    if (r.table && !tableOf(r.zone, r.table)) throw new Fail("Такого стола в этом зале нет — выберите на схеме.");
-    if (r.table && busyTables(r.zone, r.date).includes(r.table)) throw new Fail("Этот стол на эту дату уже заняли — выберите другой.");
-    if (!/^\d{2}:\d{2}$/.test(r.time)) throw new Fail("Выберите время.");
+    const days = daysOf(z.days);
+    if (days.length && !days.includes(new Date(r.date + "T12:00:00Z").getUTCDay())) throw new Fail("«" + z.name + "» бронируется: " + z.days + ". Выберите другой день.");
+    const t = hm(r.time);
+    if (t < 0) throw new Fail("Выберите время.");
+    if ((z.from && t < hm(z.from)) || (z.to && t > hm(z.to))) throw new Fail("Бронь в «" + z.name + "» — с " + z.from + " до " + z.to + ".");
+    const now = new Date(Date.now() + 5 * 3600e3), nowM = now.getUTCHours() * 60 + now.getUTCMinutes();
+    if (r.date === today() && t < nowM + 30) throw new Fail("На сегодня бронь — не раньше чем через 30 минут. Выберите время позже.");
     if (!(r.guests >= 1 && r.guests <= 300)) throw new Fail("Сколько будет гостей?");
     consent(b.consent);
     inbox.book.unshift(r); saveInbox();
-    return { ok: true, id: r.id };
+    return { ok: true, id: r.id, deposit: !!z.deposit };
   }
   function addBanquet(b){
     const r = { id: uid("q"), at: new Date().toISOString(), st: "new", date: day(b.date), guests: Math.round(+b.guests || 0), zone: str(b.zone, 20),
@@ -88,37 +83,20 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
     inbox.banquet.unshift(r); saveInbox();
     return { ok: true, id: r.id };
   }
-  /* сертификат: в примере оплата — заглушка «оплачено»; в рабочей версии здесь — платёжная страница банка (ЮKassa, СБП) */
-  function addCert(b){
-    const sum = Math.round(+b.amount || 0);
-    if (!(sum >= 500 && sum <= 100000)) throw new Fail("Сумма — от 500 до 100 000 ₽.");
-    const code = "M-" + hex(rnd, 3).toUpperCase() + "-" + hex(rnd, 2).toUpperCase();
-    const t = today(), till = new Date(Date.parse(t) + 183 * 864e5).toISOString().slice(0, 10);
-    const r = { id: uid("c"), code, at: new Date().toISOString(), st: "paid", sum, from: str(b.from, 60), to: str(b.to, 60), wish: str(b.wish, 200),
-      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), till };
-    consent(b.consent);
-    inbox.cert.unshift(r); saveInbox();
-    return { ok: true, code };
-  }
-  function certGet(code){
-    const c = inbox.cert.find(x => x.code === code);
-    if (!c) throw new Fail("Сертификат не найден.");
-    return { ok: true, cert: { code: c.code, sum: c.sum, from: c.from, to: c.to, wish: c.wish, till: c.till, used: c.st === "used" },
-      info: { name: site.info.name, address: site.info.address, phone: site.info.phone } };
-  }
-  function addJob(b){
-    const v = str(b.vacancy, 20), r = { id: uid("j"), at: new Date().toISOString(), st: "new", vacancy: ((site.vacancies || []).find(x => x.id === v) || {}).title || "",
-      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), about: str(b.about, 800) };
-    need(r.vacancy, "Выберите вакансию.");
-    consent(b.consent);
-    inbox.job.unshift(r); saveInbox();
+  /* как гостю удобнее связаться — выбирает после отправки заявки */
+  function setContact(b){
+    const box = str(b.box, 10), how = str(b.how, 5);
+    if (!["book", "banquet"].includes(box) || !CONTACT[how]) throw new Fail("Выберите, как с вами связаться.");
+    const r = inbox[box].find(x => x.id === str(b.id, 40));
+    if (!r) throw new Fail("Заявка не найдена — отправьте её ещё раз.");
+    r.contact = how; saveInbox();
     return { ok: true };
   }
-  function addSub(b){
-    const e = str(b.email, 120).toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) throw new Fail("Проверьте почту.");
+  function addJob(b){
+    const r = { id: uid("j"), at: new Date().toISOString(), st: "new",
+      name: need(str(b.name, 80), "Как к вам обращаться?"), phone: phone(b.phone), about: need(str(b.about, 1500), "Расскажите немного о себе.") };
     consent(b.consent);
-    if (!inbox.sub.some(s => s.email === e)){ inbox.sub.unshift({ id: uid("s"), at: new Date().toISOString(), st: "new", email: e }); saveInbox(); }
+    inbox.job.unshift(r); saveInbox();
     return { ok: true };
   }
 
@@ -127,24 +105,26 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
     const out = {};
     for (const k of COLS[col]){
       const v = it[k];
-      if (k === "hidden") out[k] = !!v;
+      if (k === "hidden" || k === "deposit" || k === "nobook") out[k] = !!v;
       else if (k === "photos") out[k] = (Array.isArray(v) ? v : []).map(x => String(x == null ? "" : x)).filter(okImg).slice(0, 60);
       else if (k === "price" && col === "kitchen") out[k] = Math.max(0, Math.round(+v || 0));
       else if (k === "date" || k === "until") out[k] = /^\d{4}-\d{2}-\d{2}$/.test(str(v, 10)) ? str(v, 10) : "";
+      else if (k === "from" || k === "to") out[k] = hm(str(v, 5)) >= 0 ? str(v, 5) : "";
+      else if (k === "url") out[k] = /^https:\/\/[^\s"'<>]+$/.test(str(v, 400)) ? str(v, 400) : "";
       else if (k === "img") out[k] = okImg(String(v == null ? "" : v)) ? String(v) : "";
       else if (k === "color") out[k] = /^#[0-9a-f]{6}$/i.test(str(v, 7)) ? str(v, 7) : "#C9A24B";
       else out[k] = str(v, k === "text" ? 2000 : 200);
     }
     if ((col === "events" || col === "news" || col === "albums") && !out.date) throw new Fail("Укажите дату.");
+    if (col === "zones" && !out.nobook && !daysOf(out.days).length) throw new Fail("Укажите дни брони, например: чт, пт, сб, вс — или отметьте «не бронируется».");
     if (!(out.title || out.name)) throw new Fail("Укажите название.");
     return out;
   }
   function adminSave(b){
     const col = str(b.col, 20);
     if (col === "info"){
-      const it = b.item || {}, out = Object.assign({}, site.info);                    // расписание и схемы — не из этой формы, сохраняются
-      for (const k of INFO) out[k] = str(it[k], k === "tagline" || k === "dress" ? 400 : 200);
-      out.hours = (Array.isArray(it.hours) ? it.hours : []).slice(0, 10).map(h => ({ zone: str(h && h.zone, 40), text: str(h && h.text, 120) })).filter(h => h.zone || h.text);
+      const it = b.item || {}, out = Object.assign({}, site.info);
+      for (const k of INFO) out[k] = str(it[k], k === "tagline" ? 400 : 200);
       site.info = out; saveSite(); return { ok: true };
     }
     if (!COLS[col]) throw new Fail("Нет такого раздела.");
@@ -178,7 +158,7 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
 
   const API = {
     "GET /api/site": publicSite,
-    "POST /api/book": addBook, "POST /api/busy": busy, "POST /api/banquet": addBanquet, "POST /api/cert": addCert, "POST /api/job": addJob, "POST /api/subscribe": addSub
+    "POST /api/book": addBook, "POST /api/banquet": addBanquet, "POST /api/contact": setContact, "POST /api/job": addJob
   };
   const ADMIN = {
     "GET /api/admin/all": () => ({ ok: true, site, inbox }),
@@ -188,8 +168,6 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
   function handle(method, path, body, isAdmin){
     const key = method + " " + path;
     try {
-      const m = /^GET \/api\/cert\/(M-[0-9A-F]{6}-[0-9A-F]{4})$/.exec(key);
-      if (m){ try { return { code: 200, body: certGet(m[1]) }; } catch (e) { return { code: 404, body: { error: e.message } }; } }
       if (ADMIN[key]) return isAdmin ? { code: 200, body: ADMIN[key](body || {}) } : { code: 401, body: { error: "Войдите в админку." } };
       if (API[key]) return { code: 200, body: API[key](body || {}) };
       return { code: 404, body: { error: "Нет такого запроса." } };

@@ -21,40 +21,42 @@ async function reload(){ const d = await api("/api/admin/all"); if (d.ok){ D = d
 /* разделы сайта: поля форм (подпись, тип) */
 const SCH = {
   events: {t: "Афиша", one: "событие", f: [["title", "Название"], ["date", "Дата", "date"], ["time", "Начало", "time"], ["zone", "Зал", "zone"], ["price", "Вход / депозит"], ["text", "Описание", "area"], ["img", "Плакат (фото)", "img"], ["hidden", "Скрыть с сайта", "check"]],
-    sort: (a, b) => (b.date || "").localeCompare(a.date || ""), sub: x => dTx(x.date) + " · " + (x.time || "") + " · " + zoneName(x.zone), hint: "Прошедшие события сами уходят в «Прошли недавно». Плакат — фото или картинка; без него — цвет зала с датой."},
-  promos: {t: "Акции", one: "акцию", f: [["title", "Название"], ["text", "Условия", "area"], ["until", "До (необязательно)", "date"], ["img", "Картинка", "img"], ["hidden", "Скрыть с сайта", "check"]], sub: x => x.until ? "до " + dTx(x.until) : "без срока",
-    hint: "Акции на алкоголь в интернете — нельзя (закон о рекламе). Держите акции на кухню, кофе, события и праздники."},
+    sort: (a, b) => (b.date || "").localeCompare(a.date || ""), sub: x => dTx(x.date) + ", " + (x.time || "") + ", " + zoneName(x.zone), hint: "Прошедшие события сами уходят в «Прошли недавно». Плакат — фото или картинка; без него — цвет зала с датой."},
+  promos: {t: "Акции", one: "акцию", f: [["title", "Название"], ["text", "Условия (каждая строка — с новой строки)", "area"], ["note", "Сноска мелким шрифтом"], ["until", "До (необязательно)", "date"], ["img", "Картинка", "img"], ["hidden", "Скрыть с сайта", "check"]], sub: x => x.until ? "до " + dTx(x.until) : "без срока",
+    hint: "Реклама алкоголя в интернете запрещена законом о рекламе, кальянов — законом о табаке. Акции бара — без подробностей (условия — у официанта), решение — за заведением."},
   news: {t: "Новости", one: "новость", f: [["title", "Заголовок"], ["date", "Дата", "date"], ["text", "Текст", "area"], ["img", "Картинка", "img"], ["hidden", "Скрыть с сайта", "check"]], sort: (a, b) => (b.date || "").localeCompare(a.date || ""), sub: x => dTx(x.date)},
-  albums: {t: "Фото", one: "фотоотчёт", f: [["title", "Название"], ["date", "Дата", "date"], ["photos", "Фотографии", "photos"], ["hidden", "Скрыть с сайта", "check"]], sort: (a, b) => (b.date || "").localeCompare(a.date || ""), sub: x => dTx(x.date) + " · " + (x.photos || []).length + " фото",
-    hint: "Загрузите сразу много фото — сайт уменьшит их до 1600 px, чтобы открывались быстро."},
-  zones: {t: "Залы", one: "зал", f: [["name", "Название"], ["cap", "Вместимость"], ["hours", "Когда открыт"], ["text", "Описание", "area"], ["feats", "Особенности (через запятую)"], ["color", "Цвет", "color"], ["img", "Фото зала", "img"], ["hidden", "Скрыть с сайта", "check"]], sub: x => (x.cap || "") + " · " + (x.hours || "")},
-  packages: {t: "Банкеты", one: "формат", f: [["title", "Формат"], ["price", "Цена"], ["text", "Что входит", "area"], ["hidden", "Скрыть с сайта", "check"]], sub: x => x.price || ""},
-  kitchen: {t: "Меню кухни", one: "блюдо", f: [["sec", "Раздел меню"], ["name", "Блюдо"], ["desc", "Описание"], ["out", "Выход"], ["price", "Цена, ₽", "num"], ["hidden", "Скрыть с сайта (стоп-лист)", "check"]], group: "sec", sub: x => (x.price ? x.price + " ₽" : "") + (x.out ? " · " + x.out : ""),
-    hint: "Карту бара править не нужно — она берётся из барного гида. Раздел меню — впишите новое название, и он появится."},
-  vacancies: {t: "Вакансии", one: "вакансию", f: [["title", "Должность"], ["pay", "Оплата"], ["text", "Описание", "area"], ["hidden", "Скрыть с сайта", "check"]], sub: x => x.pay || ""}
+  albums: {t: "Фото", one: "фотоотчёт", f: [["title", "Название (день недели или вечеринка)"], ["date", "Дата", "date"], ["by", "Фотограф"], ["url", "Ссылка на альбом фотографа"], ["img", "Обложка", "img"], ["photos", "Свои фото (если альбома по ссылке нет)", "photos"], ["hidden", "Скрыть с сайта", "check"]],
+    sort: (a, b) => (b.date || "").localeCompare(a.date || ""), sub: x => dTx(x.date) + (x.by ? ", фото: " + x.by : "") + (x.url ? ", по ссылке" : ", " + (x.photos || []).length + " фото"),
+    hint: "Альбом фотографа — вставьте ссылку и загрузите обложку (одно фото из альбома). Свои фото сайт уменьшит до 1600 px."},
+  zones: {t: "Залы", one: "зал", f: [["name", "Название"], ["text", "Описание", "area"], ["feats", "Особенности (через запятую)"], ["days", "Дни брони (например: чт, пт, сб, вс)"], ["from", "Бронь с", "time"], ["to", "Бронь до", "time"],
+      ["deposit", "Зона с депозитом — гостю пишется при выборе", "check"], ["nobook", "Не бронируется (например, танцпол)", "check"], ["color", "Цвет", "color"], ["img", "Фото зала", "img"], ["hidden", "Скрыть с сайта", "check"]],
+    sub: x => x.nobook ? "без брони" : (x.days || "") + (x.from ? ", " + x.from + "–" + x.to : "") + (x.deposit ? ", депозит" : "")},
+  packages: {t: "Банкеты", one: "формат", f: [["title", "Формат"], ["text", "Что входит", "area"], ["hidden", "Скрыть с сайта", "check"]], sub: () => ""},
+  kitchen: {t: "Меню кухни", one: "блюдо", f: [["sec", "Раздел меню"], ["name", "Блюдо"], ["desc", "Описание"], ["out", "Выход"], ["price", "Цена, ₽", "num"], ["hidden", "Скрыть с сайта (стоп-лист)", "check"]], group: "sec", sub: x => (x.price ? x.price + " ₽" : "") + (x.out ? ", " + x.out : ""),
+    hint: "Карту бара править не нужно — она берётся из барного гида. Раздел меню — впишите новое название, и он появится."}
 };
+const HOWTX = {call: "позвонить", sms: "СМС", tg: "Telegram", wa: "WhatsApp"};
+const how = r => r.contact ? " · связаться: " + (HOWTX[r.contact] || r.contact) : "";
 const BOX = {
-  book: {t: "Брони", st: {new: "новая", ok: "подтверждена", no: "отменена"}, line: r => zoneName(r.zone) + (r.table ? ", стол " + tableNo(r.zone, r.table) : "") + " · " + dTx(r.date) + " " + r.time + " · " + r.guests + " гост." + (r.event ? " · " + evName(r.event) : "")},
-  banquet: {t: "Банкеты", st: {new: "новая", call: "созвонились", ok: "договорились", no: "отказ"}, line: r => (r.format || "") + " · " + dTx(r.date) + " · " + r.guests + " гост." + (r.zone ? " · " + zoneName(r.zone) : "")},
-  cert: {t: "Сертификаты", st: {paid: "оплачен", used: "использован"}, line: r => r.sum + " ₽ · " + r.code + " · до " + dTx(r.till) + (r.to ? " · для: " + r.to : "")},
-  job: {t: "Отклики", st: {new: "новый", call: "позвонили", no: "не подошёл"}, line: r => r.vacancy},
-  sub: {t: "Подписки", st: {new: "подписан"}, line: r => r.email}
+  book: {t: "Брони", st: {new: "новая", ok: "подтверждена", no: "отменена"}, line: r => zoneName(r.zone) + " · " + dTx(r.date) + " " + r.time + " · " + r.guests + " гост." + (r.event ? " · " + evName(r.event) : "") + how(r)},
+  banquet: {t: "Банкеты", st: {new: "новая", call: "созвонились", ok: "договорились", no: "отказ"}, line: r => (r.format || "") + " · " + dTx(r.date) + " · " + r.guests + " гост." + (r.zone ? " · " + zoneName(r.zone) : "") + how(r)},
+  job: {t: "Отклики", st: {new: "новый", call: "позвонили", no: "не подошёл"}, line: () => "хочет работать у нас"}
 };
 const zoneName = id => ((D && D.site.zones || []).find(z => z.id === id) || {}).name || "";
-const tableNo = (zone, id) => { const ts = ((D && D.site.plans || {})[zone] || {}).tables || [], i = ts.findIndex(t => t.id === id); return i >= 0 ? String(i + 1) + " (мест: " + ts[i].seats + ")" : id; };
 const evName = id => ((D && D.site.events || []).find(e => e.id === id) || {}).title || "";
 const newOf = k => (D.inbox[k] || []).filter(r => r.st === "new").length;
 
 function draw(){
   const app = $("app");
   if (!D){
-    app.innerHTML = '<form class="card login" id="lf"><h1 style="font-family:var(--display);font-size:36px;margin:0 0 6px">Вход</h1><p class="hint">Пароль — в окне, где запущен сервер.</p>' +
-      '<input class="in" type="password" name="pw" autocomplete="current-password" placeholder="Пароль" aria-label="Пароль"><button class="btn" style="margin-top:12px;width:100%">Войти</button><p class="fmsg bad" id="lm"></p></form>';
-    $("lf").onsubmit = async e => { e.preventDefault(); const d = await api("/api/admin/login", {pw: e.target.pw.value}); if (d.error){ $("lm").textContent = d.error; return; } reload(); };
+    app.innerHTML = '<form class="card login" id="lf"><h1 style="font-family:var(--display);font-size:36px;margin:0 0 6px">Вход</h1><p class="hint">Пароль редактора — у управляющего. Пять слов через пробел; регистр не важен.</p>' +
+      '<input class="in" type="password" name="pw" autocomplete="current-password" autocapitalize="none" spellcheck="false" placeholder="Пароль редактора" aria-label="Пароль редактора"><button class="btn" style="margin-top:12px;width:100%">Войти</button><p class="fmsg bad" id="lm"></p></form>';
+    $("lf").onsubmit = async e => { e.preventDefault(); const b = e.target.querySelector("button"); b.disabled = true; $("lm").textContent = "";
+      const d = await api("/api/admin/login", {pw: e.target.pw.value}); b.disabled = false; if (d.error){ $("lm").textContent = d.error; e.target.pw.select(); return; } reload(); };
     return;
   }
-  const n = Object.keys(BOX).reduce((a, k) => a + (k === "sub" ? 0 : newOf(k)), 0);
-  const tabs = [["inbox", "Заявки", n]].concat(Object.keys(SCH).map(k => [k, SCH[k].t, 0])).concat([["info", "Контакты и часы", 0]]);
+  const n = Object.keys(BOX).reduce((a, k) => a + newOf(k), 0);
+  const tabs = [["inbox", "Заявки", n]].concat(Object.keys(SCH).map(k => [k, SCH[k].t, 0])).concat([["info", "Контакты", 0]]);
   app.innerHTML = '<div class="adm"><div class="admh"><h1>«' + esc(D.site.info.name) + '» · админка</h1><span><a class="btn small ghost" href="./" target="_blank">Открыть сайт</a> ' + (window.VENUE_RESET ? '<button type="button" class="link" id="reset">Сбросить пример</button> ' : "") + '<button type="button" class="link" id="out">Выйти</button></span></div>' +
     (window.VENUE_LOCAL ? '<p class="hint">Онлайн-пример: заявки и правки хранятся только в этом браузере — у каждого свои. В рабочей версии они общие и приходят администратору.</p>' : "") +
     '<div class="atabs">' + tabs.map(([k, t, c]) => '<button type="button" class="chip" data-tab="' + k + '" aria-pressed="' + (k === tab) + '">' + esc(t) + (c ? '<i>' + c + '</i>' : "") + '</button>').join("") + '</div><div id="pane"></div></div>';
@@ -69,17 +71,15 @@ function drawInbox(){
   const list = (D.inbox[box] || []).filter(r => !onlyNew || r.st === "new"), B = BOX[box];
   $("pane").innerHTML = '<div class="chips" style="margin-bottom:12px">' + Object.keys(BOX).map(k => '<button type="button" class="chip" data-box="' + k + '" aria-pressed="' + (k === box) + '">' + BOX[k].t +
     ' (' + (D.inbox[k] || []).length + ')</button>').join("") + '</div><label class="agree" style="margin:0 0 12px"><input type="checkbox" id="onlyNew"' + (onlyNew ? " checked" : "") + '> <span>Только новые</span></label>' +
-    (box === "sub" && list.length ? '<p class="hint">Почты для рассылки: <button type="button" class="link" id="copyMail">скопировать все</button></p>' : "") +
     (list.length ? list.map(r => '<article class="card ali"><div class="at"><b>' + esc(r.name || r.email || "") + '</b><span class="st ' + esc(r.st) + '">' + esc(B.st[r.st] || r.st) + '</span></div>' +
       '<div class="am">' + esc(B.line(r)) + '</div>' + (r.phone ? '<div><a href="tel:' + esc(r.phone.replace(/[^\d+]/g, "")) + '">' + esc(r.phone) + '</a></div>' : "") +
-      (r.comment || r.about || r.wish ? '<div class="am">«' + esc(r.comment || r.about || r.wish) + '»</div>' : "") +
+      (r.comment || r.about ? '<div class="am">«' + esc(r.comment || r.about) + '»</div>' : "") +
       '<div class="am">пришла ' + esc(tTx(r.at)) + (r.stAt ? " · изменено " + esc(tTx(r.stAt)) : "") + '</div>' +
       (Object.keys(B.st).length > 1 ? '<div class="ab">' + Object.keys(B.st).filter(s => s !== r.st).map(s => '<button type="button" class="link" data-st="' + s + '" data-id="' + esc(r.id) + '">' + esc(B.st[s]) + '</button>').join("") +
-        (box === "cert" ? ' <a class="link" href="cert.html#' + esc(r.code) + '" target="_blank">открыть сертификат</a>' : "") + '</div>' : "") + '</article>').join("")
+        '</div>' : "") + '</article>').join("")
       : '<p class="empty">Заявок нет.</p>');
   $("pane").onclick = async e => {
     const b = e.target.closest("[data-box]"); if (b){ box = b.dataset.box; return drawInbox(); }
-    if (e.target.id === "copyMail"){ try { await navigator.clipboard.writeText(D.inbox.sub.map(s => s.email).join(", ")); e.target.textContent = "скопировано"; } catch (x) {} return; }
     const s = e.target.closest("[data-st]");
     if (s){ const d = await api("/api/admin/status", {box, id: s.dataset.id, st: s.dataset.st}); if (!d.error) reload(); else alert(d.error); }
   };
@@ -158,20 +158,14 @@ function shrink(file){
   });
 }
 
-/* контакты и часы работы */
-const INFO_F = [["name", "Название"], ["kicker", "Подзаголовок (залы)"], ["tagline", "Слоган на первом экране", "area"], ["city", "Город"], ["address", "Адрес"], ["phone", "Телефон"],
-  ["mapq", "Как искать на картах"], ["tg", "Telegram-канал (ссылка)"], ["ig", "Instagram (ссылка)"], ["guide", "Барный гид (ссылка)"], ["dress", "Дресс-код и возраст", "area"], ["parking", "Парковка"]];
+/* контакты */
+const INFO_F = [["name", "Название"], ["kicker", "Подзаголовок (залы)"], ["tagline", "Слоган на первом экране", "area"], ["city", "Город"], ["address", "Адрес"], ["floor", "Этаж, вход"], ["phone", "Телефон"],
+  ["mapq", "Как искать на картах"], ["rating", "Оценка на Яндекс Картах (например, 4,4)"], ["tg", "Telegram-канал (ссылка)"], ["ig", "Instagram (ссылка)"], ["guide", "Барный гид (ссылка)"]];
 function drawInfo(){
   const I = JSON.parse(JSON.stringify(D.site.info));
-  const hours = () => (I.hours || []).map((h, i) => '<div class="hrow"><input class="in" data-hz="' + i + '" value="' + esc(h.zone) + '" placeholder="Зал"><input class="in" data-ht="' + i + '" value="' + esc(h.text) + '" placeholder="Часы"><button type="button" class="link del" data-hx="' + i + '" style="color:var(--red)">×</button></div>').join("");
-  $("pane").innerHTML = '<form class="card af" id="inf">' + INFO_F.map(f => field(f, I[f[0]])).join("") + '<span class="fl">Часы работы</span><div id="hrs">' + hours() + '</div>' +
-    '<button type="button" class="link" data-ha>+ строка</button><div class="abtns"><button class="btn" type="submit">Сохранить</button></div><p class="fmsg" id="em" role="status"></p></form>';
-  const read = () => { INFO_F.forEach(([k]) => { I[k] = $("f_" + k).value; }); I.hours = (I.hours || []).map((h, i) => ({zone: document.querySelector('[data-hz="' + i + '"]').value, text: document.querySelector('[data-ht="' + i + '"]').value})); };
-  $("inf").onclick = e => {
-    if (e.target.closest("[data-ha]")){ read(); I.hours.push({zone: "", text: ""}); $("hrs").innerHTML = hours(); }
-    const x = e.target.closest("[data-hx]"); if (x){ read(); I.hours.splice(+x.dataset.hx, 1); $("hrs").innerHTML = hours(); }
-  };
-  $("inf").onsubmit = async e => { e.preventDefault(); read(); const d = await api("/api/admin/save", {col: "info", item: I});
+  $("pane").innerHTML = '<form class="card af" id="inf">' + INFO_F.map(f => field(f, I[f[0]])).join("") +
+    '<div class="abtns"><button class="btn" type="submit">Сохранить</button></div><p class="fmsg" id="em" role="status"></p></form>';
+  $("inf").onsubmit = async e => { e.preventDefault(); INFO_F.forEach(([k]) => { I[k] = $("f_" + k).value; }); const d = await api("/api/admin/save", {col: "info", item: I});
     $("em").className = "fmsg " + (d.error ? "bad" : "ok"); $("em").textContent = d.error || "Сохранено ✓"; if (!d.error){ D.site.info = I; } };
 }
 
