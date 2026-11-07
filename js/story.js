@@ -55,6 +55,7 @@ const storyUrl = id => location.origin + location.pathname.replace(/index\.html$
 function storyFor(h){
   h = String(h || "");
   if (h.indexOf("story-") === 0) return h.slice(6);
+  if (h.indexOf("menu-") === 0 && storyHas(cardItem(h.slice(5)))) return h.slice(5);   // QR уже наклеенных этикеток (…/#menu-id) — тоже сюда
   return storyHas(cardItem(h)) ? h : "";
 }
 /* где позиция в меню: раздел, объём, цена */

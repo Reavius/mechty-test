@@ -55,8 +55,26 @@ function lshort(n){
 
 const lall = () => data.filter(g => !g.nolabel).flatMap(g => g.items.map(it => ({it, g})));
 const lcur = () => { const v = $("lpos").value; return lall().find(x => x.it.id === v) || lall()[0]; };
-/* QR ведёт в меню — на эту позицию; у заготовок, которых в меню нет (свои п/ф), QR нет */
-const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "") + "#menu-" + id;
+/* QR: коктейль с фото — карточка «Узнать больше» (видео, история, вкус, состав), …/#id; остальное — позиция в меню, …/#menu-id.
+   Уже наклеенные QR вида …/#menu-id у коктейлей с фото тоже открывают «Узнать больше» (storyFor в js/story.js).
+   У заготовок, которых в меню нет (свои п/ф), QR нет */
+const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "") + (typeof storyHas === "function" && storyHas(cardItem(id)) ? "#" : "#menu-") + id;
+/* сколько премикса лить на порцию — над QR: у коктейлей карты и лимонадов, из техкарты подачи (граммовки — только после
+   входа, в шифровке; в коде сайта их нет). Строка техкарты ищется по названию премикса: «(премикс)», «п/ф», дефисы не важны */
+const lkey = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\(премикс\)|премикс(ы)?( для лимонада| на коктейли)?|п\/ф/g, " ")
+  .replace(/[-–—«»"]/g, " ").replace(/\s+/g, " ").trim();
+function ldose(it, g){
+  if (typeof KALL === "undefined" || !KALL.length) return null;
+  const lemon = g.key === "pf" && MENU.some(c => c.secs.some(s => /безалкогольные коктейли/i.test(s.ru) && s.items.some(x => x.c === it.id)));
+  if (g.key !== "premix" && !lemon) return null;
+  const rec = (typeof ALL !== "undefined" ? ALL : []).find(r => r.id === it.rid);
+  const keys = [it.n, it.ln, rec && rec.n].filter(Boolean).map(lkey);
+  const hits = [];
+  for (const t of KALL) if (!t.out && !t.b && Array.isArray(t.i)) for (const x of t.i) if (keys.includes(lkey(x[0]))) hits.push({t, q: x[1], u: x[2] || "мл"});
+  if (!hits.length) return null;
+  const h = hits.find(x => x.t.id === it.id) || hits.find(x => keys.includes(lkey(x.t.n))) || hits[0];
+  return {txt: String(h.q).replace(".", ",") + "\u00a0" + h.u, ttk: h.t.n};
+}
 const lqr = it => !it.lo && MENU.some(c => c.secs.some(s => s.items.some(x => x.c === it.id)));
 /* безалкогольные заготовки — с «п/ф» в названии */
 const lname = (it, g) => { const n = it.ln || it.n; return (g.nonalc || g.key === "pf") && !it.abv && !/п\/ф/i.test(n) ? n + " п/ф" : n; };
@@ -261,14 +279,28 @@ async function labDraw(){
   /* QR — поменьше, клетки ровно по точкам термопринтера: 203 dpi = 8 точек/мм, клетка = 3 точки = 6 px холста */
   const bodyTop = tBase + tfs * .32, bodyBottom = H - mb;
   let qx = W - mb, qsz = 0, qy = 0;
+  const dose = ldose(it, g);
   if (window.qrcode && lqr(it)){                            // нет в меню (свои заготовки, только этикетка) — без QR
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
     const n = q.getModuleCount(), cell = Math.max(2, Math.round(LPX * 3 / 8));
-    qsz = n * cell; qx = W - mb - H * .02 - qsz; qy = Math.round(bodyTop + (bodyBottom - bodyTop - qsz) / 2);
+    qsz = n * cell; qx = W - mb - H * .02 - qsz;
+    /* над QR — «на порцию» и сколько мл: блок «подпись + QR» по центру высоты */
+    const dfs = H * .1, cap = dfs * .62, dh = dose ? cap * 1.05 + dfs * 1.05 : 0;
+    qy = Math.round(bodyTop + (bodyBottom - bodyTop - qsz - dh) / 2 + dh);
     qx = Math.round(qx);
     ctx.beginPath();
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) ctx.rect(qx + c * cell, qy + r * cell, cell, cell);
     ctx.fill();
+    if (dose){
+      const cx = qx + qsz / 2;
+      ctx.textAlign = "center";
+      ctx.font = "400 " + cap + 'px "PT Serif", Georgia, serif';
+      ctx.fillText("на порцию", cx, qy - dfs * 1.05 - cap * .2);
+      const f = lfit(ctx, dose.txt, qsz * 1.15, dfs, 700);
+      ctx.font = "700 " + f + 'px "PT Serif", Georgia, serif';
+      ctx.fillText(dose.txt, cx, qy - dfs * .22);
+      ctx.textAlign = "left";
+    }
   }
 
   /* строки: состав столбиком, дата, годен до, кто сделал.
@@ -279,7 +311,8 @@ async function labDraw(){
   const rows = comp.map(t => ["pin", t, 400])
     .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700], ["who", who, 400]]);
   $("linfo").innerHTML = "Дата производства — сегодня, <b>" + ldmy(d) + "</b>; годен до <b>" + ldmy(till) + "</b> (" + esc(g.srok) +
-    "); сделал — <b>" + esc(who) + "</b>. При сохранении дата и фамилия подставляются заново.";
+    "); сделал — <b>" + esc(who) + "</b>. При сохранении дата и фамилия подставляются заново." +
+    (dose ? " Над QR — сколько лить на порцию: <b>" + esc(dose.txt) + "</b> (техкарта «" + esc(dose.ttk) + "»)." : "");
 
   /* поле текста: от уголка слева до QR справа, от заголовка до низа */
   const left = mb + cs * 1.12, colW = qx - H * .04 - left, top = bodyTop, avail = bodyBottom - bodyTop;   // правее уголка

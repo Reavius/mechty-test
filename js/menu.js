@@ -464,7 +464,7 @@ function pubRedraw(){
   if (typeof storyRefresh === "function") storyRefresh();               // карточка «Узнать больше» — тексты из таблицы
   /* QR на позицию, которой не было в старой копии: коктейль с фото — карточку открыл storyRefresh, остальное — в «Состав» */
   const h = decodeURIComponent(location.hash.slice(1)), id = h.replace(/^sostav-/, "");
-  if (/^menu-/.test(h) && !$("viewBar").hidden) return menuJump(h.slice(5));
+  if (/^menu-/.test(h) && !$("viewBar").hidden && !(typeof storyFor === "function" && storyFor(h))) return menuJump(h.slice(5));
   if (id && h !== "bartenders" && h !== "card" && !(typeof storyFor === "function" && storyFor(h)) && cardItem(id) && typeof jumpTo === "function" && !$("viewBar").hidden){
     const el = document.getElementById(id);
     if (gPane !== "card" || !el || !el.classList.contains("hit")) jumpTo(id);
