@@ -60,9 +60,13 @@ const lcur = () => { const v = $("lpos").value; return lall().find(x => x.it.id 
    У заготовок, которых в меню нет (свои п/ф), QR нет */
 const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "") + (typeof storyHas === "function" && storyHas(cardItem(id)) ? "#" : "#menu-") + id;
 /* сколько премикса лить на порцию — над QR: у коктейлей карты и лимонадов, из техкарты подачи (граммовки — только после
-   входа, в шифровке; в коде сайта их нет). Строка техкарты ищется по названию премикса: «(премикс)», «п/ф», дефисы не важны */
+   входа, в шифровке; в коде сайта их нет). Есть в техкарте строка премикса («Вишнёвый Негрони п/ф») — её количество;
+   «(премикс)», «п/ф», дефисы не важны. Нет — а в техкарте расписаны составляющие премикса, — по рецептуре премикса из
+   калькулятора: выход рецептуры × доля, в которой её составляющие стоят в техкарте (все до одной, в одной пропорции) */
 const lkey = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\(премикс\)|премикс(ы)?( для лимонада| на коктейли)?|п\/ф/g, " ")
   .replace(/[-–—«»"]/g, " ").replace(/\s+/g, " ").trim();
+const lnm = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+const lml = (v, u) => String(v).replace(".", ",") + "\u00a0" + (u || "мл");
 /* нет дозы у коктейля или лимонада — {why}: чего не хватает в техкартах (видно под рисунком) */
 function ldose(it, g){
   const lemon = g.key === "pf" && MENU.some(c => c.secs.some(s => /безалкогольные коктейли/i.test(s.ru) && s.items.some(x => x.c === it.id)));
@@ -70,14 +74,25 @@ function ldose(it, g){
   if (typeof KALL === "undefined" || !KALL.length) return {why: "техкарты не загружены — войдите в «Бартендерам»"};
   const rec = (typeof ALL !== "undefined" ? ALL : []).find(r => r.id === it.rid);
   const keys = [it.n, it.ln, rec && rec.n].filter(Boolean).map(lkey);
-  const hits = [];
-  for (const t of KALL) if (!t.out && !t.b && Array.isArray(t.i)) for (const x of t.i) if (keys.includes(lkey(x[0]))) hits.push({t, q: x[1], u: x[2] || "мл"});
-  if (!hits.length){
-    const own = KALL.find(t => !t.out && !t.b && (t.id === it.id || lkey(t.n) === lkey(it.n))), need = "«" + (rec ? rec.n : it.n) + "»";
-    return {why: own ? "в техкарте подачи «" + own.n + "» нет строки " + need : "нет техкарты подачи со строкой " + need};
+  const serv = KALL.filter(t => !t.out && !t.b && Array.isArray(t.i)), hits = [];
+  for (const t of serv) for (const x of t.i) if (keys.includes(lkey(x[0]))) hits.push({t, q: x[1], u: x[2]});
+  if (hits.length){
+    const h = hits.find(x => x.t.id === it.id) || hits.find(x => keys.includes(lkey(x.t.n))) || hits[0];
+    return {txt: lml(h.q, h.u), ttk: h.t.n};
   }
-  const h = hits.find(x => x.t.id === it.id) || hits.find(x => keys.includes(lkey(x.t.n))) || hits[0];
-  return {txt: String(h.q).replace(".", ",") + "\u00a0" + h.u, ttk: h.t.n};
+  const own = serv.find(t => t.id === it.id) || serv.find(t => keys.includes(lkey(t.n))), need = "«" + (rec ? rec.n : it.n) + "»";
+  if (!own) return {why: "нет техкарты подачи со строкой " + need};
+  if (rec && rec.out > 0 && Array.isArray(rec.i) && rec.i.length){
+    const ks = rec.i.map(x => {
+      const y = own.i.find(z => lnm(z[0]) === lnm(x[0]) && lnm(z[2]) === lnm(x[2]));
+      return y && x[1] > 0 ? y[1] / x[1] : NaN;
+    });
+    if (ks.every(k => k > 0) && Math.max(...ks) / Math.min(...ks) < 1.03){
+      const k = ks.reduce((a, b) => a + b, 0) / ks.length;
+      return {txt: lml(Math.round(rec.out * k * 2) / 2), ttk: own.n};
+    }
+  }
+  return {why: "в техкарте подачи «" + own.n + "» нет строки " + need + (rec ? ", а составляющие не те, что в рецептуре премикса" : "")};
 }
 const lqr = it => !it.lo && MENU.some(c => c.secs.some(s => s.items.some(x => x.c === it.id)));
 /* безалкогольные заготовки — с «п/ф» в названии */
