@@ -235,7 +235,16 @@ async function grPng(w){
   rows.forEach((r, j) => {
     const y = top + 92 + j * rh;
     x.fillStyle = j % 2 ? "#fbfaf7" : "#fff"; x.fillRect(40, y, W - 80, rh);
-    cell(r.n || "—", 40, y + 52, 260, "left", "700 30px Manrope, sans-serif", "#1b1d22");
+    /* имя: не влезает в столбец — имя и фамилия в две строки, шрифт по ширине */
+    const nm = r.n || "—", fit = (t, f) => { x.font = "700 " + f + "px Manrope, sans-serif"; const k = 228 / x.measureText(t).width; return k < 1 ? Math.floor(f * k) : f; };
+    x.font = "700 30px Manrope, sans-serif";
+    const sp = nm.lastIndexOf(" ");
+    if (x.measureText(nm).width <= 228 || sp < 0) cell(nm, 40, y + 52, 260, "left", "700 " + fit(nm, 30) + "px Manrope, sans-serif", "#1b1d22");
+    else {
+      const a = nm.slice(0, sp), b = nm.slice(sp + 1), f = Math.min(fit(a, 26), fit(b, 26));
+      cell(a, 40, y + 36, 260, "left", "700 " + f + "px Manrope, sans-serif", "#1b1d22");
+      cell(b, 40, y + 66, 260, "left", "700 " + f + "px Manrope, sans-serif", "#1b1d22");
+    }
     r.d.forEach((v, d) => {
       const s = grP(v); if (!s) return;
       x.fillStyle = BG[grCls(v)]; x.fillRect(cols[d + 1] + 6, y + 8, 160, rh - 16);
