@@ -62,7 +62,8 @@ const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "
 /* сколько премикса лить на порцию — над QR: у коктейлей карты и лимонадов, из техкарты подачи (граммовки — только после
    входа, в шифровке; в коде сайта их нет). Есть в техкарте строка премикса («Вишнёвый Негрони п/ф») — её количество;
    «(премикс)», «п/ф», дефисы не важны. Нет — а в техкарте расписаны составляющие премикса, — по рецептуре премикса из
-   калькулятора: выход рецептуры × доля, в которой её составляющие стоят в техкарте (все до одной, в одной пропорции) */
+   калькулятора: выход рецептуры × доля, в которой её составляющие стоят в техкарте (все до одной, в одной пропорции).
+   Задано в техкарте подачи «Премикс на порцию» (pre, правится в «Техкартах» менеджера) — берётся оно */
 const lkey = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\(премикс\)|премикс(ы)?( для лимонада| на коктейли)?|п\/ф/g, " ")
   .replace(/[-–—«»"]/g, " ").replace(/\s+/g, " ").trim();
 const lnm = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
@@ -75,12 +76,13 @@ function ldose(it, g){
   const rec = (typeof ALL !== "undefined" ? ALL : []).find(r => r.id === it.rid);
   const keys = [it.n, it.ln, rec && rec.n].filter(Boolean).map(lkey);
   const serv = KALL.filter(t => !t.out && !t.b && Array.isArray(t.i)), hits = [];
+  const own = serv.find(t => t.id === it.id) || serv.find(t => keys.includes(lkey(t.n))), need = "«" + (rec ? rec.n : it.n) + "»";
+  if (own && +own.pre > 0) return {txt: lml(+own.pre), ttk: own.n};
   for (const t of serv) for (const x of t.i) if (keys.includes(lkey(x[0]))) hits.push({t, q: x[1], u: x[2]});
   if (hits.length){
     const h = hits.find(x => x.t.id === it.id) || hits.find(x => keys.includes(lkey(x.t.n))) || hits[0];
     return {txt: lml(h.q, h.u), ttk: h.t.n};
   }
-  const own = serv.find(t => t.id === it.id) || serv.find(t => keys.includes(lkey(t.n))), need = "«" + (rec ? rec.n : it.n) + "»";
   if (!own) return {why: "нет техкарты подачи со строкой " + need};
   if (rec && rec.out > 0 && Array.isArray(rec.i) && rec.i.length){
     const ks = rec.i.map(x => {

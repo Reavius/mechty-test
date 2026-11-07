@@ -306,7 +306,7 @@ $("mgrBl").addEventListener("submit", async e => {
    TK0 — техкарты из шифровки как есть; правка заменяет поля карты (название, состав, украшение, посуда, метод, выход, фото),
    остальное (связь с калькулятором и т. п.) остаётся. Скрытая — у барменов её нет, у менеджера — с пометкой. */
 let TK0 = null, tkOv = null, tkEd = null, tkQ = "", tkHid = false, tkBusy = false, tkPhoto = null;
-const TK_F = ["n", "i", "dec", "gar", "glass", "m", "out", "img"], TK_U = ["мл", "г", "шт", "дэш", "капли", "л", "кг"];
+const TK_F = ["n", "i", "dec", "gar", "glass", "m", "out", "img", "pre"], TK_U = ["мл", "г", "шт", "дэш", "капли", "л", "кг"];
 async function tkSync(fresh){
   if (fresh || !TK0) TK0 = JSON.parse(JSON.stringify(K));
   if (!TOKEN) return;
@@ -324,6 +324,7 @@ function tkMerged(){
       const base = i0 >= 0 ? g0.items[i0] : {id: c.id}, it = Object.assign({}, base);
       TK_F.forEach(k => { delete it[k]; });
       Object.assign(it, c.card, {id: c.id, _ov: 1, _new: i0 < 0 ? 1 : 0});
+      if (!("pre" in c.card) && base.pre) it.pre = base.pre;              // правка до поля «Премикс на порцию» — доза из шифровки остаётся
       if (i0 >= 0 && (!c.g || c.g === g0.g)) g0.items[i0] = it;
       else { if (i0 >= 0) g0.items.splice(i0, 1); const g = grp(c.g || "Новые"); g.items.push(it); at[c.id] = g; }
     }
@@ -387,6 +388,7 @@ function tkFormDraw(){
     '<p class="label">Украшение — по граммам (если нужно)</p><ul class="olist tkis" id="tkD">' + (it.dec || []).map(x => tkRowHtml("dec", x)).join("") + '</ul><button type="button" class="link" data-tkadd="dec">+ в украшение</button>' +
     '<div class="wo2 mgrd"><div><label class="label" for="tkOq">Выход замеса (для заготовок)</label><input type="text" id="tkOq" inputmode="decimal" maxlength="10" value="' + esc(it.out ? String(it.out[0]).replace(".", ",") : "") + '" placeholder="пусто — порция"></div>' +
       '<div><label class="label" for="tkOu">Ед. выхода</label><select id="tkOu">' + ["мл", "г", "л", "кг", "шт"].map(u => '<option' + (it.out && it.out[1] === u ? " selected" : "") + '>' + u + '</option>').join("") + '</select></div></div>' +
+    '<label class="label" for="tkPre">Премикс на порцию, мл — над QR этикетки</label><input type="text" id="tkPre" inputmode="decimal" maxlength="8" value="' + esc(it.pre ? String(it.pre).replace(".", ",") : "") + '" placeholder="пусто — по рецептуре премикса">' +
     '<label class="label" for="tkM">Метод</label><textarea id="tkM" rows="4" maxlength="3000" placeholder="Шейк со льдом, двойное процеживание…">' + esc(it.m || "") + '</textarea>' +
     '<p class="label">Фото</p><div class="tkph">' + (img ? '<img src="' + esc(img) + '" alt="Фото: ' + esc(it.n || "") + '">' : '<span class="wnhint">Фото нет</span>') + '</div>' +
     '<div class="refbtns"><label class="link tkfile">Загрузить фото<input type="file" id="tkFile" accept="image/*"></label>' + (img ? '<button type="button" class="link" data-tkpx="1">Убрать фото</button>' : "") + '</div>' +
@@ -402,6 +404,8 @@ function tkFormCard(){
     img: tkPhoto ? "" : tkEd.it.img || ""};
   const oq = $("tkOq").value.trim().replace(",", ".");
   if (oq) card.out = [+oq, $("tkOu").value];
+  const pre = +$("tkPre").value.trim().replace(",", ".");
+  card.pre = pre > 0 ? pre : 0;                                            // 0 — доза по рецептуре премикса
   return card;
 }
 /* фото — до 1000 пикселей по длинной стороне, JPEG */
