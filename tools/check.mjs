@@ -42,6 +42,8 @@ const swMissing = listed.filter(f => !has(f));
 ok(!swMissing.length, `файлы офлайн-кэша на месте (${listed.length})` + (swMissing.length ? ": " + swMissing.join(", ") : ""));
 const notCached = ["css/app.css", ...scripts].filter(f => !listed.includes(f));
 ok(!notCached.length, "все модули есть в офлайн-кэше" + (notCached.length ? ": " + notCached.join(", ") : ""));
+const swVer = (sw.match(/const CACHE = "mechty-v(\d+)"/) || [])[1], siteVer = (rd("js/core.js").match(/const SITE_VER = (\d+);/) || [])[1];
+ok(swVer && swVer === siteVer, "версия сайта (SITE_VER в js/core.js) = версии кэша в sw.js" + (swVer === siteVer ? " — " + swVer : `: ${siteVer} и ${swVer}`));
 
 /* 4. манифест и превью ссылки */
 const man = JSON.parse(rd("manifest.webmanifest"));

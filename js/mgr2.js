@@ -337,6 +337,7 @@ function tkApply(){
   K = M.map(g => ({g: g.g, items: g.items.filter(it => !it._hid)})).filter(g => g.items.length);
   KALL = K.flatMap(g => g.items);
   fillTtk();
+  if (typeof labRefresh === "function") labRefresh();                    // доза над QR — по правленой техкарте
   if (mgrGrp === "tk" && !$("mgrTk").hidden) tkDraw();
 }
 async function tkLoad(){

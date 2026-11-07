@@ -63,15 +63,19 @@ const lurl = id => location.origin + location.pathname.replace(/index\.html$/, "
    входа, в шифровке; в коде сайта их нет). Строка техкарты ищется по названию премикса: «(премикс)», «п/ф», дефисы не важны */
 const lkey = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/\(премикс\)|премикс(ы)?( для лимонада| на коктейли)?|п\/ф/g, " ")
   .replace(/[-–—«»"]/g, " ").replace(/\s+/g, " ").trim();
+/* нет дозы у коктейля или лимонада — {why}: чего не хватает в техкартах (видно под рисунком) */
 function ldose(it, g){
-  if (typeof KALL === "undefined" || !KALL.length) return null;
   const lemon = g.key === "pf" && MENU.some(c => c.secs.some(s => /безалкогольные коктейли/i.test(s.ru) && s.items.some(x => x.c === it.id)));
   if (g.key !== "premix" && !lemon) return null;
+  if (typeof KALL === "undefined" || !KALL.length) return {why: "техкарты не загружены — войдите в «Бартендерам»"};
   const rec = (typeof ALL !== "undefined" ? ALL : []).find(r => r.id === it.rid);
   const keys = [it.n, it.ln, rec && rec.n].filter(Boolean).map(lkey);
   const hits = [];
   for (const t of KALL) if (!t.out && !t.b && Array.isArray(t.i)) for (const x of t.i) if (keys.includes(lkey(x[0]))) hits.push({t, q: x[1], u: x[2] || "мл"});
-  if (!hits.length) return null;
+  if (!hits.length){
+    const own = KALL.find(t => !t.out && !t.b && (t.id === it.id || lkey(t.n) === lkey(it.n))), need = "«" + (rec ? rec.n : it.n) + "»";
+    return {why: own ? "в техкарте подачи «" + own.n + "» нет строки " + need : "нет техкарты подачи со строкой " + need};
+  }
   const h = hits.find(x => x.t.id === it.id) || hits.find(x => keys.includes(lkey(x.t.n))) || hits[0];
   return {txt: String(h.q).replace(".", ",") + "\u00a0" + h.u, ttk: h.t.n};
 }
@@ -279,7 +283,7 @@ async function labDraw(){
   /* QR — поменьше, клетки ровно по точкам термопринтера: 203 dpi = 8 точек/мм, клетка = 3 точки = 6 px холста */
   const bodyTop = tBase + tfs * .32, bodyBottom = H - mb;
   let qx = W - mb, qsz = 0, qy = 0;
-  const dose = ldose(it, g);
+  const dl = ldose(it, g), dose = dl && dl.txt ? dl : null;
   if (window.qrcode && lqr(it)){                            // нет в меню (свои заготовки, только этикетка) — без QR
     const q = qrcode(0, "M"); q.addData(lurl(it.id)); q.make();
     const n = q.getModuleCount(), cell = Math.max(2, Math.round(LPX * 3 / 8));
@@ -312,7 +316,9 @@ async function labDraw(){
     .concat([["clock", "Изготовлено\u00a0" + ldmy(d), 400], ["clock", "Годен\u00a0до\u00a0" + ldmy(till), 700], ["who", who, 400]]);
   $("linfo").innerHTML = "Дата производства — сегодня, <b>" + ldmy(d) + "</b>; годен до <b>" + ldmy(till) + "</b> (" + esc(g.srok) +
     "); сделал — <b>" + esc(who) + "</b>. При сохранении дата и фамилия подставляются заново." +
-    (dose ? " Над QR — сколько лить на порцию: <b>" + esc(dose.txt) + "</b> (техкарта «" + esc(dose.ttk) + "»)." : "");
+    (dose ? " Над QR — сколько лить на порцию: <b>" + esc(dose.txt) + "</b> (техкарта «" + esc(dose.ttk) + "»)." :
+      dl && dl.why && lqr(it) ? " <b>Над QR дозы нет:</b> " + esc(dl.why) + "." : "") +
+    " Версия сайта — " + SITE_VER + ".";
 
   /* поле текста: от уголка слева до QR справа, от заголовка до низа */
   const left = mb + cs * 1.12, colW = qx - H * .04 - left, top = bodyTop, avail = bodyBottom - bodyTop;   // правее уголка
