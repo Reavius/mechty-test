@@ -287,8 +287,8 @@ function menuData(){
     const by = {};
     S.kitchen.forEach(x => { (by[x.sec || "Меню"] = by[x.sec || "Меню"] || []).push(x); });
     const secs = Object.keys(by).map(n => ({n, items: by[n].map(x => ({n: x.name, d: x.desc, p: x.price, v: x.out}))}));
-    if (!secs.some(s => s.n === mSec)) mSec = "";
-    return {subs: [{k: "", n: "Всё"}].concat(secs.map(s => ({k: s.n, n: s.n}))), cur: mSec, secs: secs.filter(s => !mSec || s.n === mSec)};
+    if (!secs.some(s => s.n === mSec)) mSec = secs[0] ? secs[0].n : "";              // как в карте бара: один раздел, без «Всё»
+    return {subs: secs.map(s => ({k: s.n, n: s.n})), cur: mSec, secs: secs.filter(s => s.n === mSec)};
   }
   const cats = S.bar || [], cur = cats.find(c => c.k === mSec) || cats[0] || {k: "", secs: []};
   return {subs: cats.map(c => ({k: c.k, n: c.n})), cur: cur.k, secs: cur.secs.map(s => ({n: s.n, items: s.items.map(x => ({id: x.id, n: x.n, d: x.d, img: x.img,
@@ -485,6 +485,26 @@ function stRun(ms){
   stT = setTimeout(() => stGo(1), ms);
 }
 function stSndDraw(){ const b = $("story").querySelector("[data-ssnd]"); if (b){ b.setAttribute("aria-pressed", String(stSnd)); b.textContent = stSnd ? "Звук включён" : "Включить звук"; } }
+/* видео сторис: файл из media/ — три кодека, как у видео первого экрана (X.av1.mp4 — Android и компьютер, X.hevc.mp4 — iPhone,
+   X.mp4 — запасной; браузер берёт первый, который умеет, и не качает остальные) и кадр X.jpg — виден сразу, пока ролик грузится;
+   файл из uploads/ — как есть. Пока смотрят одну сторис, следующее видео уже грузится */
+const VSRC = [[".av1.mp4", 'video/mp4; codecs="av01.0.05M.08"'], [".hevc.mp4", 'video/mp4; codecs="hvc1.1.6.L93.B0"'], [".mp4", "video/mp4"]];
+const vMedia = v => /^media\/[\w.-]+\.mp4$/.test(v || "") && !/\.(av1|hevc)\.mp4$/.test(v);
+const vPoster = x => vMedia(x.vid) ? x.vid.replace(/\.mp4$/, ".jpg") : x.img || "";
+let stPre = null;
+function vEl(x){
+  const v = document.createElement("video");
+  v.className = "svid"; v.playsInline = true; v.setAttribute("playsinline", ""); v.preload = "auto"; v.muted = true;
+  const p = vPoster(x); if (p) v.poster = p;
+  if (vMedia(x.vid)) VSRC.forEach(([ext, type]) => { const so = document.createElement("source"); so.src = x.vid.replace(/\.mp4$/, ext); so.type = type; v.appendChild(so); });
+  else v.src = x.vid;
+  return v;
+}
+function stPrep(i){                                                            // следующая сторис с видео — грузим заранее
+  const n = stL[i];
+  if (!n || !n.x.vid || SLOW() || (stPre && stPre.vid === n.x.vid)) return;
+  stPre = {vid: n.x.vid, el: vEl(n.x)}; stPre.el.load();
+}
 function stDraw(){
   const s = stL[stI], x = s.x, ev = s.k === "e", z = ev ? zoneOf(x.zone) : {name: "Новости", color: NEWSC}, box = $("story"), d = dd(x.date);
   const vid = x.vid && !SLOW();
@@ -493,28 +513,36 @@ function stDraw(){
   box.innerHTML = '<div class="sbars">' + stL.map((_, i) => '<span><i class="' + (i < stI ? "full" : i === stI ? "run" + (vid ? " v" : "") : "") + '"></i></span>').join("") + '</div>' +
     '<button type="button" class="sx" data-sx aria-label="Закрыть">×</button>' +
     (vid ? '<button type="button" class="ssnd" data-ssnd aria-pressed="false">Включить звук</button>' : '') +
-    '<div class="sbg' + (vid ? " hasv" : "") + '">' + (vid ? '<video class="svid" src="' + esc(x.vid) + '"' + (x.img ? ' poster="' + esc(x.img) + '"' : '') + ' playsinline preload="auto"' + (RM() ? ' controls' : ' autoplay') + (stSnd ? '' : ' muted') + '></video>'
+    '<div class="sbg' + (vid ? " hasv load" : "") + '">' + (vid ? ''
       : x.img ? '<img src="' + esc(x.img) + '" alt="">' : '<span class="sbig" aria-hidden="true">' + d.getUTCDate() + '</span>') + '</div>' +
     '<div class="sbody"><p class="szone">' + esc(ev ? (z.name || "Все залы") : "Новости") + '</p><p class="sdate">' + (ev ? esc(WDF[d.getUTCDay()]) + ', ' + esc(dayTx(x.date)) + esc(tm(x)) : esc(dayTx(x.date))) + '</p>' +
     '<h3>' + esc(x.title) + '</h3><p class="stx">' + esc(x.text || "") + '</p>' + (ev && x.price ? '<p class="spr">' + esc(x.price) + '</p>' : '') +
     '<div class="sacts"><button type="button" class="btn" data-sbk>Забронировать стол</button>' + (ev ? '<button type="button" class="btn ghost" data-smore>Подробнее</button>' : '') + '</div></div>' +
     '<button type="button" class="stap prev" data-sp aria-label="Предыдущее"></button><button type="button" class="stap next" data-sn aria-label="Следующее"></button>';
   stSndDraw();
-  const v = stVid();
-  if (v){
+  if (vid){
     clearTimeout(stT);
-    const bar = box.querySelector(".sbars i.run");
-    /* полоска идёт за видео; не загрузилось — как картинка */
+    const bg = box.querySelector(".sbg"), bar = box.querySelector(".sbars i.run");
+    const v = stPre && stPre.vid === x.vid ? stPre.el : vEl(x);
+    stPre = null;
+    v.muted = !stSnd; v.controls = RM();
+    bg.appendChild(v);
+    /* полоска идёт за видео; пока грузится — кадр и кружок загрузки; не загрузилось — кадр, как у картинки */
+    const fail = () => { if (bar) bar.classList.remove("v"); bg.classList.remove("load"); stRun(STD); };
     v.addEventListener("timeupdate", () => { if (bar && v.duration) bar.style.width = Math.min(100, v.currentTime / Math.min(v.duration, 30) * 100) + "%"; if (v.currentTime >= 30) stGo(1); });
     v.addEventListener("ended", () => stGo(1));
-    v.addEventListener("error", () => { if (bar) bar.classList.remove("v"); stRun(STD); });
+    v.addEventListener("playing", () => { bg.classList.remove("load"); stPrep(stI + 1); });
+    v.addEventListener("waiting", () => bg.classList.add("load"));
+    v.addEventListener("error", fail);
+    const last = v.querySelector("source:last-of-type"); if (last) last.addEventListener("error", fail);
+    if (v.readyState >= 3) bg.classList.remove("load");
     if (!RM()) v.play().catch(() => { v.muted = true; stSnd = false; stSndDraw(); v.play().catch(() => {}); });
-  } else stRun(STD);
+  } else { stRun(STD); stPrep(stI + 1); }
   box.querySelector("[data-sx]").focus({preventScroll: true});
   if (window.gsap && !RM()) gsap.from(box.querySelector(".sbody"), {y: 24, opacity: 0, duration: .35, ease: "power2.out"});
 }
 function stOpen(i, list){ stL = list || stFeed(); if (!stL.length) return; stRet = document.activeElement; stI = Math.max(0, Math.min(i, stL.length - 1)); $("story").hidden = false; document.body.style.overflow = "hidden"; stDraw(); }
-function stClose(){ if ($("story").hidden) return; clearTimeout(stT); stHold = false; const v = stVid(); if (v) v.pause(); $("story").innerHTML = ""; $("story").hidden = true; document.body.style.overflow = ""; if (stRet && stRet.focus) stRet.focus({preventScroll: true}); }
+function stClose(){ if ($("story").hidden) return; clearTimeout(stT); stHold = false; stPre = null; const v = stVid(); if (v) v.pause(); $("story").innerHTML = ""; $("story").hidden = true; document.body.style.overflow = ""; if (stRet && stRet.focus) stRet.focus({preventScroll: true}); }
 function stGo(d){ if (stI + d >= stL.length) return stClose(); const v = stVid(); if (v) v.pause(); stI = Math.max(0, stI + d); stDraw(); }
 function stPause(on){
   if (RM()) return; stHold = on;
