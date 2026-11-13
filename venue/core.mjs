@@ -7,9 +7,9 @@ const hex = (rnd, n) => Array.from(rnd(n), b => b.toString(16).padStart(2, "0"))
 const webRnd = n => globalThis.crypto.getRandomValues(new Uint8Array(n));
 
 export const COLS = {
-  events: ["title", "date", "time", "zone", "price", "text", "img", "hidden"],
+  events: ["title", "date", "time", "zone", "price", "text", "img", "vid", "hidden"],
   promos: ["title", "until", "text", "note", "img", "hidden"],
-  news: ["title", "date", "text", "img", "hidden"],
+  news: ["title", "date", "text", "img", "vid", "hidden"],
   albums: ["title", "date", "by", "url", "img", "photos", "hidden"],
   zones: ["name", "text", "feats", "days", "from", "to", "deposit", "nobook", "color", "img", "hidden"],
   packages: ["title", "text", "hidden"],
@@ -38,18 +38,22 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
   const day = (v, msg) => { const s = str(v, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || isNaN(Date.parse(s))) throw new Fail(msg || "Выберите дату."); return s; };
   const consent = v => { if (v !== true) throw new Fail("Нужно согласие на обработку персональных данных."); };
   const today = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);   // день по местному времени (Уфа, UTC+5)
+  const evDay = () => new Date(Date.now() + 5 * 3600e3 - 6 * 3600e3).toISOString().slice(0, 10);   // день афиши: событие держится до 6:00 следующего утра
+  /* фотоотчёты на сайте — за последние 3 месяца */
+  const ago3m = t => { const d = new Date(t + "T12:00:00Z"); d.setUTCMonth(d.getUTCMonth() - 3); return d.toISOString().slice(0, 10); };
   const uid = p => p + hex(rnd, 4);
   const IMG = /^\/?(uploads|photos|media)\/[\w.-]+$/, DATA_IMG = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
   const okImg = v => IMG.test(v) || (dataImg && DATA_IMG.test(v) && v.length < 3e6);
+  const VID = /^\/?(uploads|media)\/[\w.-]+\.mp4$/;
   const hm = s => { const m = /^(\d{2}):(\d{2})$/.exec(s || ""); return m ? +m[1] * 60 + +m[2] : -1; };
 
   /* публичное: скрытое не уходит, события — по дате, прошедшие — отдельно */
   const vis = a => (a || []).filter(x => !x.hidden);
   function publicSite(){
-    const t = today(), ev = vis(site.events).slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-    return { ok: true, info: site.info, zones: vis(site.zones), events: ev.filter(e => e.date >= t), past: ev.filter(e => e.date < t).reverse(),
+    const t = today(), te = evDay(), ev = vis(site.events).slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    return { ok: true, info: site.info, zones: vis(site.zones), events: ev.filter(e => e.date >= te), past: ev.filter(e => e.date < te).reverse(),
       promos: vis(site.promos).filter(p => !p.until || p.until >= t), news: vis(site.news).slice().sort((a, b) => b.date.localeCompare(a.date)),
-      albums: vis(site.albums).slice().sort((a, b) => b.date.localeCompare(a.date)), packages: vis(site.packages), kitchen: vis(site.kitchen),
+      albums: vis(site.albums).filter(a => a.date >= ago3m(t)).sort((a, b) => b.date.localeCompare(a.date)), packages: vis(site.packages), kitchen: vis(site.kitchen),
       bar: bar(), today: t };
   }
 
@@ -112,6 +116,7 @@ export function venueCore({ seed, store, upload, bar = () => [], rnd = webRnd, d
       else if (k === "from" || k === "to") out[k] = hm(str(v, 5)) >= 0 ? str(v, 5) : "";
       else if (k === "url") out[k] = /^https:\/\/[^\s"'<>]+$/.test(str(v, 400)) ? str(v, 400) : "";
       else if (k === "img") out[k] = okImg(String(v == null ? "" : v)) ? String(v) : "";
+      else if (k === "vid") out[k] = VID.test(str(v, 200)) ? str(v, 200) : "";        // видео — файл на сайте: media/… или uploads/…, .mp4
       else if (k === "color") out[k] = /^#[0-9a-f]{6}$/i.test(str(v, 7)) ? str(v, 7) : "#C9A24B";
       else out[k] = str(v, k === "text" ? 2000 : 200);
     }
