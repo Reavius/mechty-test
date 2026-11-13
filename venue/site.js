@@ -464,7 +464,8 @@ let stL = [], stI = 0, stT = 0, stHold = false, stLong = false, stDown = 0, stRe
 const STD = 6000;
 const hasM = x => !!(x.img || x.vid);
 function stFeed(){
-  const fresh = S.news.filter(n => hasM(n) && n.date <= S.today && (dd(S.today) - dd(n.date)) / 864e5 <= 3).map(x => ({k: "n", x}));
+  const used = new Set(S.events.flatMap(e => [e.img, e.vid]).filter(Boolean));          // те же кадры, что у события, — в сторис один раз
+  const fresh = S.news.filter(n => hasM(n) && !used.has(n.vid || n.img) && n.date <= S.today && (dd(S.today) - dd(n.date)) / 864e5 <= 3).map(x => ({k: "n", x}));
   return fresh.concat(S.events.map(x => ({k: "e", x}))).slice(0, 12);
 }
 function drawStories(){

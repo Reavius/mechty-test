@@ -5,7 +5,7 @@
    Реклама алкоголя в интернете запрещена законом о рекламе, кальянов — законом о табаке: акция бара — без подробностей,
    решение — за заведением; меню на своём сайте — не реклама. */
 export const SEED = {
-  ver: 6,
+  ver: 7,
   info: {
     name: "Мечты",
     kicker: "кафе, VIP, танцпол и мансарда",
@@ -38,13 +38,13 @@ export const SEED = {
   ],
   /* афиша — от заведения; без времени — только день (время уточняется в Telegram-канале) */
   events: [
-    { id: "e5", date: "2026-11-12", time: "22:00", zone: "cafe", title: "Беспроигрышный четверг", price: "вход свободный", img: "media/alb-1029.webp",
+    { id: "e5", date: "2026-11-12", time: "22:00", zone: "cafe", title: "Беспроигрышный четверг", price: "вход свободный", img: "",
       text: "Беспроигрышная лотерея весь вечер — подробности у бармена.\nС 22:00 до 2:00 за вертушками Artur Baloo и Vita Samurai." },
-    { id: "e6", date: "2026-11-13", time: "", zone: "club", title: "Ультравеселье от резидентов", price: "вход с подпиской на Telegram-канал clubmechti — 0 ₽, без — 500 ₽", img: "media/ev-1107.webp",
-      text: "Старое доброе ультравеселье от резидентуры клуба. За деками — Lipsy, Deeptune, Tkachev и Ander.\nРаботаем до 6:00." },
+    { id: "e6", date: "2026-11-13", time: "", zone: "club", title: "Ультравеселье от резидентов", price: "вход с подпиской на Telegram-канал clubmechti — 0 ₽, без — 500 ₽", img: "media/nw-1113-snow.webp",
+      text: "Старое доброе ультравеселье от резидентуры клуба. За деками — Lipsy, Deeptune, Tkachev и Ander.\nСегодня работаем с 14:00 до 6:00: новое меню кухни и −30% именинникам." },
     { id: "e7", date: "2026-11-14", time: "23:00", zone: "club", title: "Айнанэ свадьба", price: "вход 0–800 ₽, с репостом — дешевле · 18+", img: "media/ev-1114.webp", vid: "media/ev-1114.mp4",
       text: "Вместе с ДК Делориан гуляем свадьбу с конями, гадалками и цыганами: золотим ручки, узнаём будущее у таролога, кричим «горько», ловим букет невесты и пляшем под любимые хиты, пока ноги держат. Эх, развернись, душа!\nЗа пультом — Tkachev, Sofya Dm, Egoor и Deeptune.\nДресс-код: дорого-богато — золото, атлас, люрекс, велюр, бархат, кожа.\nВход: 23:00–00:30 — с репостом афиши свободный, без — 500 ₽; 00:30–03:30 — с репостом 300 ₽, без — 800 ₽; после 03:30 — свободный. Репосты принимаем до 21:00 субботы. Фейс-контроль, 18+." },
-    { id: "e8", date: "2026-11-15", time: "17:00", zone: "cafe", title: "Воскресенье: чилл, читмил и −50% на кухню", price: "", img: "media/ev-1115.webp",
+    { id: "e8", date: "2026-11-15", time: "17:00", zone: "cafe", title: "Воскресенье: чилл, читмил и −50% на кухню", price: "", img: "media/ev-1115.webp", vid: "media/nw-1112-roll.mp4",
       text: "Регулярный воскресный чилл & читмил. С 17:00 до 01:40 — скидка 50% на кухню, в кафе и на самовывоз; на некоторые позиции — 30%.\nСамое время попробовать новое меню." },
     { id: "e1", date: "2026-11-05", time: "22:00", zone: "cafe", title: "Четверг: Vita Samurai и Deeptune", price: "после 23:00 — 18+", img: "media/ev-1105.webp", text: "Регулярная акция 1+1 на баре. С 22:00 за вертушками в кафе — Vita Samurai и Deeptune. После 23:00 — 18+." },
     { id: "e2", date: "2026-11-06", time: "", zone: "club", title: "SAMOVAR", price: "вход с репостом — 0 ₽, без — 500 ₽", img: "media/ev-1106.webp", text: "Открываем уфимский филиал порядком нашумевшей в столице вечеринки Виталины Витальевны. В деле fuckuseny, Ilnaz_violin, Veselchaque, Sirenafuck, Shoovie, Ander и сама Vita Samurai. 18+" },
@@ -75,9 +75,9 @@ export const SEED = {
   ],
   /* фотоотчёты: url — альбом фотографа (открывается по ссылке), by — фотограф, img — обложка */
   albums: [
-    { id: "a7", date: "2026-11-07", title: "Суббота", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/05-12-2026-mechty-subbota-05-11-hw0ttm", img: "", photos: [] },
-    { id: "a6", date: "2026-11-06", title: "Пятница", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/04-12-2026-mechty-pyatnitsa-04-11-9hdk19", img: "", photos: [] },
-    { id: "a5", date: "2026-11-05", title: "Четверг", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/03-12-2026-mechty-chetverg-03-11-12qkd3", img: "", photos: [] },
+    { id: "a7", date: "2026-11-07", title: "Суббота", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/05-12-2026-mechty-subbota-05-11-hw0ttm", img: "media/alb-1107-ivanna.webp", photos: [] },
+    { id: "a6", date: "2026-11-06", title: "Пятница", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/04-12-2026-mechty-pyatnitsa-04-11-9hdk19", img: "media/alb-1106-ivanna.webp", photos: [] },
+    { id: "a5", date: "2026-11-05", title: "Четверг", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/03-12-2026-mechty-chetverg-03-11-12qkd3", img: "media/alb-1105-ivanna.webp", photos: [] },
     { id: "a1", date: "2026-10-31", title: "Суббота", by: "Иванна", url: "https://vanibrooprod.wfolio.pro/disk/31-10-2026-mechty-subbota-31-10-345nd3", img: "media/alb-1031-ivanna.webp", photos: [] },
     { id: "a2", date: "2026-10-31", title: "Суббота", by: "Артур", url: "https://shottophotto.ru/disk/31-10-2026-mechty-subbota-31-10-74pv2g", img: "media/alb-1031-artur.webp", photos: [] },
     { id: "a3", date: "2026-10-30", title: "Пятница", by: "Артур", url: "https://shottophotto.ru/disk/30-10-2026-mechty-pyatnitsa-30-10-nt1bb9", img: "media/alb-1030-artur.webp", photos: [] },
