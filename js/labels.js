@@ -10,7 +10,8 @@ const LICON = {limoncello:"lemon", vishnya:"berries", malina:"berries",
   tropiki:"i-pineapple", negroni:"i-orange", longisland:"i-lemon2",
   sexbeach:"i-orange", mandarin:"i-orange", granat:"berries", tequila:"i-lemon2", yuzu:"i-apricot", ananas:"i-pineapple",
   vnegroni:"berries", strudel:"i-apple", grushaberg:"i-pear",
-  tarhun:"i-herb", kcitrus:"i-lemon2", malmar:"i-raspberry", feijoa:"i-apple", oblepiha:"i-grapes", ananaspf:"i-pineapple"};
+  tarhun:"i-herb", kcitrus:"i-lemon2", malmar:"i-raspberry", feijoa:"i-apple", oblepiha:"i-grapes", ananaspf:"i-pineapple",
+  maitai:"i-apricot", bluecolada:"i-pineapple", chili:"berries", grusha:"i-pear"};
 const LIMG = {};
 let lsize = 0, labReady = false;
 try { lsize = Math.min(+localStorage.getItem("mechty-lsize") || 0, LSIZES.length - 1); } catch (e) {}
