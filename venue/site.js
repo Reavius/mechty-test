@@ -387,15 +387,20 @@ document.addEventListener("keydown", e => { if ($("lb").hidden) return; if (e.ke
 /* работа: одна форма для всех — без выбора должности */
 wire($("jobF"), "/api/job", (d, f) => doneBox(f, {title: "Спасибо!", text: "Мы прочитаем и перезвоним."}));
 
-/* контакты, отзывы и шапка */
+/* контакты, отзывы и шапка; телефонов два, Telegram для брони — аккаунт (@club_mechti), канал — отдельно */
+const telHref = s => "tel:" + String(s || "").replace(/[^\d+]/g, "");
+const tgAcc = s => { const m = /^@?([A-Za-z0-9_]{4,32})$/.exec(String(s || "").trim()) || /t\.me\/([A-Za-z0-9_]{4,32})/.exec(String(s || "")); return m ? m[1] : ""; };
+function putTel(a, s){ a.hidden = !s; if (s){ a.textContent = s; a.href = telHref(s); } }
+function putTg(a, s){ const u = tgAcc(s); a.hidden = !u; if (u){ a.textContent = "@" + u; a.href = "https://t.me/" + u; } return !!u; }
 function drawInfo(){
   const I = S.info, addr = (I.city ? I.city + ", " : "") + I.address + (I.floor ? ", " + I.floor : ""), q = encodeURIComponent(I.mapq || addr);
   document.title = "«" + I.name + "»" + (I.kicker ? " — " + I.kicker : "");
   $("hNameTx").textContent = I.name; $("hTag").textContent = I.tagline || "";
   $("ctCity").textContent = I.city ? I.city + ", самый центр" : "";
   $("ctAddr").textContent = String(I.address || "").replace(/(^|\s)(ул|д|корп|стр|пр)\. /g, "$1$2.\u00a0").replace(/, (\d)/g, ",\u00a0$1");      /* «корп. 1» не разрывается */
-  $("ctFloor").textContent = I.floor || ""; $("ctTel").textContent = I.phone; $("ctTel").href = "tel:" + I.phone.replace(/[^\d+]/g, "");
-  $("ctSoc").innerHTML = [I.tg ? '<a href="' + esc(I.tg) + '" target="_blank" rel="noopener">Telegram</a>' : "", I.ig ? '<a href="' + esc(I.ig) + '" target="_blank" rel="noopener">Instagram</a>' : ""].join("");
+  $("ctFloor").textContent = I.floor || ""; putTel($("ctTel"), I.phone); putTel($("ctTel2"), I.phone2);
+  if (putTg($("ctTga"), I.tgbook)) $("ctTga").textContent = "Telegram: @" + tgAcc(I.tgbook);
+  $("ctSoc").innerHTML = [I.tg ? '<a href="' + esc(I.tg) + '" target="_blank" rel="noopener">Telegram-канал</a>' : "", I.ig ? '<a href="' + esc(I.ig) + '" target="_blank" rel="noopener">Instagram</a>' : ""].join("");
   $("tgBtn").href = I.tg || "#"; $("ftGuide").href = I.guide || "#";
   $("mapY").href = $("revY").href = "https://yandex.ru/maps/?text=" + q; $("map2").href = $("rev2").href = "https://2gis.ru/search/" + q;
   const r = parseFloat(String(I.rating || "").replace(",", "."));
@@ -660,7 +665,7 @@ function intro(then){
 /* ── окно «Это демо-версия сайта» — при каждом заходе на сайт, закрывается кнопкой «Ознакомлен» ── */
 function demoNote(then){
   const m = $("dmodal"), ok = $("dmOk"), tel = $("dmTel"), ret = document.activeElement;
-  tel.textContent = S.info.phone; tel.href = "tel:" + S.info.phone.replace(/[^\d+]/g, "");
+  putTel(tel, S.info.phone); putTel($("dmTel2"), S.info.phone2); $("dmTel2w").hidden = !S.info.phone2; $("dmTgw").hidden = !putTg($("dmTg"), S.info.tgbook);
   m.hidden = false; document.body.style.overflow = "hidden";
   if (window.gsap && !RM()) gsap.from(m.querySelector(".dmb"), {y: 24, opacity: 0, duration: .45, ease: "power2.out"});
   ok.focus({preventScroll: true});

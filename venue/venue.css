@@ -501,6 +501,10 @@ button.cd[aria-pressed="true"]{background:var(--accent);color:#16130B}
 .pfloor{margin:4px 0 14px;color:var(--muted)}
 .ptel{align-self:flex-start;font-size:22px;font-weight:700;color:var(--fg);text-decoration:none;margin-bottom:16px;font-variant-numeric:lining-nums}
 .ptel:hover{color:var(--accent)}
+.ptels{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.ptels .ptel{margin-bottom:0}
+.ptga{align-self:flex-start;margin-bottom:16px;color:var(--accent);font-weight:700;font-size:16px;text-decoration:none;border-bottom:1px solid rgba(201,162,75,.4);padding-bottom:1px}
+.ptga:hover{border-color:var(--accent)}
 .pacts{display:flex;gap:8px;flex-wrap:wrap}
 .psoc{display:flex;gap:18px;margin-top:16px}
 .psoc a{color:#B9B7B1;font-weight:600;font-size:14px;text-decoration:none;border-bottom:1px solid #3A3F48;padding-bottom:1px}

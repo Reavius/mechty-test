@@ -202,7 +202,8 @@ try { if (!sessionStorage.getItem("mv-intro") && !matchMedia("(prefers-reduced-m
         <p class="pcity" id="ctCity">Уфа, самый центр</p>
         <p class="paddr" id="ctAddr"></p>
         <p class="pfloor" id="ctFloor"></p>
-        <a class="ptel" id="ctTel" href="#"></a>
+        <div class="ptels"><a class="ptel" id="ctTel" href="#"></a><a class="ptel" id="ctTel2" href="#" hidden></a></div>
+        <a class="ptga" id="ctTga" href="#" target="_blank" rel="noopener" hidden></a>
         <div class="pacts"><a class="btn" id="mapY" target="_blank" rel="noopener" href="#">Построить маршрут</a><a class="btn ghost" id="map2" target="_blank" rel="noopener" href="#">2ГИС</a></div>
         <div class="psoc" id="ctSoc"></div>
         <p class="pnote">Схема по карте: север — сверху. Точный маршрут — в Яндекс Картах или 2ГИС.</p>
@@ -223,7 +224,7 @@ try { if (!sessionStorage.getItem("mv-intro") && !matchMedia("(prefers-reduced-m
     <svg class="dml" viewBox="0 0 746 275" aria-hidden="true"><use href="#mlogo"/></svg>
     <h2 id="dmT">Это демо-версия сайта</h2>
     <p id="dmX">Сайт пока показывает, как всё будет выглядеть. Функционал нерабочий: бронь стола, заявки на банкеты и отклики никуда не отправляются.</p>
-    <p class="dmp">Чтобы забронировать стол, позвоните: <a id="dmTel" href="#"></a></p>
+    <p class="dmp">Чтобы забронировать стол, позвоните: <a id="dmTel" href="#"></a><span id="dmTel2w" hidden> или <a id="dmTel2" href="#"></a></span><span id="dmTgw" hidden><br>или напишите в Telegram: <a id="dmTg" href="#" target="_blank" rel="noopener"></a></span></p>
     <button type="button" class="btn wide" id="dmOk">Ознакомлен</button>
   </div>
 </div>

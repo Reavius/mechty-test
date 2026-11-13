@@ -159,7 +159,7 @@ function shrink(file){
 }
 
 /* контакты */
-const INFO_F = [["name", "Название"], ["kicker", "Подзаголовок (залы)"], ["tagline", "Слоган на первом экране", "area"], ["city", "Город"], ["address", "Адрес"], ["floor", "Этаж, вход"], ["phone", "Телефон"],
+const INFO_F = [["name", "Название"], ["kicker", "Подзаголовок (залы)"], ["tagline", "Слоган на первом экране", "area"], ["city", "Город"], ["address", "Адрес"], ["floor", "Этаж, вход"], ["phone", "Телефон"], ["phone2", "Второй телефон (необязательно)"], ["tgbook", "Telegram для брони — аккаунт, например @club_mechti"],
   ["mapq", "Как искать на картах"], ["rating", "Оценка на Яндекс Картах (например, 4,4)"], ["tg", "Telegram-канал (ссылка)"], ["ig", "Instagram (ссылка)"], ["guide", "Барный гид (ссылка)"]];
 function drawInfo(){
   const I = JSON.parse(JSON.stringify(D.site.info));

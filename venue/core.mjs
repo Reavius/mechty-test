@@ -15,7 +15,7 @@ export const COLS = {
   packages: ["title", "text", "hidden"],
   kitchen: ["sec", "name", "desc", "out", "price", "hidden"]
 };
-const INFO = ["name", "kicker", "tagline", "city", "address", "floor", "phone", "mapq", "rating", "tg", "ig", "guide"];
+const INFO = ["name", "kicker", "tagline", "city", "address", "floor", "phone", "phone2", "tgbook", "mapq", "rating", "tg", "ig", "guide"];
 const BOX_ST = { book: ["new", "ok", "no"], banquet: ["new", "call", "ok", "no"], job: ["new", "call", "no"] };
 const BOXES = Object.keys(BOX_ST);
 export const CONTACT = { call: "звонок", sms: "СМС", tg: "Telegram", wa: "WhatsApp" };
