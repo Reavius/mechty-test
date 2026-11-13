@@ -1231,7 +1231,9 @@ details.incmapd .bll li{padding:9px 4px}
 .grt .grn input.grname{width:100%;min-width:0;font:600 16px var(--sans);color:var(--fg);background:var(--surface-2);border:1px solid var(--line);
   border-radius:8px;padding:6px 7px}   /* 16px — iPhone не увеличивает страницу */
 .grt .grn input.grname:focus{outline:none;border-color:var(--accent)}
-.grt.ed .grn{width:128px;padding-left:8px}
+.grt.ed .grn{width:164px;padding-left:8px}
+/* имя и фамилия в просмотре — в две строки, а не «Артем Кув…» */
+.grt:not(.ed) tbody .grn{white-space:normal;overflow-wrap:break-word;line-height:1.2}
 .grt td.grc .grb::before{content:"–"}
 /* телефон, просмотр: вся неделя на экране — начало и конец смены друг под другом; правка листается вбок */
 @media (max-width:640px){
@@ -1384,3 +1386,8 @@ small.salst{display:block;margin-top:3px}
 .stsnd svg{width:22px;height:22px}
 .stsnd.on{background:rgba(255,255,255,.9);color:#111}
 .stsnd:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+/* «Внести правки» — под каждой неделей графика */
+.grfoot{align-items:center;flex-wrap:wrap}
+.grfoot .grwe{width:auto;margin:0;padding:10px 16px;font-size:14px}
+.grfoot .grwe.on{background:var(--accent);color:#16130B;border-color:var(--accent)}

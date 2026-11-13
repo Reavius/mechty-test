@@ -51,6 +51,7 @@ function tcard(r){
   if (r.glass) stats.push(["Посуда", esc(r.glass)]);
   if (r.gar) stats.push(["Украшение", esc(r.gar)]);
   if (r.out) stats.push(["Выход", qty(r.out[0], r.out[1])]);
+  if (r.pre) stats.push(["Премикс на порцию", qty(r.pre, "мл")]);
 
   const row = x => '<tr><td class="n">' + esc(x[0]) + '</td><td class="v">' + qty(x[1], x[2]) + '</td></tr>';
 

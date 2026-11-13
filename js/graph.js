@@ -1,7 +1,11 @@
-/* График барменов и барбеков: недели строго пн–вс, текущий и следующий месяц. Смотрят все; «Внести правки» включает
-   правку — менять может любой бармен. Смены — в лист «График» (Apps Script): правки уходят пачкой, без связи ждут
+/* График барменов и барбеков: недели строго пн–вс, текущий и следующий месяц. Смотрят все; «Внести правки» — внизу
+   каждой недели, правится одна неделя за раз; менять может любой бармен, прошедшие недели — только просмотр. Смены — в лист «График» (Apps Script): правки уходят пачкой, без связи ждут
    на телефоне. Часы за неделю — по всей неделе, часовка за месяц — только по дням этого месяца, по имени. */
-const GR_NAMES = ["Вячеслав", "Александр", "Кирилл", "Артем", "Даниил", "Денис"];
+const GR_NAMES = ["Вячеслав", "Александр", "Кирилл", "Артем Кувайцев", "Даниил", "Денис", "Артем Тарасов"];
+/* прежние имена в таблице → как показывать (в прошедших неделях имя не меняется в таблице, только на экране и в часовке) */
+const GR_ALIAS = {"артем": "Артем Кувайцев"};
+/* новые люди: в текущей и следующих неделях — пустая строка с именем (появится в таблице, когда поставят смену) */
+const GR_NEW = ["Артем Тарасов"];
 const GR_WD = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"], GR_WDF = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
 const GR_MON = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const GR_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
@@ -10,7 +14,7 @@ const GR_GEN = ["января", "февраля", "марта", "апреля", 
 const GR_END = {3: ["20:00", "02:00"], 4: ["20:00", "06:00"], 5: ["20:00", "06:00"], 6: ["02:00", "02:00"]};
 const GR_MORN = "13:00", GR_EVE = ["18:00", "20:00"];
 const GR_S = "mechty-gr", GR_Q = "mechty-gr-q";
-let grSt = null, grMonth = 0, grEdit = false, grOpen = null, grBusy = false, grState = "load", grTimer = 0, grSoon = 0;
+let grSt = null, grMonth = 0, grEdit = "", grOpen = null, grBusy = false, grState = "load", grTimer = 0, grSoon = 0;
 
 const grP = v => { const m = /^(?:(утро|вечер) )?(\d\d:\d\d)–(\d\d:\d\d)$/.exec(v || ""); return m ? {k: m[1] || "", a: m[2], b: m[3]} : null; };
 const grMin = t => /^\d\d:\d\d$/.test(t || "") ? +t.slice(0, 2) * 60 + +t.slice(3) : NaN;
@@ -50,9 +54,11 @@ function grRows(w){
     if (c.n != null) rows[c.r].n = c.n;
     if (c.d != null) rows[c.r].d[c.d] = c.v;
   }
+  rows.forEach(r => { const a = GR_ALIAS[grKey(r.n)]; if (a) r.n = a; });
+  if (base && !grPast(w)) for (const n of GR_NEW) if (!rows.some(r => grKey(r.n) === grKey(n)) && rows.length < 20) rows.push({n, d: ["", "", "", "", "", "", ""], virt: true});
   return rows;
 }
-const grUsed = r => r.n.trim() || r.d.some(Boolean);
+const grUsed = r => (r.n.trim() && !r.virt) || r.d.some(Boolean);
 const grWeekH = r => r.d.reduce((s, v) => s + grH(v), 0);
 
 function grTitle(w, year){
@@ -90,9 +96,7 @@ function grDraw(){
 function grPaint(){
   const {y, m} = grMonthOf(grMonth), q = ckj(GR_Q, []).length;
   $("grMon").innerHTML = [0, 1].map(k => { const x = grMonthOf(k); return '<button type="button" data-k="' + k + '" aria-pressed="' + (k === grMonth) + '">' + GR_MON[x.m] + " " + x.y + '</button>'; }).join("");
-  $("grEdit").textContent = grEdit ? "Готово" : "Внести правки";
-  $("grEdit").classList.toggle("on", grEdit);
-  $("grInfo").innerHTML = (grEdit ? "Нажмите на клетку дня, чтобы поставить смену. Имя меняется только в своей неделе. Прошедшие недели не меняются — только текущая и следующие. " : "") +
+  $("grInfo").innerHTML = (grEdit ? "Нажмите на клетку дня, чтобы поставить смену. Имя меняется только в своей неделе. " : "Правки — кнопкой «Внести правки» под неделей. Прошедшие недели не меняются. ") +
     (q ? "Правок ждут отправки: <b>" + q + "</b>. " : "") +
     (grState === "net" ? "Нет связи — правки уйдут, когда появится." : grState === "old" ? "График заработает после обновления Apps Script." : grState === "load" && !grSt ? "Загружаем…" : "");
   const sum = grMonthSum(grMonth), tot = sum.reduce((s, x) => s + x.h, 0);
@@ -103,7 +107,7 @@ function grPaint(){
     '<p class="grleg"><span class="gr-m">утро</span> до 20:00, в вс до 02:00 · <span class="gr-e">вечер</span> чт и вс до 02:00, пт и сб до 06:00 — конец можно поменять · <span class="gr-x">пн–ср</span> начало и конец вручную</p></div>';
   const today = grToday();
   $("grWeeks").innerHTML = grWeeks(grMonth).map(w => {
-    const ed = grEdit && !grPast(w);                                           // прошедшая неделя — только просмотр
+    const ed = grEdit === w && !grPast(w);                                     // правится одна неделя; прошедшая — только просмотр
     const rows = grRows(w), show = rows.map((r, i) => ({r, i})).filter(x => ed || grUsed(x.r)), wh = rows.reduce((s, r) => s + grWeekH(r), 0);
     const head = '<tr><th class="grn">Имя</th>' + GR_WD.map((x, d) => {
       const day = grDay(w, d), iso = grIso(day);
@@ -116,7 +120,9 @@ function grPaint(){
     return '<div class="result tcard grw" data-w="' + w + '"><div class="tname"><em>' + (wh ? "≈ " + grNum(wh) + " ч за неделю" : "смен нет") + '</em><h3>' + grTitle(w) + '</h3></div>' +
       '<div class="grwrap"><table class="grt' + (ed ? " ed" : "") + '"><thead>' + head + '</thead><tbody>' + (body || '<tr><td class="grnone" colspan="9">Смен нет</td></tr>') + '</tbody></table></div>' +
       (grOpen && grOpen.w === w ? grForm() : "") +
-      '<div class="grfoot">' + (ed ? '<button type="button" class="link" data-add="' + w + '">+ строка</button>' : grEdit ? '<span class="grlock">прошедшая неделя — только просмотр</span>' : "") +
+      '<div class="grfoot">' + (grPast(w) ? '<span class="grlock">прошедшая неделя — только просмотр</span>'
+          : (ed ? '<button type="button" class="link" data-add="' + w + '">+ строка</button>' : "") +
+            '<button type="button" class="wogo grgo grwe' + (ed ? " on" : "") + '" data-edit="' + w + '">' + (ed ? "Готово" : "Внести правки") + '</button>') +
         '<button type="button" class="link" data-png="' + w + '">Сохранить картинкой</button></div></div>';
   }).join("");
 }
@@ -161,7 +167,9 @@ function grLenTxt(){
 
 function grPush(c){
   const q = ckj(GR_Q, []);
-  q.push(Object.assign({id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), ns: grRows(c.w).map(r => r.n)}, c));
+  const rr = grRows(c.w)[c.r];
+  if (rr && rr.virt && c.n == null) c = Object.assign({n: rr.n}, c);           // новый человек: имя уходит вместе с первой сменой
+  q.push(Object.assign({id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), ns: grRows(c.w).filter(r => !r.virt).map(r => r.n)}, c));
   cks(GR_Q, q);
   clearTimeout(grSoon); grSoon = setTimeout(grFlush, 400);
 }
@@ -227,7 +235,16 @@ async function grPng(w){
   rows.forEach((r, j) => {
     const y = top + 92 + j * rh;
     x.fillStyle = j % 2 ? "#fbfaf7" : "#fff"; x.fillRect(40, y, W - 80, rh);
-    cell(r.n || "—", 40, y + 52, 260, "left", "700 30px Manrope, sans-serif", "#1b1d22");
+    /* имя: не влезает в столбец — имя и фамилия в две строки, шрифт по ширине */
+    const nm = r.n || "—", fit = (t, f) => { x.font = "700 " + f + "px Manrope, sans-serif"; const k = 228 / x.measureText(t).width; return k < 1 ? Math.floor(f * k) : f; };
+    x.font = "700 30px Manrope, sans-serif";
+    const sp = nm.lastIndexOf(" ");
+    if (x.measureText(nm).width <= 228 || sp < 0) cell(nm, 40, y + 52, 260, "left", "700 " + fit(nm, 30) + "px Manrope, sans-serif", "#1b1d22");
+    else {
+      const a = nm.slice(0, sp), b = nm.slice(sp + 1), f = Math.min(fit(a, 26), fit(b, 26));
+      cell(a, 40, y + 36, 260, "left", "700 " + f + "px Manrope, sans-serif", "#1b1d22");
+      cell(b, 40, y + 66, 260, "left", "700 " + f + "px Manrope, sans-serif", "#1b1d22");
+    }
     r.d.forEach((v, d) => {
       const s = grP(v); if (!s) return;
       x.fillStyle = BG[grCls(v)]; x.fillRect(cols[d + 1] + 6, y + 8, 160, rh - 16);
@@ -259,16 +276,20 @@ async function grPng(w){
 $("grMon").addEventListener("click", e => {
   const b = e.target.closest("button[data-k]");
   if (!b || +b.dataset.k === grMonth) return;
-  buzz(8); grMonth = +b.dataset.k; grOpen = null; grDraw();
-});
-$("grEdit").addEventListener("click", () => {
-  buzz(10); grEdit = !grEdit; grOpen = null; grDraw();
-  if (!grEdit) grFlush();
+  buzz(8); grMonth = +b.dataset.k; grOpen = null; if (grEdit){ grEdit = ""; grFlush(); } grDraw();
 });
 $("grWeeks").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b) return;
   if (b.dataset.png){ grPng(b.dataset.png); return; }
+  if (b.dataset.edit){                                                         // «Внести правки» / «Готово» — под своей неделей
+    const w = b.dataset.edit;
+    if (grPast(w)) return;
+    buzz(10); const was = grEdit; grEdit = grEdit === w ? "" : w; grOpen = null; grDraw();
+    if (was) grFlush();
+    if (grEdit){ const el = document.querySelector('#grWeeks .grw[data-w="' + w + '"]'); if (el) el.scrollIntoView({block: "nearest", behavior: "smooth"}); }
+    return;
+  }
   if (b.dataset.add){ if (grPast(b.dataset.add)) return; const w = b.dataset.add, n = grRows(w).length; if (n >= 20) return; grPush({w, r: n, n: ""}); grDraw();
     const inp = document.querySelector('.grname[data-w="' + w + '"][data-r="' + n + '"]'); if (inp) inp.focus(); return; }
   if (b.dataset.cx){ grOpen = null; grDraw(); return; }

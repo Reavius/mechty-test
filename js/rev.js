@@ -47,17 +47,24 @@ function rsync(rev){
 
 /* День ревизии — с 9:00 до 9:00, один на всех. Вход — только на этом телефоне (ничего не создаёт):
    столбец зоны появляется в таблице с первым добавленным числом и закрепляется за тем, кто начал.
-   «Завершить» — личное: сворачивает ревизию у себя, остальные продолжают; вернуться можно до 9:00. */
+   «Завершить» — личное: сворачивает ревизию у себя, остальные продолжают; вернуться можно до 9:00.
+   Все, кто считал, завершили — итог дня виден всем на странице ревизии, и тем, кто не считал. */
 const RIN = "mechty-rev-in", RF = "mechty-rev-fin";
 let rview = "";                                                  // lobby — вход, work — подсчёт, sum — завершил
 const rme = () => me ? mnorm(me.name) : "";
 const rowner = z => REV && REV.open && REV.open.zones[z] ? REV.open.zones[z].who : "";
 const rfinOf = who => !!(REV && REV.open && REV.open.fin && REV.open.fin[mnorm(who)]);
+/* подсчёт завершён: каждый, кто считал сегодня, нажал «Завершить»; все зоны — ревизия готова (как revDone в Code.gs) */
+const rowners = () => REV && REV.open ? REV.zones.map(rowner).filter(Boolean) : [];
+const rallFin = () => { const o = rowners(); return o.length > 0 && o.every(rfinOf); };
+const rfull = () => rallFin() && REV.zones.every(z => rowner(z));
+const rifin = () => REV.open ? rfinOf(me ? me.name : "") : rjson(RF, "") === REV.day;   // я завершил свой подсчёт
 function rstate(){
   const r = REV, day = r.day, open = r.open;
-  if (open ? rfinOf(me ? me.name : "") : rjson(RF, "") === day) return "sum";
+  if (rifin()) return "sum";
   const mineZone = open && r.zones.some(z => open.zones[z] && mnorm(open.zones[z].who) === rme());
-  return mineZone || rjson(RIN, "") === day ? "work" : "lobby";
+  if (mineZone || rjson(RIN, "") === day) return "work";
+  return rallFin() ? "sum" : "lobby";                          // не считал — итог, когда все завершили
 }
 
 async function revLoad(quiet){
@@ -145,11 +152,22 @@ function rhead(){
   const prev = r.prev ? 'Для сравнения — пересчёт ' + esc(r.prev.date) + (r.prev.name ? ' · ' + esc(r.prev.name) : '') + '.' : '';
   $("rinfo").innerHTML = '<span class="rtoday">День ревизии — с 9:00 до 9:00 · сегодня ' + rday(rnow()) + '</span>' +
     (v === "lobby" ? (open ? 'Ревизия идёт. Войдите — увидите, что уже посчитано, и добавите своё.' : 'Сегодня ещё никто не считал. Войдите и выберите зону — её столбец появится в таблице с первым числом.') + ' ' + prev
-    : v === "sum" ? '<b>Вы завершили свой подсчёт.</b> Ниже — итог дня по всем зонам; другие могут добавлять до 9:00. ' + prev
-    : prev) + rwho();
-  $("rstart").textContent = v === "sum" ? "Вернуться в ревизию" : "Войти в ревизию";
+    : v === "sum" ? rsumHead() + prev
+    : (rallFin() && !r.zones.some(z => mnorm(rowner(z)) === rme())
+        ? '<b>Подсчёт у всех завершён.</b> <button type="button" class="link" id="rseesum">Смотреть итог дня</button> ' : '') + prev) + rwho();
+  $("rstart").textContent = v === "sum" && rifin() ? "Вернуться в ревизию" : "Войти в ревизию";
   $("rstart").hidden = v === "work";
   $("rclose").hidden = v !== "work";
+}
+
+/* шапка итога: подсчёт завершён у всех — для всех одинаково; иначе — у меня */
+function rsumHead(){
+  const r = REV, mine = rifin();
+  if (!rallFin()) return '<b>Вы завершили свой подсчёт.</b> Ниже — итог дня по всем зонам; другие могут добавлять до 9:00. ';
+  const counted = r.zones.filter(z => rowner(z));
+  return (rfull() ? '<b>Ревизия завершена — посчитаны все зоны.</b> '
+      : '<b>Подсчёт завершён</b> — посчитаны ' + esc(counted.join(", ")) + ' (' + counted.length + ' из ' + r.zones.length + ' зон). ') +
+    'Итог дня — ниже, его видят все. ' + (mine ? 'Поправить свою зону — «Вернуться в ревизию», до 9:00. ' : 'Добавить можно до 9:00 — «Войти в ревизию». ');
 }
 
 function rzoneDraw(){
@@ -356,6 +374,11 @@ $("rclose").addEventListener("click", async () => {
 });
 
 $("rreload").addEventListener("click", () => revLoad());
+/* вошёл, но ничего не считал, а все уже завершили — к итогу дня */
+$("rinfo").addEventListener("click", e => {
+  if (!e.target.closest("#rseesum")) return;
+  rsave(RIN, ""); revDraw();
+});
 window.addEventListener("online", () => { if (R) revFlush(); });
 
 /* Синхронизация: пока открыт раздел — раз в 30 секунд сверяемся с таблицей

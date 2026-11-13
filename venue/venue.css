@@ -106,6 +106,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 @keyframes up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 .sheet .poster{aspect-ratio:16/9}
 .sheet .sc{padding:18px 20px 22px}
+.sheet .sc > p:not(.meta):not(.fmsg){white-space:pre-line}
 .sheet h3{font-family:var(--display);font-size:34px;line-height:1.05;margin:0 0 8px}
 .sheet .meta{color:var(--muted);margin:0 0 14px}
 .sheet .acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
@@ -196,6 +197,26 @@ textarea.in{min-height:84px;resize:vertical}
 .ainf{padding:10px 12px}
 .ainf b{display:block;font-size:14px}
 .ainf small{color:var(--muted)}
+/* остальные дни — столбиком по датам: дата слева, альбомы дня справа */
+.albmore{margin-top:16px}
+.albtgl{width:100%;justify-content:center;gap:8px}
+.albtgl small{color:var(--muted);font-weight:600}
+.albdays{list-style:none;margin:14px 0 0;padding:0;border-top:1px solid var(--line)}
+.albdays li{display:grid;grid-template-columns:62px 1fr;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);align-items:start}
+.albdays time{font-family:var(--display);line-height:.9;color:var(--fg);padding-top:4px}
+.albdays time b{display:block;font-size:36px;font-weight:600;font-variant-numeric:lining-nums}
+.albdays time span{font-family:var(--sans);font-size:12.5px;font-weight:700;color:var(--muted)}
+.alrs{display:grid;gap:8px}
+.alr{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:6px 10px 6px 6px;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  color:var(--fg);text-decoration:none;text-align:left;font:inherit;cursor:pointer;transition:border-color .15s}
+.alr:hover{border-color:var(--accent)}
+.alr:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.alth{width:52px;height:52px;border-radius:9px;overflow:hidden;background:radial-gradient(90% 90% at 80% 10%,rgba(201,162,75,.55),transparent 70%),#16181D}
+.alth img{width:100%;height:100%;object-fit:cover;display:block}
+.altx b{display:block;font-size:14.5px}
+.altx small{color:var(--muted);font-size:13px}
+.algo{color:var(--accent);font-weight:700}
+.albnote{margin:10px 0 0;color:var(--muted);font-size:13px}
 .lb{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.92);display:grid;place-items:center}
 .lb img{max-width:94vw;max-height:80vh;border-radius:10px;object-fit:contain}
 .lb .lbt{position:absolute;top:14px;left:16px;right:60px;color:#ddd;font-size:14px}
@@ -317,6 +338,38 @@ body.night .hero .hbg{background:radial-gradient(70% 55% at 30% 70%,rgba(255,79,
 .sbody .stx{margin:0 0 8px;color:#D9D6CF;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .sbody .spr{margin:0 0 16px;color:var(--accent);font-weight:700}
 .sacts{display:flex;gap:10px;flex-wrap:wrap;pointer-events:auto}
+/* видео в сторис: полоска идёт за роликом, кнопка звука — слева сверху; кольцо видео — с белой искрой */
+.sring.isv .sav{background:conic-gradient(from 200deg,var(--z),#fff 18%,var(--accent),var(--z))}
+.sbars i.run.v{animation:none;transition:width .25s linear}
+.sbg video{width:100%;height:100%;object-fit:cover;display:block;background:#0A0B0E}
+.sbg.hasv::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,transparent 18%,transparent 44%,rgba(8,9,12,.82) 62%,rgba(8,9,12,.96) 82%)}
+/* у видео текст короче: ролик виден целиком, его субтитры не спорят с заголовком */
+.story.sv .sbody h3{font-size:clamp(28px,7.4vw,36px)}
+.story.sv .sbody .stx{-webkit-line-clamp:2}
+.ssnd{position:absolute;top:22px;left:10px;z-index:4;display:inline-flex;align-items:center;gap:7px;padding:7px 12px 7px 10px;border-radius:999px;border:0;
+  background:rgba(10,11,14,.55);color:#fff;font:700 13px var(--sans);cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.ssnd::before{content:"";width:14px;height:14px;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 9v6h4l5 4V5L7 9H3z'/%3E%3Cpath d='M16 8l6 8M22 8l-6 8' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 9v6h4l5 4V5L7 9H3z'/%3E%3Cpath d='M16 8l6 8M22 8l-6 8' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") center/contain no-repeat}
+.ssnd[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 9v6h4l5 4V5L7 9H3z'/%3E%3Cpath d='M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 9v6h4l5 4V5L7 9H3z'/%3E%3Cpath d='M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E")}
+.ssnd:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.sbody .stx{white-space:pre-line}
+/* метка «видео» на плакате события */
+.poster .pvid{position:absolute;right:14px;bottom:14px;z-index:1;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;border-radius:999px;background:rgba(0,0,0,.55);font-size:12.5px;font-weight:700}
+.poster .pvid::before{content:"";width:0;height:0;border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent}
+
+/* новости с фото или видео: кадр слева, по нажатию — сторис */
+.news p{white-space:pre-line}
+.news.hasm{display:grid;grid-template-columns:104px 1fr;gap:14px;align-items:start}
+@media (min-width:700px){.news.hasm{grid-template-columns:150px 1fr;gap:18px}}
+.nmed{position:relative;display:block;aspect-ratio:4/5;border-radius:12px;overflow:hidden;border:0;padding:0;background:#16181D;cursor:pointer}
+.nmed img{width:100%;height:100%;object-fit:cover;transition:transform .4s ease}
+.nmed:hover img{transform:scale(1.04)}
+.nmed:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nplay{position:absolute;left:8px;bottom:8px;width:34px;height:34px;border-radius:50%;background:rgba(10,11,14,.6);display:grid;place-items:center;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.nplay::before{content:"";margin-left:3px;border-left:11px solid #fff;border-top:7px solid transparent;border-bottom:7px solid transparent}
+@media (prefers-reduced-motion:reduce){.nmed img{transition:none}.nmed:hover img{transform:none}}
 
 /* ── подбор коктейля ── */
 .quiz{padding:22px}

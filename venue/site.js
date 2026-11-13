@@ -37,6 +37,7 @@ function poster(e, big){
   const bg = "background:radial-gradient(120% 90% at 85% 10%," + z.color + "cc 0%,transparent 60%),radial-gradient(90% 80% at 0% 100%," + z.color + "55 0%,transparent 65%),#16181D";
   return '<div class="poster" style="' + bg + '">' + (e.img ? '<img src="' + esc(e.img) + '" alt="" loading="lazy">' : "") +
     '<span class="pz">' + esc(z.name || "Все залы") + '</span>' +
+    (e.vid ? '<span class="pvid">видео</span>' : '') +
     '<span class="pd"><span>' + WD[d.getUTCDay()] + esc(tm(e)) + '</span><b>' + d.getUTCDate() + '</b><span>' + MON3[d.getUTCMonth()] + '</span></span></div>';
 }
 function drawEvents(){
@@ -55,6 +56,7 @@ function sheetOpen(e){
     '<div class="sc"><h3 id="shTitle">' + esc(e.title) + '</h3><p class="meta">' + esc(WDF[dd(e.date).getUTCDay()]) + ", " + esc(dayTx(e.date)) + esc(tm(e)) +
     '<br>' + esc(z.name || "Все залы") + (e.price ? ", " + esc(e.price) : "") + '</p><p>' + esc(e.text || "") + '</p>' +
     '<div class="acts"><button type="button" class="btn" data-bk="' + esc(e.id) + '">Забронировать стол</button>' +
+    (e.vid ? '<button type="button" class="btn ghost" data-vid="' + esc(e.id) + '">Смотреть видео</button>' : '') +
     '<button type="button" class="btn ghost" data-ics="' + esc(e.id) + '">В календарь</button><button type="button" class="btn ghost" data-share="' + esc(e.id) + '">Поделиться</button></div>' +
     '<p class="fmsg" id="shMsg" role="status"></p></div></div>';
   sh.hidden = false; document.body.style.overflow = "hidden";
@@ -83,9 +85,10 @@ function ics(e){
 }
 $("sheet").addEventListener("click", async ev => {
   if (ev.target === $("sheet") || ev.target.closest("[data-x]")) return sheetClose();
-  const all = S.events.concat(S.past), b = ev.target.closest("[data-bk],[data-ics],[data-share]");
+  const all = S.events.concat(S.past), b = ev.target.closest("[data-bk],[data-ics],[data-share],[data-vid]");
   if (!b) return;
-  const e = all.find(x => x.id === (b.dataset.bk || b.dataset.ics || b.dataset.share));
+  const e = all.find(x => x.id === (b.dataset.bk || b.dataset.ics || b.dataset.share || b.dataset.vid));
+  if (b.dataset.vid){ sheetClose(); return stOpen(0, [{k: "e", x: e}]); }
   if (b.dataset.bk){ sheetClose(); bookFor(e.zone, e.date, e.id); return; }
   if (b.dataset.ics) return ics(e);
   const url = location.href.split("#")[0] + "#event-" + e.id;
@@ -320,20 +323,52 @@ $("menu").addEventListener("click", e => {
 function drawPromoNews(){
   $("promoList").innerHTML = S.promos.length ? S.promos.map(p => '<article class="card promo"><h3>' + esc(p.title) + '</h3><p class="ptx">' + esc(p.text || "") + '</p>' +
     (p.note ? '<small class="pnote">' + esc(p.note) + '</small>' : "") + (p.until ? '<small>до ' + esc(dayTx(p.until)) + '</small>' : "") + '</article>').join("") : '<p class="empty">Скоро здесь появятся акции.</p>';
-  $("newsList").innerHTML = S.news.slice(0, 6).map(n => '<article class="card news"><time datetime="' + esc(n.date) + '">' + esc(dayTx(n.date)) + '</time><h3>' + esc(n.title) + '</h3><p>' + esc(n.text || "") + '</p></article>').join("");
+  $("newsList").innerHTML = S.news.slice(0, 6).map(n => '<article class="card news' + (hasM(n) ? " hasm" : "") + '">' +
+    (hasM(n) ? '<button type="button" class="nmed" data-nm="' + esc(n.id) + '" aria-label="' + (n.vid ? "Смотреть видео" : "Открыть") + ': ' + esc(n.title) + '">' +
+      (n.img ? '<img src="' + esc(n.img) + '" alt="" loading="lazy">' : '') + (n.vid ? '<span class="nplay" aria-hidden="true"></span>' : '') + '</button>' : '') +
+    '<div class="nb"><time datetime="' + esc(n.date) + '">' + esc(dayTx(n.date)) + '</time><h3>' + esc(n.title) + '</h3><p>' + esc(n.text || "") + '</p></div></article>').join("");
 }
+/* фото или видео новости — сторис по всем новостям с фото и видео, с этой */
+$("newsList").addEventListener("click", e => {
+  const b = e.target.closest("[data-nm]"); if (!b) return;
+  const L = S.news.slice(0, 6).filter(hasM).map(x => ({k: "n", x}));
+  stOpen(L.findIndex(s => s.x.id === b.dataset.nm), L);
+});
 
 /* фотоотчёты: альбом фотографа — по ссылке; свои фото — просмотр с листанием */
 const ACOL = ["#C9A24B", "#FF4FA3", "#9A5CF0", "#5FB3A1"];
 let lbA = null, lbI = 0;
+/* сверху — 4 новых альбома; остальные дни (за последние 3 месяца) — по кнопке, столбиком по датам */
+const ALB_TOP = 4;
+let albOpen = false;
 function drawAlbums(){
-  $("albList").innerHTML = S.albums.map((a, i) => {
+  albMoreDraw();
+  $("albList").innerHTML = S.albums.slice(0, ALB_TOP).map((a, i) => {
     const d = dd(a.date), cover = a.img || (a.photos || [])[0] || "";
     const inner = '<div class="acov" style="--z:' + ACOL[i % ACOL.length] + '">' + (cover ? '<img src="' + esc(cover) + '" alt="" loading="lazy">' : '<span class="adate"><b>' + d.getUTCDate() + '</b>' + MON3[d.getUTCMonth()] + '</span>') + '</div>' +
       '<div class="ainf"><b>' + esc(a.title) + ', ' + esc(dayTx(a.date)) + '</b><small>' + (a.by ? "Фото: " + esc(a.by) : (a.photos || []).length ? a.photos.length + " фото" : "Фотоотчёт") + '</small></div>';
     return a.url ? '<a class="alb" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + inner + '</a>' : '<button type="button" class="alb" data-a="' + esc(a.id) + '">' + inner + '</button>';
   }).join("") || '<p class="empty">Скоро здесь будут фото.</p>';
 }
+const nDays = n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "день" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "дня" : "дней");
+function albMoreDraw(){
+  const rest = S.albums.slice(ALB_TOP), by = [];
+  rest.forEach(a => { const g = by.find(x => x.d === a.date); if (g) g.a.push(a); else by.push({d: a.date, a: [a]}); });
+  if (!by.length){ $("albMore").innerHTML = ""; return; }
+  const row = a => { const cov = a.img || (a.photos || [])[0] || "";
+    const inner = '<span class="alth">' + (cov ? '<img src="' + esc(cov) + '" alt="" loading="lazy">' : '') + '</span>' +
+      '<span class="altx"><b>' + esc(a.title) + '</b><small>' + (a.by ? "Фото: " + esc(a.by) : (a.photos || []).length ? a.photos.length + " фото" : "Фотоотчёт") + '</small></span><span class="algo" aria-hidden="true">→</span>';
+    return a.url ? '<a class="alr" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + inner + '</a>' : '<button type="button" class="alr" data-a="' + esc(a.id) + '">' + inner + '</button>'; };
+  $("albMore").innerHTML = '<button type="button" class="btn ghost albtgl" aria-expanded="' + albOpen + '" aria-controls="albDays">' +
+      (albOpen ? "Свернуть" : "Смотреть остальные дни") + ' <small>' + nDays(by.length) + '</small></button>' +
+    '<ol class="albdays" id="albDays"' + (albOpen ? "" : " hidden") + '>' + by.map(g => { const d = dd(g.d);
+      return '<li><time datetime="' + g.d + '"><b>' + d.getUTCDate() + '</b><span>' + MON3[d.getUTCMonth()] + ', ' + WD[d.getUTCDay()] + '</span></time><div class="alrs">' + g.a.map(row).join("") + '</div></li>'; }).join("") +
+    '</ol>' + (albOpen ? '<p class="albnote">Фотоотчёты за последние 3 месяца.</p>' : '');
+}
+$("albMore").addEventListener("click", e => {
+  if (e.target.closest(".albtgl")){ albOpen = !albOpen; albMoreDraw(); if (!albOpen) $("photo").scrollIntoView({behavior: "smooth"}); return; }
+  const b = e.target.closest("button[data-a]"); if (b) albPhotos(b.dataset.a);
+});
 function lbDraw(){
   const a = lbA, p = a.photos[lbI];
   $("lb").innerHTML = '<span class="lbt">' + esc(a.title) + ", " + (lbI + 1) + " из " + a.photos.length + '</span><img src="' + esc(p) + '" alt="Фото ' + (lbI + 1) + '">' +
@@ -341,7 +376,8 @@ function lbDraw(){
 }
 const lbClose = () => { if (!$("lb").hidden){ $("lb").hidden = true; document.body.style.overflow = ""; } };
 const lbGo = d => { lbI = (lbI + d + lbA.photos.length) % lbA.photos.length; lbDraw(); };
-$("albList").addEventListener("click", e => { const b = e.target.closest("button[data-a]"); if (!b) return; lbA = S.albums.find(a => a.id === b.dataset.a); if (!lbA || !(lbA.photos || []).length) return; lbI = 0; lbDraw(); $("lb").hidden = false; document.body.style.overflow = "hidden"; });
+function albPhotos(id){ lbA = S.albums.find(a => a.id === id); if (!lbA || !(lbA.photos || []).length) return; lbI = 0; lbDraw(); $("lb").hidden = false; document.body.style.overflow = "hidden"; }
+$("albList").addEventListener("click", e => { const b = e.target.closest("button[data-a]"); if (b) albPhotos(b.dataset.a); });
 $("lb").addEventListener("click", e => { if (e.target.closest("[data-lx]") || e.target === $("lb")) return lbClose(); if (e.target.closest("[data-lp]")) lbGo(-1); if (e.target.closest("[data-ln]")) lbGo(1); });
 let tx = 0;
 $("lb").addEventListener("touchstart", e => { tx = e.touches[0].clientX; }, {passive: true});
@@ -374,6 +410,7 @@ function heroVideo(){
 }
 
 const evAt = e => new Date(e.date + "T" + (e.time || "23:59") + ":00");     // без времени — событие идёт весь день
+const evEnd = e => { const d = new Date(e.date + "T06:00:00"); d.setDate(d.getDate() + 1); return d; };   // вечеринка — до 6 утра
 /* «через 40 мин», «через 2 ч 10 мин», «сегодня в 22:00», «завтра в 22:00»; дальше — null (покажем дату) */
 function relTx(t, now){
   const m = Math.round((t - now) / 60000);
@@ -402,10 +439,12 @@ function live(){
   }
   const html = parts.join("");
   if ($("live").innerHTML !== html) $("live").innerHTML = html;
-  const n = S.events.find(e => evAt(e) > now) || S.events[0];
+  const cur = S.events.find(e => e.time && evAt(e) <= now && now < evEnd(e));       // уже началось и идёт до утра
+  const n = cur || S.events.find(e => evAt(e) > now) || S.events[0];
   let rt = n && n.time ? relTx(evAt(n), now) : null;
   if (n && !n.time){ const k = Math.round((dd(n.date) - dd(ufa().iso)) / 864e5); rt = k === 0 ? "сегодня" : k === 1 ? "завтра" : null; }       // ближайшее событие — со временем «через …»
-  const nx = n ? '<a class="nextev" href="#event-' + esc(n.id) + '"><em>Ближайшее</em> ' + esc(rt || wdOf(n.date) + ", " + dayTx(n.date)) + " — " + esc(n.title) + "</a>" : "";
+  const nx = cur ? '<a class="nextev" href="#event-' + esc(cur.id) + '"><em>Сейчас</em> ' + esc(cur.title) + "</a>"
+    : n ? '<a class="nextev" href="#event-' + esc(n.id) + '"><em>Ближайшее</em> ' + esc(rt || wdOf(n.date) + ", " + dayTx(n.date)) + " — " + esc(n.title) + "</a>" : "";
   if ($("hNext").innerHTML !== nx) $("hNext").innerHTML = nx;
   const h = u.h, night = h >= 20 || h < 6;
   const z = bkZone && bookable().find(x => x.id === bkZone);                     // открытая форма брони: время «сегодня» сдвигается само
@@ -415,50 +454,89 @@ function live(){
 }
 
 
-/* ── афиша-сторис: кружки над афишей, экран на весь телефон, 6 секунд на событие, листаются касанием ── */
+/* ── сторис: свежие новости с фото или видео (за 3 дня) и ближайшие события — кружки над афишей, экран на весь телефон.
+   Картинка — 6 секунд, видео — до конца (не дольше 30 с), сначала без звука; «Включить звук» — для этого и следующих.
+   Экономия трафика или 2G — вместо видео его кадр. Листаются касанием, удержание — пауза, свайп вниз — закрыть ── */
 const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-let stI = 0, stT = 0, stHold = false, stLong = false, stDown = 0, stRet = null;
+const SLOW = () => { const c = navigator.connection; return !!(c && (c.saveData || /2g/.test(c.effectiveType || ""))); };
+const NEWSC = "#FF4FA3";
+let stL = [], stI = 0, stT = 0, stHold = false, stLong = false, stDown = 0, stRet = null, stDur = 6000, stSnd = false;
 const STD = 6000;
+const hasM = x => !!(x.img || x.vid);
+function stFeed(){
+  const used = new Set(S.events.flatMap(e => [e.img, e.vid]).filter(Boolean));          // те же кадры, что у события, — в сторис один раз
+  const fresh = S.news.filter(n => hasM(n) && !used.has(n.vid || n.img) && n.date <= S.today && (dd(S.today) - dd(n.date)) / 864e5 <= 3).map(x => ({k: "n", x}));
+  return fresh.concat(S.events.map(x => ({k: "e", x}))).slice(0, 12);
+}
 function drawStories(){
-  $("stories").innerHTML = S.events.slice(0, 10).map((e, i) => { const z = zoneOf(e.zone), d = dd(e.date);
-    return '<button type="button" class="sring" data-st="' + i + '" style="--z:' + esc(z.color) + '" aria-label="' + esc(e.title) + '"><span class="sav">' +
-      (e.img ? '<img src="' + esc(e.img) + '" alt="">' : '<b>' + d.getUTCDate() + '</b>') + '</span><small>' + esc(WD[d.getUTCDay()]) + ", " + d.getUTCDate() + " " + MON3[d.getUTCMonth()] + '</small></button>'; }).join("");
+  const L = stFeed();
+  $("stories").hidden = !L.length;
+  $("stories").innerHTML = L.map((s, i) => { const x = s.x, d = dd(x.date), c = s.k === "e" ? zoneOf(x.zone).color : NEWSC;
+    return '<button type="button" class="sring' + (x.vid ? " isv" : "") + '" data-st="' + i + '" style="--z:' + esc(c) + '" aria-label="' + esc(x.title) + (x.vid ? ", видео" : "") + '"><span class="sav">' +
+      (x.img ? '<img src="' + esc(x.img) + '" alt="">' : '<b>' + d.getUTCDate() + '</b>') + '</span><small>' +
+      (s.k === "n" ? (x.date === S.today ? "сегодня" : "новое") : esc(WD[d.getUTCDay()]) + ", " + d.getUTCDate() + " " + MON3[d.getUTCMonth()]) + '</small></button>'; }).join("");
 }
+const stVid = () => $("story").querySelector("video");
+function stRun(ms){
+  stDur = ms; clearTimeout(stT);
+  const bar = $("story").querySelector(".sbars i.run");
+  if (RM()){ if (bar) bar.className = "full"; return; }
+  if (bar){ bar.style.animation = "none"; void bar.offsetWidth; bar.style.animation = ""; bar.style.animationDuration = ms + "ms"; }
+  stT = setTimeout(() => stGo(1), ms);
+}
+function stSndDraw(){ const b = $("story").querySelector("[data-ssnd]"); if (b){ b.setAttribute("aria-pressed", String(stSnd)); b.textContent = stSnd ? "Звук включён" : "Включить звук"; } }
 function stDraw(){
-  const e = S.events[stI], z = zoneOf(e.zone), box = $("story");
+  const s = stL[stI], x = s.x, ev = s.k === "e", z = ev ? zoneOf(x.zone) : {name: "Новости", color: NEWSC}, box = $("story"), d = dd(x.date);
+  const vid = x.vid && !SLOW();
   box.style.setProperty("--z", z.color);
-  box.innerHTML = '<div class="sbars">' + S.events.slice(0, 10).map((x, i) => '<span><i class="' + (i < stI ? "full" : i === stI ? "run" : "") + '"></i></span>').join("") + '</div>' +
+  box.classList.toggle("sv", !!vid);
+  box.innerHTML = '<div class="sbars">' + stL.map((_, i) => '<span><i class="' + (i < stI ? "full" : i === stI ? "run" + (vid ? " v" : "") : "") + '"></i></span>').join("") + '</div>' +
     '<button type="button" class="sx" data-sx aria-label="Закрыть">×</button>' +
-    '<div class="sbg">' + (e.img ? '<img src="' + esc(e.img) + '" alt="">' : '<span class="sbig" aria-hidden="true">' + dd(e.date).getUTCDate() + '</span>') + '</div>' +
-    '<div class="sbody"><p class="szone">' + esc(z.name || "") + '</p><p class="sdate">' + esc(WDF[dd(e.date).getUTCDay()]) + ', ' + esc(dayTx(e.date)) + esc(tm(e)) + '</p>' +
-    '<h3>' + esc(e.title) + '</h3><p class="stx">' + esc(e.text || "") + '</p><p class="spr">' + esc(e.price || "") + '</p>' +
-    '<div class="sacts"><button type="button" class="btn" data-sbk>Забронировать стол</button><button type="button" class="btn ghost" data-smore>Подробнее</button></div></div>' +
+    (vid ? '<button type="button" class="ssnd" data-ssnd aria-pressed="false">Включить звук</button>' : '') +
+    '<div class="sbg' + (vid ? " hasv" : "") + '">' + (vid ? '<video class="svid" src="' + esc(x.vid) + '"' + (x.img ? ' poster="' + esc(x.img) + '"' : '') + ' playsinline preload="auto"' + (RM() ? ' controls' : ' autoplay') + (stSnd ? '' : ' muted') + '></video>'
+      : x.img ? '<img src="' + esc(x.img) + '" alt="">' : '<span class="sbig" aria-hidden="true">' + d.getUTCDate() + '</span>') + '</div>' +
+    '<div class="sbody"><p class="szone">' + esc(ev ? (z.name || "Все залы") : "Новости") + '</p><p class="sdate">' + (ev ? esc(WDF[d.getUTCDay()]) + ', ' + esc(dayTx(x.date)) + esc(tm(x)) : esc(dayTx(x.date))) + '</p>' +
+    '<h3>' + esc(x.title) + '</h3><p class="stx">' + esc(x.text || "") + '</p>' + (ev && x.price ? '<p class="spr">' + esc(x.price) + '</p>' : '') +
+    '<div class="sacts"><button type="button" class="btn" data-sbk>Забронировать стол</button>' + (ev ? '<button type="button" class="btn ghost" data-smore>Подробнее</button>' : '') + '</div></div>' +
     '<button type="button" class="stap prev" data-sp aria-label="Предыдущее"></button><button type="button" class="stap next" data-sn aria-label="Следующее"></button>';
-  const bar = box.querySelector(".sbars i.run");
-  clearTimeout(stT);
-  if (RM()){ if (bar) bar.className = "full"; }
-  else { if (bar) bar.style.animationDuration = STD + "ms"; stT = setTimeout(() => stGo(1), STD); }
+  stSndDraw();
+  const v = stVid();
+  if (v){
+    clearTimeout(stT);
+    const bar = box.querySelector(".sbars i.run");
+    /* полоска идёт за видео; не загрузилось — как картинка */
+    v.addEventListener("timeupdate", () => { if (bar && v.duration) bar.style.width = Math.min(100, v.currentTime / Math.min(v.duration, 30) * 100) + "%"; if (v.currentTime >= 30) stGo(1); });
+    v.addEventListener("ended", () => stGo(1));
+    v.addEventListener("error", () => { if (bar) bar.classList.remove("v"); stRun(STD); });
+    if (!RM()) v.play().catch(() => { v.muted = true; stSnd = false; stSndDraw(); v.play().catch(() => {}); });
+  } else stRun(STD);
   box.querySelector("[data-sx]").focus({preventScroll: true});
-  if (window.gsap && !matchMedia("(prefers-reduced-motion: reduce)").matches) gsap.from(box.querySelector(".sbody"), {y: 24, opacity: 0, duration: .35, ease: "power2.out"});
+  if (window.gsap && !RM()) gsap.from(box.querySelector(".sbody"), {y: 24, opacity: 0, duration: .35, ease: "power2.out"});
 }
-function stOpen(i){ stRet = document.activeElement; stI = i; $("story").hidden = false; document.body.style.overflow = "hidden"; stDraw(); }
-function stClose(){ if ($("story").hidden) return; clearTimeout(stT); stHold = false; $("story").hidden = true; document.body.style.overflow = ""; if (stRet && stRet.focus) stRet.focus({preventScroll: true}); }
-function stGo(d){ const n = Math.min(S.events.length, 10); if (stI + d >= n) return stClose(); stI = Math.max(0, stI + d); stDraw(); }
-function stPause(on){ if (RM()) return; stHold = on; const i = $("story").querySelector(".sbars i.run"); if (i) i.style.animationPlayState = on ? "paused" : "running";
-  if (on) clearTimeout(stT); else { const left = STD * (1 - (i ? i.getBoundingClientRect().width / i.parentNode.getBoundingClientRect().width : 0)); stT = setTimeout(() => stGo(1), Math.max(300, left)); } }
+function stOpen(i, list){ stL = list || stFeed(); if (!stL.length) return; stRet = document.activeElement; stI = Math.max(0, Math.min(i, stL.length - 1)); $("story").hidden = false; document.body.style.overflow = "hidden"; stDraw(); }
+function stClose(){ if ($("story").hidden) return; clearTimeout(stT); stHold = false; const v = stVid(); if (v) v.pause(); $("story").innerHTML = ""; $("story").hidden = true; document.body.style.overflow = ""; if (stRet && stRet.focus) stRet.focus({preventScroll: true}); }
+function stGo(d){ if (stI + d >= stL.length) return stClose(); const v = stVid(); if (v) v.pause(); stI = Math.max(0, stI + d); stDraw(); }
+function stPause(on){
+  if (RM()) return; stHold = on;
+  const v = stVid();
+  if (v){ if (on) v.pause(); else v.play().catch(() => {}); return; }
+  const i = $("story").querySelector(".sbars i.run"); if (i) i.style.animationPlayState = on ? "paused" : "running";
+  if (on) clearTimeout(stT); else { const left = stDur * (1 - (i ? i.getBoundingClientRect().width / i.parentNode.getBoundingClientRect().width : 0)); stT = setTimeout(() => stGo(1), Math.max(300, left)); }
+}
 $("stories").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (b) stOpen(+b.dataset.st); });
 $("story").addEventListener("click", e => {
-  const ev = S.events[stI];
   if ($("story").hidden) return;
+  const s = stL[stI], x = s && s.x;
+  if (e.target.closest("[data-ssnd]")){ stSnd = !stSnd; const v = stVid(); if (v){ v.muted = !stSnd; if (v.paused) v.play().catch(() => {}); } stSndDraw(); return; }
   if (stLong){ stLong = false; if (e.target.closest("[data-sp],[data-sn]")) return; }
   if (e.target.closest("[data-sx]")) return stClose();
   if (e.target.closest("[data-sp]")) return stGo(-1);
   if (e.target.closest("[data-sn]")) return stGo(1);
-  if (e.target.closest("[data-sbk]")){ stClose(); return bookFor(ev.zone, ev.date, ev.id); }
-  if (e.target.closest("[data-smore]")){ stClose(); location.hash = "event-" + ev.id; }
+  if (e.target.closest("[data-sbk]")){ stClose(); return s.k === "e" ? bookFor(x.zone, x.date, x.id) : bookFor("", "", ""); }
+  if (e.target.closest("[data-smore]")){ stClose(); location.hash = "event-" + x.id; }
 });
 let sy = 0;
-$("story").addEventListener("pointerdown", e => { if (!e.target.closest(".btn,[data-sx]")){ sy = e.clientY; stDown = Date.now(); stPause(true); } });
+$("story").addEventListener("pointerdown", e => { if (!e.target.closest(".btn,[data-sx],[data-ssnd]")){ sy = e.clientY; stDown = Date.now(); stPause(true); } });
 $("story").addEventListener("pointerup", e => { if (!stHold) return; stLong = Date.now() - stDown > 350 || Math.abs(e.clientY - sy) > 30; stPause(false); if (e.clientY - sy > 90) stClose(); });
 $("story").addEventListener("pointercancel", () => { if (stHold) stPause(false); });
 document.addEventListener("keydown", e => { if ($("story").hidden) return; if (e.key === "Escape") stClose(); if (e.key === "ArrowRight") stGo(1); if (e.key === "ArrowLeft") stGo(-1); });
